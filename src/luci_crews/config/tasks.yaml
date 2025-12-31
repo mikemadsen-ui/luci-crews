@@ -1,0 +1,196 @@
+# CrewAI Task Definitions
+# Edit these to customize what each crew analyzes and outputs
+
+# =============================================================================
+# SALES PIPELINE TASKS
+# =============================================================================
+
+analyze_pipeline:
+  description: >
+    Analyze the following sales pipeline data for {user_name}:
+
+    OPPORTUNITIES:
+    {opportunities_data}
+
+    PIPELINE SUMMARY:
+    - Total Pipeline Value: ${total_amount}
+    - Number of Open Opportunities: {opp_count}
+    - Average Probability: {avg_probability}%
+
+    Provide a comprehensive analysis including:
+    1. Overall pipeline health assessment
+    2. Top opportunities by value and their status
+    3. Deals at risk (past close date, low probability, stalled)
+    4. Opportunities needing immediate attention
+    5. Pipeline coverage vs. quota (if available)
+  expected_output: >
+    A structured analysis with:
+    - Executive summary (2-3 sentences)
+    - Risk assessment with specific deals flagged
+    - Priority action items ranked by impact
+    - 30/60/90 day pipeline outlook
+  agent: sales_pipeline_analyst
+
+develop_deal_strategies:
+  description: >
+    Based on the pipeline analysis, develop specific strategies for the top
+    opportunities and at-risk deals identified.
+
+    For each key deal, provide:
+    1. Recommended next steps
+    2. Stakeholder engagement strategy
+    3. Potential objection handling
+    4. Competitive positioning (if relevant)
+    5. Timeline recommendations
+  expected_output: >
+    Deal-by-deal strategic recommendations that are specific, actionable,
+    and include clear next steps with suggested timelines.
+  agent: sales_strategist
+  context:
+    - analyze_pipeline
+
+# =============================================================================
+# ACCOUNT HEALTH TASKS
+# =============================================================================
+
+assess_account_health:
+  description: >
+    Analyze the following account data:
+
+    ACCOUNT: {account_name}
+    TIER: {account_tier}
+    ARR: ${arr}
+
+    RECENT ACTIVITY:
+    {activity_data}
+
+    SUPPORT TICKETS:
+    {support_data}
+
+    ENGAGEMENT METRICS:
+    {engagement_data}
+
+    Assess:
+    1. Overall health score (1-100)
+    2. Churn risk indicators
+    3. Expansion opportunities
+    4. Key stakeholder engagement levels
+    5. Product adoption status
+  expected_output: >
+    A health assessment including:
+    - Health score with rationale
+    - Red/yellow/green status indicators
+    - Risk factors with severity ratings
+    - Expansion opportunities with estimated value
+    - Recommended actions prioritized by impact
+  agent: account_health_analyst
+
+# =============================================================================
+# IMPLEMENTATION TASKS
+# =============================================================================
+
+analyze_implementation:
+  description: >
+    Analyze the following implementation project:
+
+    PROJECT: {project_name}
+    ACCOUNT: {account_name}
+    STATUS: {project_status}
+
+    TIMELINE:
+    - Start Date: {start_date}
+    - Target Go-Live: {target_go_live}
+    - Current Phase: {current_phase}
+
+    PROGRESS:
+    - Completion: {completion_pct}%
+    - Hours Used: {hours_used} / {hours_budgeted}
+    - Budget Used: ${budget_used} / ${budget_total}
+
+    MILESTONES:
+    {milestones_data}
+
+    BLOCKERS/RISKS:
+    {risks_data}
+
+    Provide:
+    1. Project health assessment
+    2. Risk analysis with mitigation strategies
+    3. Timeline feasibility
+    4. Resource utilization analysis
+    5. Recommendations for staying on track
+  expected_output: >
+    A project health report including:
+    - Overall status (On Track / At Risk / Critical)
+    - Key risks ranked by severity and likelihood
+    - Specific recommendations with owners and deadlines
+    - Revised timeline if needed
+    - Escalation recommendations if applicable
+  agent: implementation_analyst
+
+# =============================================================================
+# SENTIMENT ANALYSIS TASKS
+# =============================================================================
+
+analyze_sentiment:
+  description: >
+    Analyze customer sentiment for:
+
+    ACCOUNT: {account_name}
+
+    RECENT COMMUNICATIONS:
+    {communications_data}
+
+    SUPPORT INTERACTIONS:
+    {support_data}
+
+    MEETING NOTES:
+    {meeting_notes}
+
+    Provide:
+    1. Overall sentiment score (-100 to +100)
+    2. Sentiment trend (improving/stable/declining)
+    3. Key themes and concerns identified
+    4. Positive signals
+    5. Warning signs requiring attention
+  expected_output: >
+    A sentiment analysis including:
+    - Sentiment score with confidence level
+    - Trend analysis over time
+    - Specific quotes/examples supporting the assessment
+    - Recommended talking points for next interaction
+    - Suggested actions to improve sentiment
+  agent: sentiment_analyst
+
+# =============================================================================
+# COMPETITIVE ANALYSIS TASKS
+# =============================================================================
+
+analyze_competitive_landscape:
+  description: >
+    Analyze the competitive situation for:
+
+    OPPORTUNITY: {opportunity_name}
+    ACCOUNT: {account_name}
+    STAGE: {stage}
+
+    KNOWN COMPETITORS:
+    {competitors_data}
+
+    DEAL CONTEXT:
+    {deal_context}
+
+    Provide:
+    1. Competitive threat assessment
+    2. Our strengths vs. each competitor
+    3. Our vulnerabilities to address
+    4. Recommended positioning strategy
+    5. Objection handling for each competitor
+  expected_output: >
+    A competitive battle plan including:
+    - Threat level for each competitor (High/Medium/Low)
+    - Key differentiators to emphasize
+    - Landmines to avoid
+    - Talk tracks for competitive discussions
+    - Win themes to reinforce throughout the sales cycle
+  agent: competitive_analyst

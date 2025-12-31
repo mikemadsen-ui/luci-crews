@@ -1,0 +1,32 @@
+[project]
+name = "luci-crews"
+version = "0.1.0"
+description = "CrewAI agents for LUCI application"
+authors = [{ name = "LeanData", email = "dev@leandata.com" }]
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "crewai[tools]>=0.86.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-dotenv>=1.0.0",
+    "supabase>=2.0.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "black>=24.0.0",
+    "ruff>=0.6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.crewai]
+name = "luci-crews"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/luci_crews"]
