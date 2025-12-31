@@ -127,10 +127,14 @@ class CrewResponse(BaseModel):
 @app.get("/health")
 async def health_check():
     """Health check endpoint for Railway."""
+    supabase_url = os.environ.get("SUPABASE_URL")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
         "version": "0.1.0",
+        "supabase_configured": bool(supabase_url and supabase_key),
+        "supabase_url": supabase_url[:30] + "..." if supabase_url else None,
     }
 
 

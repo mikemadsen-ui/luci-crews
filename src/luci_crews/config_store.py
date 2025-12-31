@@ -66,12 +66,13 @@ def get_db_overrides(config_type: str) -> Dict[str, Any]:
         return {}
 
 
-def save_db_override(config_type: str, name: str, config: Dict[str, Any]) -> bool:
-    """Save a config override to Supabase."""
+def save_db_override(config_type: str, name: str, config: Dict[str, Any]) -> Dict[str, Any]:
+    """Save a config override to Supabase. Returns dict with success and optional error."""
     supabase = get_supabase()
     if not supabase:
-        logger.error("Supabase not configured - cannot save config")
-        return False
+        error = "Supabase not configured (missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)"
+        logger.error(error)
+        return {"success": False, "error": error}
 
     try:
         # Check if exists
@@ -92,10 +93,11 @@ def save_db_override(config_type: str, name: str, config: Dict[str, Any]) -> boo
             }).execute()
 
         logger.info(f"Saved {config_type} config for '{name}'")
-        return True
+        return {"success": True}
     except Exception as e:
+        error = f"Database error: {str(e)}"
         logger.error(f"Error saving {config_type} config for '{name}': {e}")
-        return False
+        return {"success": False, "error": error}
 
 
 def delete_db_override(config_type: str, name: str) -> bool:
@@ -170,10 +172,11 @@ def update_agent(name: str, config: Dict[str, Any]) -> Dict[str, Any]:
         updated = config
 
     # Save to database
-    if save_db_override("agent", name, updated):
+    result = save_db_override("agent", name, updated)
+    if result.get("success"):
         return {"success": True, "agent": updated}
     else:
-        return {"success": False, "error": "Failed to save to database"}
+        return {"success": False, "error": result.get("error", "Failed to save to database")}
 
 
 def update_task(name: str, config: Dict[str, Any]) -> Dict[str, Any]:
@@ -187,10 +190,11 @@ def update_task(name: str, config: Dict[str, Any]) -> Dict[str, Any]:
         updated = config
 
     # Save to database
-    if save_db_override("task", name, updated):
+    result = save_db_override("task", name, updated)
+    if result.get("success"):
         return {"success": True, "task": updated}
     else:
-        return {"success": False, "error": "Failed to save to database"}
+        return {"success": False, "error": result.get("error", "Failed to save to database")}
 
 
 def reset_agent(name: str) -> Dict[str, Any]:
