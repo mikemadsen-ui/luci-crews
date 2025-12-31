@@ -20,6 +20,7 @@ from .crews.sales_pipeline_crew import SalesPipelineCrew
 from .crews.account_health_crew import AccountHealthCrew
 from .crews.implementation_crew import ImplementationCrew
 from .crews.sentiment_crew import SentimentCrew
+from . import config_store
 
 # Load environment variables
 load_dotenv()
@@ -141,6 +142,8 @@ async def root():
         "version": "0.1.0",
         "endpoints": {
             "health": "/health",
+            "config_agents": "/api/config/agents",
+            "config_tasks": "/api/config/tasks",
             "sales_pipeline": "/api/crew/sales_pipeline",
             "account_health": "/api/crew/account",
             "implementation": "/api/crew/implementation",
@@ -296,59 +299,154 @@ async def run_sentiment_crew(request: SentimentRequest):
 
 
 # =============================================================================
-# Configuration Endpoints (for future Studio UI integration)
+# Configuration Endpoints (Crew Studio Integration)
+# Uses Supabase for persistent storage with YAML defaults
 # =============================================================================
+
+class ConfigUpdateRequest(BaseModel):
+    role: Optional[str] = None
+    goal: Optional[str] = None
+    backstory: Optional[str] = None
+    verbose: Optional[bool] = None
+    allow_delegation: Optional[bool] = None
+    description: Optional[str] = None
+    expected_output: Optional[str] = None
+    agent: Optional[str] = None
+
 
 @app.get("/api/config/agents")
 async def get_agents_config():
-    """Get current agents configuration."""
-    import yaml
-    config_path = os.path.join(os.path.dirname(__file__), "config", "agents.yaml")
-
+    """Get all agent configurations (YAML defaults + DB overrides)."""
     try:
-        with open(config_path, 'r') as f:
-            agents = yaml.safe_load(f)
+        agents = config_store.get_agents()
         return {"agents": agents}
     except Exception as e:
+        logger.error(f"Error getting agents config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/config/agents/{agent_name}")
+async def get_agent_config(agent_name: str):
+    """Get a specific agent configuration."""
+    try:
+        agent = config_store.get_agent(agent_name)
+        if agent is None:
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
+        return {"agent": agent, "name": agent_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting agent '{agent_name}': {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/config/agents/{agent_name}")
+async def update_agent_config(agent_name: str, config: ConfigUpdateRequest):
+    """Update an agent configuration (persists to Supabase)."""
+    try:
+        # Convert to dict, removing None values
+        config_dict = {k: v for k, v in config.dict().items() if v is not None}
+
+        if not config_dict:
+            raise HTTPException(status_code=400, detail="No configuration provided")
+
+        result = config_store.update_agent(agent_name, config_dict)
+
+        if result.get("success"):
+            logger.info(f"Updated agent '{agent_name}'")
+            return {"success": True, "agent": result.get("agent"), "name": agent_name}
+        else:
+            raise HTTPException(status_code=500, detail=result.get("error", "Failed to update"))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating agent '{agent_name}': {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/config/agents/{agent_name}")
+async def reset_agent_config(agent_name: str):
+    """Reset an agent to its YAML defaults (removes DB overrides)."""
+    try:
+        result = config_store.reset_agent(agent_name)
+
+        if result.get("success"):
+            logger.info(f"Reset agent '{agent_name}' to defaults")
+            return {"success": True, "agent": result.get("agent"), "name": agent_name}
+        else:
+            raise HTTPException(status_code=500, detail=result.get("error", "Failed to reset"))
+
+    except Exception as e:
+        logger.error(f"Error resetting agent '{agent_name}': {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/config/tasks")
 async def get_tasks_config():
-    """Get current tasks configuration."""
-    import yaml
-    config_path = os.path.join(os.path.dirname(__file__), "config", "tasks.yaml")
-
+    """Get all task configurations (YAML defaults + DB overrides)."""
     try:
-        with open(config_path, 'r') as f:
-            tasks = yaml.safe_load(f)
+        tasks = config_store.get_tasks()
         return {"tasks": tasks}
     except Exception as e:
+        logger.error(f"Error getting tasks config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.put("/api/config/agents/{agent_name}")
-async def update_agent_config(agent_name: str, config: dict):
-    """Update an agent's configuration."""
-    import yaml
-    config_path = os.path.join(os.path.dirname(__file__), "config", "agents.yaml")
-
+@app.get("/api/config/tasks/{task_name}")
+async def get_task_config(task_name: str):
+    """Get a specific task configuration."""
     try:
-        with open(config_path, 'r') as f:
-            agents = yaml.safe_load(f)
-
-        if agent_name not in agents:
-            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
-
-        agents[agent_name].update(config)
-
-        with open(config_path, 'w') as f:
-            yaml.dump(agents, f, default_flow_style=False, allow_unicode=True)
-
-        return {"success": True, "agent": agents[agent_name]}
+        task = config_store.get_task(task_name)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Task '{task_name}' not found")
+        return {"task": task, "name": task_name}
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error getting task '{task_name}': {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/config/tasks/{task_name}")
+async def update_task_config(task_name: str, config: ConfigUpdateRequest):
+    """Update a task configuration (persists to Supabase)."""
+    try:
+        # Convert to dict, removing None values
+        config_dict = {k: v for k, v in config.dict().items() if v is not None}
+
+        if not config_dict:
+            raise HTTPException(status_code=400, detail="No configuration provided")
+
+        result = config_store.update_task(task_name, config_dict)
+
+        if result.get("success"):
+            logger.info(f"Updated task '{task_name}'")
+            return {"success": True, "task": result.get("task"), "name": task_name}
+        else:
+            raise HTTPException(status_code=500, detail=result.get("error", "Failed to update"))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating task '{task_name}': {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/config/tasks/{task_name}")
+async def reset_task_config(task_name: str):
+    """Reset a task to its YAML defaults (removes DB overrides)."""
+    try:
+        result = config_store.reset_task(task_name)
+
+        if result.get("success"):
+            logger.info(f"Reset task '{task_name}' to defaults")
+            return {"success": True, "task": result.get("task"), "name": task_name}
+        else:
+            raise HTTPException(status_code=500, detail=result.get("error", "Failed to reset"))
+
+    except Exception as e:
+        logger.error(f"Error resetting task '{task_name}': {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
