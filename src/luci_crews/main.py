@@ -316,6 +316,7 @@ class ConfigUpdateRequest(BaseModel):
     description: Optional[str] = None
     expected_output: Optional[str] = None
     agent: Optional[str] = None
+    context: Optional[str] = None  # Page context for Crew Studio (e.g., 'sales', 'account', 'implementation')
 
 
 @app.get("/api/config/agents")
