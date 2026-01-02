@@ -53,21 +53,37 @@ class ProjectSentimentCrew:
             return []
 
         try:
+            # Select actual column names from the transcriptions table
+            select_cols = "id, transcription_text, meeting_subject, meeting_date, meeting_url, salesforce_account_id"
+
             if transcription_ids and len(transcription_ids) > 0:
                 # Fetch specific transcriptions by ID
                 result = supabase.table("transcriptions").select(
-                    "id, transcription, meeting"
+                    select_cols
                 ).in_("id", transcription_ids).execute()
             else:
                 # Fetch recent transcriptions for the account (last 60 days, max 10)
                 cutoff = (datetime.utcnow() - timedelta(days=60)).isoformat()
                 result = supabase.table("transcriptions").select(
-                    "id, transcription, meeting"
+                    select_cols
                 ).eq("salesforce_account_id", salesforce_account_id).gte(
-                    "created_at", cutoff
-                ).order("created_at", desc=True).limit(10).execute()
+                    "meeting_date", cutoff
+                ).order("meeting_date", desc=True).limit(10).execute()
 
-            return result.data or []
+            # Map to expected format
+            transcriptions = []
+            for t in result.data or []:
+                transcriptions.append({
+                    "id": t.get("id"),
+                    "transcription": t.get("transcription_text"),
+                    "meeting": {
+                        "subject": t.get("meeting_subject"),
+                        "meeting_date": t.get("meeting_date"),
+                        "url": t.get("meeting_url"),
+                    }
+                })
+
+            return transcriptions
         except Exception as e:
             logger.error(f"Error fetching transcriptions: {e}")
             return []
