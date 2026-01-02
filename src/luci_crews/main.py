@@ -7,12 +7,12 @@ Provides API endpoints for running CrewAI crews and serves the CrewAI Studio UI.
 import os
 import logging
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -20,6 +20,7 @@ from .crews.sales_pipeline_crew import SalesPipelineCrew
 from .crews.account_health_crew import AccountHealthCrew
 from .crews.implementation_crew import ImplementationCrew
 from .crews.sentiment_crew import SentimentCrew
+from .crews.project_sentiment_crew import ProjectSentimentCrew
 from . import config_store
 
 # Load environment variables
@@ -113,6 +114,15 @@ class SentimentRequest(BaseModel):
     meeting_notes: Optional[str] = None
 
 
+class ProjectSentimentRequest(BaseModel):
+    userId: str
+    salesforceAccountId: str
+    salesforceProjectId: str
+    transcriptionIds: Optional[List[str]] = None
+    forceRefresh: Optional[bool] = False
+    userEmail: Optional[str] = None
+
+
 class CrewResponse(BaseModel):
     success: bool
     job_id: Optional[str] = None
@@ -153,6 +163,7 @@ async def root():
             "account_health": "/api/crew/account",
             "implementation": "/api/crew/implementation",
             "sentiment": "/api/crew/sentiment",
+            "project_sentiment": "/api/crew/project-sentiment",
         },
         "docs": "/docs",
     }
@@ -305,6 +316,95 @@ async def run_sentiment_crew(request: SentimentRequest):
             success=False,
             error=str(e),
         )
+
+
+@app.post("/api/crew/project-sentiment")
+async def run_project_sentiment_crew(request: Request):
+    """Run the project sentiment analysis crew with optional streaming."""
+    import json
+    start_time = datetime.utcnow()
+
+    # Check for streaming parameter
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = ProjectSentimentRequest(**body)
+
+        logger.info(f"Running project sentiment crew for project: {req.salesforceProjectId}")
+
+        crew = ProjectSentimentCrew()
+
+        if stream:
+            # Streaming response
+            async def generate():
+                progress_messages = []
+
+                def step_callback(message: str):
+                    progress_messages.append(message)
+
+                try:
+                    # Send initial progress
+                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting analysis...'})}\n\n"
+
+                    # Run the crew (synchronous, but we'll send progress)
+                    result = crew.run(
+                        salesforce_project_id=req.salesforceProjectId,
+                        salesforce_account_id=req.salesforceAccountId,
+                        transcription_ids=req.transcriptionIds or [],
+                        force_refresh=req.forceRefresh or False,
+                        step_callback=step_callback,
+                    )
+
+                    # Send any progress messages
+                    for msg in progress_messages:
+                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
+
+                    execution_time = (datetime.utcnow() - start_time).total_seconds()
+                    logger.info(f"Project sentiment crew completed in {execution_time:.2f}s")
+
+                    # Send the final result
+                    yield f"data: {json.dumps({'type': 'result', 'result': result, 'input_hash': result.get('input_hash'), 'transcription_count': result.get('transcription_count'), 'transcription_length': result.get('transcription_length'), 'transcription_ids': result.get('transcription_ids'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+
+                except Exception as e:
+                    logger.error(f"Project sentiment crew failed: {str(e)}")
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                }
+            )
+        else:
+            # Non-streaming response
+            result = crew.run(
+                salesforce_project_id=req.salesforceProjectId,
+                salesforce_account_id=req.salesforceAccountId,
+                transcription_ids=req.transcriptionIds or [],
+                force_refresh=req.forceRefresh or False,
+            )
+
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"Project sentiment crew completed in {execution_time:.2f}s")
+
+            return {
+                "success": True,
+                "result": result.get("result"),
+                "input_hash": result.get("input_hash"),
+                "transcription_count": result.get("transcription_count"),
+                "transcription_length": result.get("transcription_length"),
+                "transcription_ids": result.get("transcription_ids"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"Project sentiment crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =============================================================================

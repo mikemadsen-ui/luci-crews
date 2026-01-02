@@ -199,3 +199,56 @@ analyze_competitive_landscape:
     - Talk tracks for competitive discussions
     - Win themes to reinforce throughout the sales cycle
   agent: competitive_analyst
+
+# =============================================================================
+# PROJECT SENTIMENT TASKS
+# =============================================================================
+
+analyze_project_sentiment:
+  description: >
+    Analyze the following implementation project meeting transcripts:
+
+    PROJECT: {project_name}
+    ACCOUNT: {account_name}
+
+    MEETING TRANSCRIPTS:
+    {transcripts_data}
+
+    You must analyze and return a JSON object with the following structure:
+    {{
+      "score": <1-10 overall project sentiment/health>,
+      "pm_effectiveness_score": <1-10>,
+      "summary": "<6-10 sentences executive summary>",
+      "pm_summary": "<10-16 sentences including: (a) PM strengths, (b) PM improvement areas, (c) 6-10 coaching recommendations as directives, (d) 2-4 example phrases PM could use. Use markdown: - for bullets, **bold** for emphasis>",
+      "customer_sentiment_summary": "<6-10 sentences about customer tone and engagement>",
+      "timeline_deliverables_summary": "<6-12 sentences about timelines and deliverables>",
+      "risks_summary": "<6-10 sentences about risks and concerns>",
+      "deliverables": [
+        {{"deliverable": "", "owner": "", "due_date": "", "status": "committed|tentative|unclear", "evidence": "<quote>", "call": "<meeting_subject>", "call_date": ""}}
+      ],
+      "timeline_dates": [
+        {{"date": "", "context": "", "call": "", "call_date": ""}}
+      ],
+      "participants_sentiment": {{
+        "customer": ["collaborative", "anxious"],
+        "pm": ["clear", "directive"],
+        "notes": "<2-4 coaching notes about interaction dynamics>"
+      }},
+      "key_quotes": [
+        {{"speaker": "", "quote": "", "call": "", "call_date": ""}}
+      ]
+    }}
+
+    SCORING RUBRIC:
+    - 9-10: Clear plan, owners, dates; customer aligned/positive; risks managed
+    - 7-8: Mostly strong; minor gaps but good momentum
+    - 5-6: Mixed; recurring ambiguity, weak follow-up, customer hesitation
+    - 3-4: Significant risk; unclear ownership; customer frustration
+    - 1-2: Derailing; high conflict; no credible plan
+
+    Apply RECENCY WEIGHTING: most recent calls (last 30 days) are PRIMARY indicators.
+  expected_output: >
+    A valid JSON object matching the structure above. The JSON must be parseable.
+    Use markdown formatting in string values (- for bullets, **bold** for emphasis).
+    All arrays should have at least one item if data exists.
+  agent: implementation_coach
