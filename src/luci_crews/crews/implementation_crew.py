@@ -44,6 +44,43 @@ class ImplementationCrew:
             llm=self.llm,
         )
 
+    def _format_call_activity(self, call_activity: Optional[dict]) -> str:
+        """Format call activity data into a readable string for the prompt."""
+        if not call_activity:
+            return "No call activity data available"
+
+        lines = []
+        metrics = call_activity.get("metrics", {})
+
+        # Summary metrics
+        lines.append("=== CALL ACTIVITY SUMMARY ===")
+        lines.append(f"- Total recent calls: {metrics.get('totalRecentCalls', 0)}")
+        lines.append(f"- Calls in last 30 days: {metrics.get('callsLast30Days', 0)}")
+        lines.append(f"- Calls in last 60 days: {metrics.get('callsLast60Days', 0)}")
+        days_since = metrics.get('daysSinceLastCall')
+        if days_since is not None:
+            lines.append(f"- Days since last call: {days_since}")
+        lines.append(f"- Upcoming calls scheduled: {metrics.get('upcomingCallsCount', 0)}")
+        if metrics.get('nextCallDate'):
+            lines.append(f"- Next scheduled call: {metrics.get('nextCallDate')}")
+
+        # Recent calls
+        recent_calls = call_activity.get("recentCalls", [])
+        if recent_calls:
+            lines.append("\n=== RECENT CALLS ===")
+            for call in recent_calls[:5]:
+                duration = f" ({call.get('duration_minutes', '?')} min)" if call.get('duration_minutes') else ""
+                lines.append(f"- {call.get('date', 'Unknown date')}: {call.get('subject', 'Untitled')}{duration}")
+
+        # Upcoming calls
+        upcoming_calls = call_activity.get("upcomingCalls", [])
+        if upcoming_calls:
+            lines.append("\n=== UPCOMING CALLS ===")
+            for call in upcoming_calls:
+                lines.append(f"- {call.get('date', 'Unknown date')}: {call.get('subject', 'Untitled')}")
+
+        return "\n".join(lines)
+
     def _create_tasks(
         self,
         project_name: str,
@@ -58,9 +95,13 @@ class ImplementationCrew:
         budget_total: Optional[float],
         milestones_data: Optional[str],
         risks_data: Optional[str],
+        call_activity: Optional[dict] = None,
     ):
         """Create tasks from configuration with data interpolation."""
         task_config = self.tasks_config.get("analyze_implementation", {})
+
+        # Format call activity data
+        call_activity_text = self._format_call_activity(call_activity)
 
         description = task_config.get("description", "").format(
             project_name=project_name,
@@ -76,6 +117,7 @@ class ImplementationCrew:
             budget_total=budget_total or 0,
             milestones_data=milestones_data or "No milestone data available",
             risks_data=risks_data or "No risk data available",
+            call_activity=call_activity_text,
         )
 
         self.analyze_task = Task(
@@ -98,6 +140,7 @@ class ImplementationCrew:
         budget_total: Optional[float] = None,
         milestones_data: Optional[str] = None,
         risks_data: Optional[str] = None,
+        call_activity: Optional[dict] = None,
     ) -> str:
         """Run the implementation crew and return the analysis."""
         self._create_agents()
@@ -105,7 +148,7 @@ class ImplementationCrew:
             project_name, account_name, project_status,
             start_date, target_go_live, completion_pct,
             hours_used, hours_budgeted, budget_used, budget_total,
-            milestones_data, risks_data
+            milestones_data, risks_data, call_activity
         )
 
         crew = Crew(

@@ -102,6 +102,7 @@ class ImplementationRequest(BaseModel):
     budget_total: Optional[float] = None
     milestones_data: Optional[str] = None
     risks_data: Optional[str] = None
+    callActivity: Optional[dict] = None  # Past Avoma calls + upcoming calendar events
 
 
 class SentimentRequest(BaseModel):
@@ -235,6 +236,9 @@ async def run_implementation_crew(request: ImplementationRequest):
 
     try:
         logger.info(f"Running implementation crew for: {request.project_name}")
+        if request.callActivity:
+            metrics = request.callActivity.get("metrics", {})
+            logger.info(f"Call activity: {metrics.get('totalRecentCalls', 0)} past calls, {metrics.get('upcomingCallsCount', 0)} upcoming")
 
         crew = ImplementationCrew()
         result = crew.run(
@@ -250,6 +254,7 @@ async def run_implementation_crew(request: ImplementationRequest):
             budget_total=request.budget_total,
             milestones_data=request.milestones_data,
             risks_data=request.risks_data,
+            call_activity=request.callActivity,
         )
 
         execution_time = (datetime.utcnow() - start_time).total_seconds()

@@ -113,16 +113,21 @@ analyze_implementation:
     BLOCKERS/RISKS:
     {risks_data}
 
+    CALL ACTIVITY (Customer Engagement):
+    {call_activity}
+
     Provide:
     1. Project health assessment
     2. Risk analysis with mitigation strategies
     3. Timeline feasibility
     4. Resource utilization analysis
-    5. Recommendations for staying on track
+    5. Customer engagement analysis (based on call frequency and upcoming meetings)
+    6. Recommendations for staying on track
   expected_output: >
     A project health report including:
     - Overall status (On Track / At Risk / Critical)
     - Key risks ranked by severity and likelihood
+    - Customer engagement assessment (are we meeting often enough? gaps in communication?)
     - Specific recommendations with owners and deadlines
     - Revised timeline if needed
     - Escalation recommendations if applicable
