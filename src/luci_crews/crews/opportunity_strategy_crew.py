@@ -304,6 +304,7 @@ class OpportunityStrategyCrew:
         user_id: Optional[str] = None,
         force_refresh: bool = False,
         step_callback: Optional[callable] = None,
+        opportunity_data: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Run the opportunity strategy analysis.
@@ -313,6 +314,7 @@ class OpportunityStrategyCrew:
             user_id: Optional user ID for context
             force_refresh: If True, bypass cache
             step_callback: Optional callback for progress updates
+            opportunity_data: Optional pre-fetched opportunity data from Next.js
 
         Returns:
             Dict with analysis result and metadata
@@ -320,8 +322,40 @@ class OpportunityStrategyCrew:
         if step_callback:
             step_callback("Fetching opportunity data...")
 
-        # Fetch opportunity
-        opportunity = self._fetch_opportunity(opportunity_id)
+        # Use pre-fetched opportunity data if provided, otherwise fetch from Supabase
+        opportunity = None
+        if opportunity_data and opportunity_data.get("name"):
+            logger.info(f"Using pre-fetched opportunity data: {opportunity_data.get('name')}")
+            # Convert the data format to match what _fetch_opportunity returns
+            opportunity = {
+                "id": opportunity_data.get("id"),
+                "salesforce_id": opportunity_data.get("salesforce_id"),
+                "name": opportunity_data.get("name"),
+                "amount": opportunity_data.get("amount"),
+                "stage_name": opportunity_data.get("stage_name"),
+                "probability": opportunity_data.get("probability"),
+                "close_date": opportunity_data.get("close_date"),
+                "type": opportunity_data.get("type"),
+                "lead_source": opportunity_data.get("lead_source"),
+                "next_step": opportunity_data.get("next_step"),
+                "description": opportunity_data.get("description"),
+                "is_won": opportunity_data.get("is_won"),
+                "is_closed": opportunity_data.get("is_closed"),
+                "owner_name": opportunity_data.get("owner_name"),
+                "owner_email": opportunity_data.get("owner_email"),
+                "fiscal_quarter": opportunity_data.get("fiscal_quarter"),
+                "fiscal_year": opportunity_data.get("fiscal_year"),
+                "salesforce_account_id": opportunity_data.get("salesforce_account_id"),
+                "accounts": {
+                    "name": opportunity_data.get("account_name"),
+                    "industry": opportunity_data.get("account_industry"),
+                    "account_tier": opportunity_data.get("account_tier"),
+                } if opportunity_data.get("account_name") else None,
+            }
+        else:
+            # Fallback to fetching from Supabase
+            opportunity = self._fetch_opportunity(opportunity_id)
+
         if not opportunity:
             return {
                 "result": {

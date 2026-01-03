@@ -124,11 +124,37 @@ class ProjectSentimentRequest(BaseModel):
     userEmail: Optional[str] = None
 
 
+class OpportunityDataModel(BaseModel):
+    """Opportunity data passed from Next.js to avoid refetching."""
+    id: Optional[str] = None
+    salesforce_id: Optional[str] = None
+    name: Optional[str] = None
+    amount: Optional[float] = None
+    stage_name: Optional[str] = None
+    probability: Optional[int] = None
+    close_date: Optional[str] = None
+    type: Optional[str] = None
+    lead_source: Optional[str] = None
+    next_step: Optional[str] = None
+    description: Optional[str] = None
+    is_won: Optional[bool] = None
+    is_closed: Optional[bool] = None
+    owner_name: Optional[str] = None
+    owner_email: Optional[str] = None
+    fiscal_quarter: Optional[int] = None
+    fiscal_year: Optional[int] = None
+    salesforce_account_id: Optional[str] = None
+    account_name: Optional[str] = None
+    account_industry: Optional[str] = None
+    account_tier: Optional[str] = None
+
+
 class OpportunityStrategyRequest(BaseModel):
     opportunityId: str
     userId: Optional[str] = None
     userEmail: Optional[str] = None
     forceRefresh: Optional[bool] = False
+    opportunityData: Optional[OpportunityDataModel] = None
 
 
 class CrewResponse(BaseModel):
@@ -448,6 +474,7 @@ async def run_opportunity_strategy_crew(request: Request):
                         user_id=req.userId,
                         force_refresh=req.forceRefresh or False,
                         step_callback=step_callback,
+                        opportunity_data=req.opportunityData.model_dump() if req.opportunityData else None,
                     )
 
                     for msg in progress_messages:
@@ -475,6 +502,7 @@ async def run_opportunity_strategy_crew(request: Request):
                 opportunity_id=req.opportunityId,
                 user_id=req.userId,
                 force_refresh=req.forceRefresh or False,
+                opportunity_data=req.opportunityData.model_dump() if req.opportunityData else None,
             )
 
             execution_time = (datetime.utcnow() - start_time).total_seconds()
