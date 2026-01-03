@@ -57,8 +57,11 @@ class SupportResolutionCrew:
             empathetic, and thorough.""",
             verbose=True,
             allow_delegation=False,
-            step_callback=step_callback
         )
+
+        # Send progress update if callback provided
+        if step_callback:
+            step_callback("Analyzing case details...")
 
         # Build the task description
         task_description = f"""

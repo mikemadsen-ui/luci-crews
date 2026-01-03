@@ -172,6 +172,10 @@ Case #{case.get('case_number', 'N/A')}
         # Get team benchmarks
         benchmarks = self._calculate_team_benchmarks(owner_id)
 
+        # Send progress update if callback provided
+        if step_callback:
+            step_callback("Analyzing case history...")
+
         # Create the support coach agent
         coach_config = self.agents_config.get("support_coach", {})
         support_coach = Agent(
@@ -180,7 +184,6 @@ Case #{case.get('case_number', 'N/A')}
             backstory=coach_config.get("backstory", "You are an experienced support coach."),
             verbose=coach_config.get("verbose", True),
             allow_delegation=coach_config.get("allow_delegation", False),
-            step_callback=step_callback
         )
 
         # Create the analysis task
