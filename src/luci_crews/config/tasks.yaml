@@ -284,6 +284,14 @@ analyze_opportunity_strategy:
     Analyze this opportunity as if you were a McKinsey consultant advising on a
     multi-million dollar deal. Be rigorous, evidence-based, and brutally honest.
 
+    CRITICAL: Distinguish between CUSTOMER stakeholders and LeanData INTERNAL employees:
+    - LeanData employees (AEs, CSMs, SEs, PMs) are OUR team, NOT customer stakeholders
+    - Names with @leandata.com emails or LeanData titles are INTERNAL
+    - Only list CUSTOMER contacts as stakeholders (economic buyer, champion, blockers, influencers)
+    - If you see a LeanData employee in transcripts, they are the internal team working the deal
+    - Common LeanData roles: Account Executive, CSM, Customer Success Manager, Solutions Engineer,
+      Implementation Manager, Support Engineer, Sales Rep
+
     Return a JSON object with the following structure:
     {{
       "score": <1-10 overall deal health/win probability>,
