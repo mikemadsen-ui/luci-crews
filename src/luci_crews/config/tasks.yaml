@@ -252,3 +252,107 @@ analyze_project_sentiment:
     Use markdown formatting in string values (- for bullets, **bold** for emphasis).
     All arrays should have at least one item if data exists.
   agent: implementation_coach
+
+# =============================================================================
+# OPPORTUNITY STRATEGY TASKS (McKinsey-style Deal Analysis)
+# =============================================================================
+
+analyze_opportunity_strategy:
+  description: >
+    Perform a comprehensive McKinsey-style analysis of this enterprise opportunity:
+
+    OPPORTUNITY: {opportunity_name}
+    ACCOUNT: {account_name}
+    AMOUNT: ${amount}
+    STAGE: {stage_name}
+    PROBABILITY: {probability}%
+    CLOSE DATE: {close_date}
+    OWNER: {owner_name}
+
+    OPPORTUNITY DETAILS:
+    {opportunity_details}
+
+    ACCOUNT CONTEXT:
+    {account_context}
+
+    RECENT MEETING NOTES/TRANSCRIPTS:
+    {meeting_data}
+
+    SUPPORT CASES (if any):
+    {support_data}
+
+    Analyze this opportunity as if you were a McKinsey consultant advising on a
+    multi-million dollar deal. Be rigorous, evidence-based, and brutally honest.
+
+    Return a JSON object with the following structure:
+    {{
+      "score": <1-10 overall deal health/win probability>,
+      "win_probability_assessment": "<frank assessment: Likely Win | Competitive | Uphill Battle | Long Shot>",
+      "executive_summary": "<4-6 sentences: the bottom line on this deal>",
+
+      "qualification": {{
+        "score": <1-10>,
+        "has_budget": <true|false|"unclear">,
+        "has_authority": <true|false|"unclear">,
+        "has_need": <true|false|"unclear">,
+        "has_timeline": <true|false|"unclear">,
+        "champion_strength": "<strong|moderate|weak|none>",
+        "decision_process_clarity": "<clear|partially clear|unclear>",
+        "assessment": "<3-5 sentences on qualification status>"
+      }},
+
+      "stakeholders": {{
+        "economic_buyer": "<name/role or 'Unknown'>",
+        "champion": "<name/role or 'None identified'>",
+        "blockers": ["<name/role if any>"],
+        "key_influencers": ["<name/role>"],
+        "power_map_summary": "<4-6 sentences on org dynamics and politics>",
+        "relationship_gaps": ["<gaps to address>"]
+      }},
+
+      "value_proposition": {{
+        "quantified_pain": "<what problem, quantified if possible>",
+        "proposed_value": "<our value proposition>",
+        "roi_potential": "<estimated ROI or 'Not yet quantified'>",
+        "cost_of_inaction": "<what happens if they do nothing>",
+        "differentiation": "<why us vs. alternatives>"
+      }},
+
+      "competitive_position": {{
+        "known_competitors": ["<competitor names>"],
+        "our_strengths": ["<our advantages>"],
+        "our_vulnerabilities": ["<where we're weak>"],
+        "competitive_strategy": "<3-5 sentences on how to win competitively>"
+      }},
+
+      "risks": [
+        {{"risk": "<description>", "probability": "high|medium|low", "impact": "high|medium|low", "mitigation": "<action to take>"}}
+      ],
+
+      "critical_path": {{
+        "must_win_battles": ["<key milestones we must achieve>"],
+        "next_30_days": ["<specific actions for next 30 days>"],
+        "resources_needed": ["<people, content, exec involvement needed>"],
+        "key_meetings_to_schedule": ["<meetings that need to happen>"]
+      }},
+
+      "winning_theme": "<1 sentence: the core reason we will win this deal>",
+
+      "red_flags": ["<immediate concerns that need attention>"],
+
+      "coaching_for_rep": "<5-8 sentences of specific, actionable coaching for the sales rep>"
+    }}
+
+    SCORING RUBRIC:
+    - 9-10: Highly qualified, strong champion, clear path to close, we're positioned to win
+    - 7-8: Solid opportunity, some gaps but manageable, good competitive position
+    - 5-6: Real opportunity but significant work needed, competitive or unclear
+    - 3-4: Poorly qualified, major gaps, uphill battle, consider deprioritizing
+    - 1-2: Not qualified, no path to win, recommend disqualifying
+
+    Be specific. Use evidence from the data provided. Avoid generic advice.
+  expected_output: >
+    A valid JSON object matching the structure above. Be direct and actionable.
+    Every recommendation should be specific enough to execute immediately.
+    Use markdown in string values (- for bullets, **bold** for emphasis).
+  agent: deal_strategist

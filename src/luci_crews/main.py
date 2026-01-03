@@ -21,6 +21,7 @@ from .crews.account_health_crew import AccountHealthCrew
 from .crews.implementation_crew import ImplementationCrew
 from .crews.sentiment_crew import SentimentCrew
 from .crews.project_sentiment_crew import ProjectSentimentCrew
+from .crews.opportunity_strategy_crew import OpportunityStrategyCrew
 from . import config_store
 
 # Load environment variables
@@ -123,6 +124,13 @@ class ProjectSentimentRequest(BaseModel):
     userEmail: Optional[str] = None
 
 
+class OpportunityStrategyRequest(BaseModel):
+    opportunityId: str
+    userId: Optional[str] = None
+    userEmail: Optional[str] = None
+    forceRefresh: Optional[bool] = False
+
+
 class CrewResponse(BaseModel):
     success: bool
     job_id: Optional[str] = None
@@ -164,6 +172,7 @@ async def root():
             "implementation": "/api/crew/implementation",
             "sentiment": "/api/crew/sentiment",
             "project_sentiment": "/api/crew/project-sentiment",
+            "opportunity": "/api/crew/opportunity",
         },
         "docs": "/docs",
     }
@@ -404,6 +413,86 @@ async def run_project_sentiment_crew(request: Request):
 
     except Exception as e:
         logger.error(f"Project sentiment crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/crew/opportunity")
+async def run_opportunity_strategy_crew(request: Request):
+    """Run the opportunity strategy analysis crew with optional streaming."""
+    import json
+    start_time = datetime.utcnow()
+
+    # Check for streaming parameter
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = OpportunityStrategyRequest(**body)
+
+        logger.info(f"Running opportunity strategy crew for: {req.opportunityId}")
+
+        crew = OpportunityStrategyCrew()
+
+        if stream:
+            async def generate():
+                progress_messages = []
+
+                def step_callback(message: str):
+                    progress_messages.append(message)
+
+                try:
+                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting strategic analysis...'})}\n\n"
+
+                    result = crew.run(
+                        opportunity_id=req.opportunityId,
+                        user_id=req.userId,
+                        force_refresh=req.forceRefresh or False,
+                        step_callback=step_callback,
+                    )
+
+                    for msg in progress_messages:
+                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
+
+                    execution_time = (datetime.utcnow() - start_time).total_seconds()
+                    logger.info(f"Opportunity strategy crew completed in {execution_time:.2f}s")
+
+                    yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'input_hash': result.get('input_hash'), 'opportunity_name': result.get('opportunity_name'), 'account_name': result.get('account_name'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+
+                except Exception as e:
+                    logger.error(f"Opportunity strategy crew failed: {str(e)}")
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                }
+            )
+        else:
+            result = crew.run(
+                opportunity_id=req.opportunityId,
+                user_id=req.userId,
+                force_refresh=req.forceRefresh or False,
+            )
+
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"Opportunity strategy crew completed in {execution_time:.2f}s")
+
+            return {
+                "success": True,
+                "result": result.get("result"),
+                "input_hash": result.get("input_hash"),
+                "opportunity_name": result.get("opportunity_name"),
+                "account_name": result.get("account_name"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"Opportunity strategy crew failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
