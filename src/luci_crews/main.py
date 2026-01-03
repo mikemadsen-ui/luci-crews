@@ -22,6 +22,7 @@ from .crews.implementation_crew import ImplementationCrew
 from .crews.sentiment_crew import SentimentCrew
 from .crews.project_sentiment_crew import ProjectSentimentCrew
 from .crews.opportunity_strategy_crew import OpportunityStrategyCrew
+from .crews.support_coaching_crew import SupportCoachingCrew
 from . import config_store
 
 # Load environment variables
@@ -168,6 +169,27 @@ class OpportunityStrategyRequest(BaseModel):
     salesforceAccountId: Optional[str] = None
 
 
+class CaseDataModel(BaseModel):
+    """Case data passed from Next.js."""
+    case_number: Optional[str] = None
+    subject: Optional[str] = None
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    type: Optional[str] = None
+    account_name: Optional[str] = None
+    created_date: Optional[str] = None
+    closed_date: Optional[str] = None
+    description: Optional[str] = None
+
+
+class SupportCoachingRequest(BaseModel):
+    agentName: str
+    agentEmail: str
+    ownerId: str
+    casesData: Optional[List[CaseDataModel]] = None
+    daysBack: Optional[int] = 90
+
+
 class CrewResponse(BaseModel):
     success: bool
     job_id: Optional[str] = None
@@ -210,6 +232,7 @@ async def root():
             "sentiment": "/api/crew/sentiment",
             "project_sentiment": "/api/crew/project-sentiment",
             "opportunity": "/api/crew/opportunity",
+            "support_coaching": "/api/crew/support-coaching",
         },
         "docs": "/docs",
     }
@@ -536,6 +559,94 @@ async def run_opportunity_strategy_crew(request: Request):
 
     except Exception as e:
         logger.error(f"Opportunity strategy crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/crew/support-coaching")
+async def run_support_coaching_crew(request: Request):
+    """Run the support agent coaching analysis crew with optional streaming."""
+    import json
+    start_time = datetime.utcnow()
+
+    # Check for streaming parameter
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = SupportCoachingRequest(**body)
+
+        logger.info(f"Running support coaching crew for agent: {req.agentName} ({req.agentEmail})")
+
+        crew = SupportCoachingCrew()
+
+        # Convert cases data to dict format if provided
+        cases_data = None
+        if req.casesData:
+            cases_data = [c.model_dump() for c in req.casesData]
+
+        if stream:
+            async def generate():
+                progress_messages = []
+
+                def step_callback(message: str):
+                    progress_messages.append(message)
+
+                try:
+                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting coaching analysis...'})}\n\n"
+
+                    result = crew.run(
+                        agent_name=req.agentName,
+                        agent_email=req.agentEmail,
+                        owner_id=req.ownerId,
+                        cases_data=cases_data,
+                        days_back=req.daysBack or 90,
+                        step_callback=step_callback,
+                    )
+
+                    for msg in progress_messages:
+                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
+
+                    execution_time = (datetime.utcnow() - start_time).total_seconds()
+                    logger.info(f"Support coaching crew completed in {execution_time:.2f}s")
+
+                    yield f"data: {json.dumps({'type': 'result', 'result': result})}\n\n"
+
+                except Exception as e:
+                    logger.error(f"Support coaching crew failed: {str(e)}")
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                }
+            )
+        else:
+            result = crew.run(
+                agent_name=req.agentName,
+                agent_email=req.agentEmail,
+                owner_id=req.ownerId,
+                cases_data=cases_data,
+                days_back=req.daysBack or 90,
+            )
+
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"Support coaching crew completed in {execution_time:.2f}s")
+
+            return {
+                "success": True,
+                "result": result.get("analysis"),
+                "agent_name": result.get("agent_name"),
+                "agent_email": result.get("agent_email"),
+                "cases_analyzed": result.get("cases_analyzed"),
+                "days_back": result.get("days_back"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"Support coaching crew failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

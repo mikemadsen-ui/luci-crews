@@ -364,3 +364,99 @@ analyze_opportunity_strategy:
     Every recommendation should be specific enough to execute immediately.
     Use markdown in string values (- for bullets, **bold** for emphasis).
   agent: deal_strategist
+
+# =============================================================================
+# SUPPORT AGENT COACHING TASKS
+# =============================================================================
+
+analyze_support_agent_performance:
+  description: >
+    Analyze the support performance for agent: {agent_name} ({agent_email})
+
+    CASE DATA (Last {days_back} days):
+    {cases_data}
+
+    TEAM BENCHMARKS:
+    - Average cases per agent: {team_avg_cases}
+    - Average resolution time: {team_avg_resolution_time}
+    - Team CSAT average: {team_avg_csat}
+
+    Analyze this agent's performance and provide coaching recommendations.
+
+    Your analysis must return a JSON object with this EXACT structure:
+    {{
+      "summary": {{
+        "overall_score": <1-10 score>,
+        "cases_analyzed": <number>,
+        "period": "<date range>",
+        "headline": "<1 sentence performance summary>"
+      }},
+
+      "metrics": {{
+        "total_cases": <number>,
+        "open_cases": <number>,
+        "closed_cases": <number>,
+        "avg_resolution_days": <number or null if insufficient data>,
+        "by_priority": {{
+          "high": <count>,
+          "medium": <count>,
+          "low": <count>
+        }},
+        "by_status": {{
+          "<status>": <count>
+        }}
+      }},
+
+      "comparison_to_team": {{
+        "case_volume": "<above/at/below average with context>",
+        "resolution_speed": "<above/at/below average with context>",
+        "case_complexity": "<assessment of complexity mix>"
+      }},
+
+      "strengths": [
+        {{
+          "area": "<strength area>",
+          "evidence": "<specific examples from cases>",
+          "impact": "<why this matters>"
+        }}
+      ],
+
+      "improvement_areas": [
+        {{
+          "area": "<area needing improvement>",
+          "current_state": "<what's happening now>",
+          "target_state": "<what good looks like>",
+          "specific_actions": ["<action 1>", "<action 2>"],
+          "example_case": "<case number/subject as example>"
+        }}
+      ],
+
+      "coaching_recommendations": {{
+        "priority_focus": "<#1 thing to work on>",
+        "quick_wins": ["<immediate improvements>"],
+        "skill_development": ["<longer-term growth areas>"],
+        "suggested_training": ["<specific training or resources>"]
+      }},
+
+      "notable_cases": [
+        {{
+          "case_number": "<case number>",
+          "subject": "<subject>",
+          "note": "<what's notable - good or needs attention>"
+        }}
+      ]
+    }}
+
+    SCORING RUBRIC:
+    - 9-10: Exceptional performer, role model for team, exceeds all metrics
+    - 7-8: Strong performer, consistent quality, minor areas for growth
+    - 5-6: Solid performer, meeting expectations, clear improvement opportunities
+    - 3-4: Developing, needs focused coaching, specific skills gaps
+    - 1-2: Struggling, requires intensive support, performance plan needed
+
+    Be specific and actionable. Use actual case examples. Avoid generic coaching.
+  expected_output: >
+    A valid JSON object matching the structure above. Be direct and actionable.
+    Every recommendation should be specific enough to act on immediately.
+    Reference actual cases where possible for evidence.
+  agent: support_coach
