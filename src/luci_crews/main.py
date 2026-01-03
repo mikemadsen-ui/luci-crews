@@ -23,6 +23,7 @@ from .crews.sentiment_crew import SentimentCrew
 from .crews.project_sentiment_crew import ProjectSentimentCrew
 from .crews.opportunity_strategy_crew import OpportunityStrategyCrew
 from .crews.support_coaching_crew import SupportCoachingCrew
+from .crews.support_resolution_crew import SupportResolutionCrew
 from . import config_store
 
 # Load environment variables
@@ -190,6 +191,18 @@ class SupportCoachingRequest(BaseModel):
     daysBack: Optional[int] = 90
 
 
+class SupportResolutionRequest(BaseModel):
+    caseSubject: str
+    caseDescription: Optional[str] = None
+    caseType: Optional[str] = None
+    casePriority: Optional[str] = None
+    accountName: Optional[str] = None
+    contactName: Optional[str] = None
+    userId: Optional[str] = None
+    salesforceUserId: Optional[str] = None
+    caseNumber: Optional[str] = None
+
+
 class CrewResponse(BaseModel):
     success: bool
     job_id: Optional[str] = None
@@ -233,6 +246,8 @@ async def root():
             "project_sentiment": "/api/crew/project-sentiment",
             "opportunity": "/api/crew/opportunity",
             "support_coaching": "/api/crew/support-coaching",
+            "support_resolution": "/api/crew/support_resolution",
+            "support_training": "/api/crew/support_training",
         },
         "docs": "/docs",
     }
@@ -648,6 +663,92 @@ async def run_support_coaching_crew(request: Request):
     except Exception as e:
         logger.error(f"Support coaching crew failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/crew/support_resolution")
+async def run_support_resolution_crew(request: Request):
+    """Run the support resolution analysis crew with optional streaming."""
+    import json
+    start_time = datetime.utcnow()
+
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = SupportResolutionRequest(**body)
+
+        logger.info(f"Running support resolution crew for case: {req.caseSubject[:50] if req.caseSubject else 'Unknown'}...")
+
+        crew = SupportResolutionCrew()
+
+        if stream:
+            async def generate():
+                progress_messages = []
+
+                def step_callback(message: str):
+                    progress_messages.append(message)
+
+                try:
+                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Analyzing case...'})}\n\n"
+
+                    result = crew.run(
+                        case_subject=req.caseSubject,
+                        case_description=req.caseDescription,
+                        case_type=req.caseType,
+                        case_priority=req.casePriority,
+                        account_name=req.accountName,
+                        contact_name=req.contactName,
+                        step_callback=step_callback,
+                    )
+
+                    for msg in progress_messages:
+                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
+
+                    execution_time = (datetime.utcnow() - start_time).total_seconds()
+                    logger.info(f"Support resolution crew completed in {execution_time:.2f}s")
+
+                    yield f"data: {json.dumps({'type': 'result', 'result': result.get('result')})}\n\n"
+
+                except Exception as e:
+                    logger.error(f"Support resolution crew failed: {str(e)}")
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                }
+            )
+        else:
+            result = crew.run(
+                case_subject=req.caseSubject,
+                case_description=req.caseDescription,
+                case_type=req.caseType,
+                case_priority=req.casePriority,
+                account_name=req.accountName,
+                contact_name=req.contactName,
+            )
+
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"Support resolution crew completed in {execution_time:.2f}s")
+
+            return {
+                "success": True,
+                "result": result.get("result"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"Support resolution crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/crew/support_training")
+async def run_support_training_crew(request: Request):
+    """Alias for support_resolution - provides case analysis for training purposes."""
+    return await run_support_resolution_crew(request)
 
 
 # =============================================================================
