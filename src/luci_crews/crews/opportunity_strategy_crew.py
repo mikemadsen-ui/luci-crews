@@ -11,6 +11,7 @@ import json
 import yaml
 import hashlib
 import logging
+import httpx
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from crewai import Agent, Task, Crew, Process
@@ -101,8 +102,116 @@ class OpportunityStrategyCrew:
 
         return context
 
+    def _generate_query_embedding(self, query: str) -> Optional[List[float]]:
+        """Generate embedding for a search query using OpenAI."""
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            logger.warning("No OpenAI API key for embeddings")
+            return None
+
+        try:
+            response = httpx.post(
+                "https://api.openai.com/v1/embeddings",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "text-embedding-3-small",
+                    "input": query,
+                },
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data["data"][0]["embedding"]
+        except Exception as e:
+            logger.error(f"Error generating query embedding: {e}")
+            return None
+
+    def _semantic_search_transcriptions(
+        self,
+        account_id: str,
+        opportunity: Dict[str, Any],
+        limit: int = 10
+    ) -> str:
+        """
+        Perform semantic search on transcription embeddings to find the most
+        relevant conversation snippets for this opportunity.
+        """
+        supabase = get_supabase()
+        if not supabase:
+            return self._fetch_meeting_data(account_id)
+
+        # Build a search query from the opportunity context
+        opp_name = opportunity.get("name", "")
+        stage = opportunity.get("stage_name", "")
+        next_step = opportunity.get("next_step", "")
+        description = opportunity.get("description", "")[:500] if opportunity.get("description") else ""
+
+        search_query = f"""
+        Sales opportunity: {opp_name}
+        Stage: {stage}
+        Next step: {next_step}
+        Context: {description}
+
+        Looking for: customer objections, concerns, requirements, decision criteria,
+        timeline, budget discussions, stakeholder mentions, competitive mentions,
+        technical requirements, implementation questions.
+        """
+
+        embedding = self._generate_query_embedding(search_query)
+        if not embedding:
+            logger.info("Falling back to time-based transcription fetch")
+            return self._fetch_meeting_data(account_id)
+
+        try:
+            # Use Supabase's pgvector similarity search via RPC
+            # The function match_account_embeddings should exist in Supabase
+            result = supabase.rpc(
+                "match_account_embeddings",
+                {
+                    "query_embedding": embedding,
+                    "match_threshold": 0.5,
+                    "match_count": limit,
+                    "filter_account_id": account_id,
+                    "filter_data_type": "transcription",
+                }
+            ).execute()
+
+            if not result.data or len(result.data) == 0:
+                logger.info("No semantic matches, falling back to time-based fetch")
+                return self._fetch_meeting_data(account_id)
+
+            formatted = ["=== Relevant Conversation Excerpts (Semantic Search) ===\n"]
+            seen_sources = set()
+
+            for match in result.data:
+                source_id = match.get("source_id", "")
+                # Skip duplicates from the same meeting
+                if source_id in seen_sources:
+                    continue
+                seen_sources.add(source_id)
+
+                metadata = match.get("metadata", {}) or {}
+                subject = metadata.get("meetingSubject", "Meeting")
+                date = metadata.get("meetingDate", "Unknown date")
+                content = match.get("content", "")
+                similarity = match.get("similarity", 0)
+
+                formatted.append(
+                    f"\n--- {subject} ({date}) [relevance: {similarity:.2f}] ---\n{content}\n"
+                )
+
+            return "\n".join(formatted)
+
+        except Exception as e:
+            logger.error(f"Semantic search error: {e}")
+            # Fallback to basic time-based fetch
+            return self._fetch_meeting_data(account_id)
+
     def _fetch_meeting_data(self, salesforce_account_id: str) -> str:
-        """Fetch recent meeting transcripts for the account."""
+        """Fetch recent meeting transcripts for the account (fallback method)."""
         supabase = get_supabase()
         if not supabase or not salesforce_account_id:
             return "No meeting data available."
@@ -398,12 +507,23 @@ class OpportunityStrategyCrew:
         # Fetch context data
         account_context = self._fetch_account_context(salesforce_account_id)
 
-        # Use pre-fetched transcription data if provided, otherwise fetch from Supabase
+        # Use pre-fetched transcription data if provided, otherwise use semantic search
         if transcription_data and len(transcription_data) > 0:
             logger.info(f"Using {len(transcription_data)} pre-fetched transcriptions")
             meeting_data = self._format_transcription_data(transcription_data)
         else:
-            meeting_data = self._fetch_meeting_data(salesforce_account_id)
+            # Try semantic search first (requires embeddings to exist)
+            account_uuid = account.get("id")
+            if account_uuid:
+                logger.info("Using semantic search for transcriptions")
+                meeting_data = self._semantic_search_transcriptions(
+                    account_id=account_uuid,
+                    opportunity=opportunity,
+                    limit=10
+                )
+            else:
+                # Fallback to time-based fetch if no account UUID
+                meeting_data = self._fetch_meeting_data(salesforce_account_id)
 
         support_data = self._fetch_support_data(salesforce_account_id)
 
