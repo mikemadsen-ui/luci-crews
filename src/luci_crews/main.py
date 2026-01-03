@@ -149,12 +149,23 @@ class OpportunityDataModel(BaseModel):
     account_tier: Optional[str] = None
 
 
+class TranscriptionDataModel(BaseModel):
+    """Transcription data passed from Next.js."""
+    id: str
+    subject: Optional[str] = None
+    date: Optional[str] = None
+    text: Optional[str] = None
+
+
 class OpportunityStrategyRequest(BaseModel):
     opportunityId: str
     userId: Optional[str] = None
     userEmail: Optional[str] = None
     forceRefresh: Optional[bool] = False
     opportunityData: Optional[OpportunityDataModel] = None
+    transcriptionIds: Optional[List[str]] = None
+    transcriptionData: Optional[List[TranscriptionDataModel]] = None
+    salesforceAccountId: Optional[str] = None
 
 
 class CrewResponse(BaseModel):
@@ -475,6 +486,8 @@ async def run_opportunity_strategy_crew(request: Request):
                         force_refresh=req.forceRefresh or False,
                         step_callback=step_callback,
                         opportunity_data=req.opportunityData.model_dump() if req.opportunityData else None,
+                        transcription_data=[t.model_dump() for t in req.transcriptionData] if req.transcriptionData else None,
+                        salesforce_account_id=req.salesforceAccountId,
                     )
 
                     for msg in progress_messages:
@@ -503,6 +516,8 @@ async def run_opportunity_strategy_crew(request: Request):
                 user_id=req.userId,
                 force_refresh=req.forceRefresh or False,
                 opportunity_data=req.opportunityData.model_dump() if req.opportunityData else None,
+                transcription_data=[t.model_dump() for t in req.transcriptionData] if req.transcriptionData else None,
+                salesforce_account_id=req.salesforceAccountId,
             )
 
             execution_time = (datetime.utcnow() - start_time).total_seconds()

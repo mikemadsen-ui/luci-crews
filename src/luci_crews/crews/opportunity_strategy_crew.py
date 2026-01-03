@@ -298,6 +298,23 @@ class OpportunityStrategyCrew:
             agent=self.strategist,
         )
 
+    def _format_transcription_data(self, transcription_data: List[Dict[str, Any]]) -> str:
+        """Format pre-fetched transcription data for the prompt."""
+        if not transcription_data:
+            return "No meeting transcripts provided."
+
+        formatted = []
+        for t in transcription_data:
+            subject = t.get("subject", "Untitled Meeting")
+            date = t.get("date", "Unknown date")
+            text = t.get("text", "")
+            if text:
+                # Truncate long transcripts
+                text = text[:4000] if len(text) > 4000 else text
+                formatted.append(f"=== {subject} ({date}) ===\n{text}\n")
+
+        return "\n".join(formatted) if formatted else "No meeting transcripts available."
+
     def run(
         self,
         opportunity_id: str,
@@ -305,6 +322,8 @@ class OpportunityStrategyCrew:
         force_refresh: bool = False,
         step_callback: Optional[callable] = None,
         opportunity_data: Optional[Dict[str, Any]] = None,
+        transcription_data: Optional[List[Dict[str, Any]]] = None,
+        salesforce_account_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Run the opportunity strategy analysis.
@@ -315,6 +334,8 @@ class OpportunityStrategyCrew:
             force_refresh: If True, bypass cache
             step_callback: Optional callback for progress updates
             opportunity_data: Optional pre-fetched opportunity data from Next.js
+            transcription_data: Optional pre-fetched transcription data from Next.js
+            salesforce_account_id: Optional Salesforce account ID for fetching context
 
         Returns:
             Dict with analysis result and metadata
@@ -345,7 +366,7 @@ class OpportunityStrategyCrew:
                 "owner_email": opportunity_data.get("owner_email"),
                 "fiscal_quarter": opportunity_data.get("fiscal_quarter"),
                 "fiscal_year": opportunity_data.get("fiscal_year"),
-                "salesforce_account_id": opportunity_data.get("salesforce_account_id"),
+                "salesforce_account_id": opportunity_data.get("salesforce_account_id") or salesforce_account_id,
                 "accounts": {
                     "name": opportunity_data.get("account_name"),
                     "industry": opportunity_data.get("account_industry"),
@@ -376,7 +397,14 @@ class OpportunityStrategyCrew:
 
         # Fetch context data
         account_context = self._fetch_account_context(salesforce_account_id)
-        meeting_data = self._fetch_meeting_data(salesforce_account_id)
+
+        # Use pre-fetched transcription data if provided, otherwise fetch from Supabase
+        if transcription_data and len(transcription_data) > 0:
+            logger.info(f"Using {len(transcription_data)} pre-fetched transcriptions")
+            meeting_data = self._format_transcription_data(transcription_data)
+        else:
+            meeting_data = self._fetch_meeting_data(salesforce_account_id)
+
         support_data = self._fetch_support_data(salesforce_account_id)
 
         # Format data for prompt
