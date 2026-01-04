@@ -24,6 +24,7 @@ from .crews.project_sentiment_crew import ProjectSentimentCrew
 from .crews.opportunity_strategy_crew import OpportunityStrategyCrew
 from .crews.support_coaching_crew import SupportCoachingCrew
 from .crews.support_resolution_crew import SupportResolutionCrew
+from .crews.sc_prep_crew import SCPrepCrew
 from . import config_store
 
 # Load environment variables
@@ -203,6 +204,16 @@ class SupportResolutionRequest(BaseModel):
     caseNumber: Optional[str] = None
 
 
+class SCPrepRequest(BaseModel):
+    opportunityId: str
+    prepType: Optional[str] = "full"  # "discovery", "demo", "competitive", "full"
+    userId: Optional[str] = None
+    userEmail: Optional[str] = None
+    forceRefresh: Optional[bool] = False
+    opportunityData: Optional[OpportunityDataModel] = None
+    transcriptionData: Optional[List[TranscriptionDataModel]] = None
+
+
 class CrewResponse(BaseModel):
     success: bool
     job_id: Optional[str] = None
@@ -248,6 +259,7 @@ async def root():
             "support_coaching": "/api/crew/support-coaching",
             "support_resolution": "/api/crew/support_resolution",
             "support_training": "/api/crew/support_training",
+            "sc_prep": "/api/crew/sc-prep",
         },
         "docs": "/docs",
     }
@@ -749,6 +761,92 @@ async def run_support_resolution_crew(request: Request):
 async def run_support_training_crew(request: Request):
     """Alias for support_resolution - provides case analysis for training purposes."""
     return await run_support_resolution_crew(request)
+
+
+@app.post("/api/crew/sc-prep")
+async def run_sc_prep_crew(request: Request):
+    """Run the SC preparation crew for discovery synthesis, demo prep, and competitive intel."""
+    import json
+    start_time = datetime.utcnow()
+
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = SCPrepRequest(**body)
+
+        logger.info(f"Running SC prep crew for opportunity: {req.opportunityId} (type: {req.prepType})")
+
+        crew = SCPrepCrew()
+
+        if stream:
+            async def generate():
+                progress_messages = []
+
+                def step_callback(message: str):
+                    progress_messages.append(message)
+
+                try:
+                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting SC preparation...'})}\n\n"
+
+                    result = crew.run(
+                        opportunity_id=req.opportunityId,
+                        prep_type=req.prepType or "full",
+                        user_id=req.userId,
+                        force_refresh=req.forceRefresh or False,
+                        step_callback=step_callback,
+                        opportunity_data=req.opportunityData.model_dump() if req.opportunityData else None,
+                        transcription_data=[t.model_dump() for t in req.transcriptionData] if req.transcriptionData else None,
+                    )
+
+                    for msg in progress_messages:
+                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
+
+                    execution_time = (datetime.utcnow() - start_time).total_seconds()
+                    logger.info(f"SC prep crew completed in {execution_time:.2f}s")
+
+                    yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'input_hash': result.get('input_hash'), 'opportunity_name': result.get('opportunity_name'), 'account_name': result.get('account_name'), 'prep_type': result.get('prep_type'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+
+                except Exception as e:
+                    logger.error(f"SC prep crew failed: {str(e)}")
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                }
+            )
+        else:
+            result = crew.run(
+                opportunity_id=req.opportunityId,
+                prep_type=req.prepType or "full",
+                user_id=req.userId,
+                force_refresh=req.forceRefresh or False,
+                opportunity_data=req.opportunityData.model_dump() if req.opportunityData else None,
+                transcription_data=[t.model_dump() for t in req.transcriptionData] if req.transcriptionData else None,
+            )
+
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"SC prep crew completed in {execution_time:.2f}s")
+
+            return {
+                "success": True,
+                "result": result.get("result"),
+                "input_hash": result.get("input_hash"),
+                "opportunity_name": result.get("opportunity_name"),
+                "account_name": result.get("account_name"),
+                "prep_type": result.get("prep_type"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"SC prep crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =============================================================================

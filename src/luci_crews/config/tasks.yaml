@@ -460,3 +460,127 @@ analyze_support_agent_performance:
     Every recommendation should be specific enough to act on immediately.
     Reference actual cases where possible for evidence.
   agent: support_coach
+
+# =============================================================================
+# SC PREP TASKS (Solutions Consultant Discovery & Demo Preparation)
+# =============================================================================
+
+prepare_sc_materials:
+  description: >
+    Prepare comprehensive {prep_type} materials for this opportunity:
+
+    OPPORTUNITY: {opportunity_name}
+    ACCOUNT: {account_name}
+    AMOUNT: ${amount}
+    STAGE: {stage_name}
+    CLOSE DATE: {close_date}
+
+    OPPORTUNITY DETAILS:
+    {opportunity_details}
+
+    CONTACTS & STAKEHOLDERS:
+    {contacts_data}
+
+    MEETING TRANSCRIPTS (Discovery/Previous Calls):
+    {meeting_transcripts}
+
+    SUPPORT HISTORY (Technical Context):
+    {support_data}
+
+    Based on this information, prepare comprehensive materials for the Solutions Consultant.
+
+    PREP TYPE: {prep_type}
+    - "discovery": Focus on discovery synthesis and questions to ask
+    - "demo": Focus on demo planning and storytelling flow
+    - "competitive": Focus on battle cards and objection handling
+    - "full": Comprehensive prep covering all areas
+
+    Return a JSON object with this structure:
+    {{
+      "discovery_synthesis": {{
+        "summary": "<3-5 sentence executive summary of what we know>",
+        "key_findings": [
+          {{"finding": "<insight>", "source": "<which meeting/data>", "confidence": "high|medium|low"}}
+        ],
+        "business_drivers": [
+          {{"driver": "<business problem or goal>", "impact": "<why it matters>", "evidence": "<quote or data>"}}
+        ],
+        "technical_requirements": [
+          {{"requirement": "<technical need>", "priority": "must-have|nice-to-have|future", "notes": "<context>"}}
+        ],
+        "decision_criteria": [
+          {{"criterion": "<what they'll evaluate>", "weight": "critical|important|minor", "our_position": "<how we stack up>"}}
+        ],
+        "decision_process": {{
+          "timeline": "<expected timeline>",
+          "stakeholders_involved": ["<who>"],
+          "evaluation_steps": ["<steps>"],
+          "budget_status": "<what we know about budget>"
+        }},
+        "gaps_in_discovery": ["<what we still need to learn>"]
+      }},
+
+      "demo_plan": {{
+        "recommended_flow": [
+          {{"step": 1, "topic": "<section>", "duration": "<minutes>", "objective": "<what to achieve>", "key_message": "<main point>"}}
+        ],
+        "opening_hook": "<30-second opening that captures attention based on their specific pain>",
+        "key_features_to_highlight": [
+          {{"feature": "<feature>", "business_value": "<why they care>", "demo_approach": "<how to show it>"}}
+        ],
+        "use_cases_to_demonstrate": [
+          {{"use_case": "<scenario>", "relevance": "<why it matters to them>", "wow_moment": "<what will impress>"}}
+        ],
+        "stakeholder_specific_value": {{
+          "<stakeholder_title>": "<tailored value message>"
+        }},
+        "features_to_avoid": ["<what NOT to show and why>"],
+        "demo_environment_notes": "<any setup or data considerations>"
+      }},
+
+      "competitive_intel": {{
+        "likely_competitors": [
+          {{"competitor": "<name>", "likelihood": "high|medium|low", "evidence": "<why we think they're involved>"}}
+        ],
+        "our_differentiators": [
+          {{"differentiator": "<our advantage>", "vs_competitor": "<who>", "proof_point": "<how to prove it>"}}
+        ],
+        "competitive_vulnerabilities": [
+          {{"vulnerability": "<where we're weak>", "mitigation": "<how to address>"}}
+        ],
+        "trap_questions": [
+          {{"question": "<question to ask prospect>", "purpose": "<why it helps us>", "if_they_say_X": "<what it reveals>"}}
+        ],
+        "objection_responses": [
+          {{
+            "objection": "<what they might say>",
+            "source": "<why they might say it>",
+            "response": "<how to handle>",
+            "proof_point": "<evidence to cite>"
+          }}
+        ],
+        "competitive_landmines": ["<topics to avoid raising>"]
+      }},
+
+      "preparation_checklist": [
+        {{"item": "<prep task>", "priority": "critical|important|optional", "status": "todo"}}
+      ],
+
+      "questions_to_ask": [
+        {{"question": "<discovery question>", "purpose": "<why to ask>", "timing": "<when to ask>"}}
+      ],
+
+      "risks_and_concerns": [
+        {{"risk": "<concern>", "severity": "high|medium|low", "mitigation": "<how to address>"}}
+      ],
+
+      "coaching_for_sc": "<5-8 sentences of specific advice for this particular opportunity>"
+    }}
+
+    Be specific to THIS opportunity. Use actual names, quotes, and context from the data.
+    Don't give generic advice - give actionable, tailored recommendations.
+  expected_output: >
+    A valid JSON object matching the structure above. Be specific and actionable.
+    Every recommendation should be tailored to this specific opportunity and customer.
+    Use markdown in string values where appropriate.
+  agent: sc_prep_specialist
