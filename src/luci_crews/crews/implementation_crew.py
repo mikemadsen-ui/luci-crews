@@ -53,6 +53,16 @@ class ImplementationCrew:
         lines = []
         metrics = call_activity.get("metrics", {})
 
+        # Check calendar connection status
+        calendar_connected = metrics.get('calendarConnected', False)
+        if not calendar_connected:
+            lines.append("*** WARNING: CALENDAR NOT CONNECTED ***")
+            lines.append("The user has not connected their Google Calendar.")
+            lines.append("Upcoming meetings data is UNAVAILABLE - this may negatively affect")
+            lines.append("the accuracy of customer engagement assessment.")
+            lines.append("Recommend: Connect calendar in Settings for complete project visibility.")
+            lines.append("")
+
         # Summary metrics
         lines.append("=== CALL ACTIVITY SUMMARY ===")
         lines.append(f"- Total recent calls: {metrics.get('totalRecentCalls', 0)}")
@@ -61,11 +71,14 @@ class ImplementationCrew:
         days_since = metrics.get('daysSinceLastCall')
         if days_since is not None:
             lines.append(f"- Days since last call: {days_since}")
-        lines.append(f"- Upcoming calls scheduled: {metrics.get('upcomingCallsCount', 0)}")
-        if metrics.get('nextCallDate'):
-            lines.append(f"- Next scheduled call: {metrics.get('nextCallDate')}")
+        if calendar_connected:
+            lines.append(f"- Upcoming calls scheduled: {metrics.get('upcomingCallsCount', 0)}")
+            if metrics.get('nextCallDate'):
+                lines.append(f"- Next scheduled call: {metrics.get('nextCallDate')}")
+        else:
+            lines.append("- Upcoming calls scheduled: UNKNOWN (calendar not connected)")
 
-        # Recent calls
+        # Recent calls (from Avoma transcriptions - always available)
         recent_calls = call_activity.get("recentCalls", [])
         if recent_calls:
             lines.append("\n=== RECENT CALLS ===")
@@ -73,12 +86,16 @@ class ImplementationCrew:
                 duration = f" ({call.get('duration_minutes', '?')} min)" if call.get('duration_minutes') else ""
                 lines.append(f"- {call.get('date', 'Unknown date')}: {call.get('subject', 'Untitled')}{duration}")
 
-        # Upcoming calls
-        upcoming_calls = call_activity.get("upcomingCalls", [])
-        if upcoming_calls:
-            lines.append("\n=== UPCOMING CALLS ===")
-            for call in upcoming_calls:
-                lines.append(f"- {call.get('date', 'Unknown date')}: {call.get('subject', 'Untitled')}")
+        # Upcoming calls (requires calendar connection)
+        if calendar_connected:
+            upcoming_calls = call_activity.get("upcomingCalls", [])
+            if upcoming_calls:
+                lines.append("\n=== UPCOMING CALLS ===")
+                for call in upcoming_calls:
+                    lines.append(f"- {call.get('date', 'Unknown date')}: {call.get('subject', 'Untitled')}")
+            else:
+                lines.append("\n=== UPCOMING CALLS ===")
+                lines.append("- No upcoming calls scheduled in the next 30 days")
 
         return "\n".join(lines)
 
