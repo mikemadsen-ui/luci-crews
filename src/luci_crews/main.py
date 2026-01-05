@@ -758,12 +758,14 @@ async def run_pm_coaching_crew(request: Request):
                 return p.get(camel) if p.get(camel) is not None else p.get(snake)
             statuses = [get_field(p, 'projectStatus', 'project_status') or 'None' for p in req.projectsData[:10]]
             logger.info(f"Sample project statuses: {statuses}")
+            with_ps_forecasted = sum(1 for p in req.projectsData if get_field(p, 'psForecastedLiveDate', 'ps_forecasted_live_date'))
             with_target = sum(1 for p in req.projectsData if get_field(p, 'targetGoLiveDate', 'target_go_live_date'))
             with_actual = sum(1 for p in req.projectsData if get_field(p, 'actualGoLiveDate', 'actual_go_live_date'))
+            logger.info(f"Projects with ps_forecasted_live_date: {with_ps_forecasted}")
             logger.info(f"Projects with target_go_live_date: {with_target}")
             logger.info(f"Projects with actual_go_live_date: {with_actual}")
             # Log first project keys to understand the data format
-            logger.info(f"First project keys: {list(req.projectsData[0].keys())[:10]}")
+            logger.info(f"First project keys: {list(req.projectsData[0].keys())}")
         logger.info(f"================================")
 
         crew = PMCoachingCrew()
