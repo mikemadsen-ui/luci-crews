@@ -116,18 +116,29 @@ analyze_implementation:
     CALL ACTIVITY (Customer Engagement):
     {call_activity}
 
+    MAVENLINK TASKS (Project Work Breakdown):
+    {mavenlink_tasks}
+
+    CRITICAL: Pay close attention to task dates and assignees. Flag these as risks:
+    - Overdue tasks (past due date but not completed)
+    - Tasks without assignees, especially client-facing tasks
+    - Tasks without due dates (lack of planning)
+    - Bunching of due dates that may indicate unrealistic scheduling
+
     Provide:
-    1. Project health assessment
-    2. Risk analysis with mitigation strategies
-    3. Timeline feasibility
-    4. Resource utilization analysis
+    1. Project health assessment (consider task completion and overdue items)
+    2. Risk analysis with mitigation strategies (include task-related risks)
+    3. Timeline feasibility (analyze task due dates vs target go-live)
+    4. Resource utilization analysis (look at task assignments)
     5. Customer engagement analysis (based on call frequency and upcoming meetings)
-    6. Recommendations for staying on track
+    6. Task planning assessment (are tasks properly assigned and scheduled?)
+    7. Recommendations for staying on track
   expected_output: >
     A project health report including:
     - Overall status (On Track / At Risk / Critical)
-    - Key risks ranked by severity and likelihood
+    - Key risks ranked by severity and likelihood (including task-related risks like overdue items, unassigned tasks)
     - Customer engagement assessment (are we meeting often enough? gaps in communication?)
+    - Task planning assessment (are tasks properly assigned? are due dates realistic?)
     - Specific recommendations with owners and deadlines
     - Revised timeline if needed
     - Escalation recommendations if applicable

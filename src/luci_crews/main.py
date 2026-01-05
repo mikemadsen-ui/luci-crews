@@ -97,6 +97,26 @@ class AccountHealthRequest(BaseModel):
     engagement_data: Optional[str] = None
 
 
+class MavenlinkTaskModel(BaseModel):
+    """Model for Mavenlink story/task data."""
+    id: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+    story_type: Optional[str] = None  # task, deliverable, milestone, or issue
+    status: Optional[str] = None
+    start_date: Optional[str] = None
+    due_date: Optional[str] = None
+    completed_at: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    position: Optional[int] = None
+    assignee_ids: Optional[List[str]] = []
+    assignee_names: Optional[List[str]] = []
+    has_assignee: Optional[bool] = False
+    is_client_task: Optional[bool] = False
+    tags: Optional[List[str]] = []
+
+
 class ImplementationRequest(BaseModel):
     project_id: str
     project_name: str
@@ -112,6 +132,7 @@ class ImplementationRequest(BaseModel):
     milestones_data: Optional[str] = None
     risks_data: Optional[str] = None
     callActivity: Optional[dict] = None  # Past Avoma calls + upcoming calendar events
+    mavenlinkTasks: Optional[List[dict]] = None  # Mavenlink stories/tasks with assignee info
 
 
 class SentimentRequest(BaseModel):
@@ -400,6 +421,8 @@ async def run_implementation_crew(request: ImplementationRequest):
         if request.callActivity:
             metrics = request.callActivity.get("metrics", {})
             logger.info(f"Call activity: {metrics.get('totalRecentCalls', 0)} past calls, {metrics.get('upcomingCallsCount', 0)} upcoming")
+        if request.mavenlinkTasks:
+            logger.info(f"Mavenlink tasks: {len(request.mavenlinkTasks)} stories/tasks")
 
         crew = ImplementationCrew()
         result = crew.run(
@@ -416,6 +439,7 @@ async def run_implementation_crew(request: ImplementationRequest):
             milestones_data=request.milestones_data,
             risks_data=request.risks_data,
             call_activity=request.callActivity,
+            mavenlink_tasks=request.mavenlinkTasks,
         )
 
         execution_time = (datetime.utcnow() - start_time).total_seconds()
