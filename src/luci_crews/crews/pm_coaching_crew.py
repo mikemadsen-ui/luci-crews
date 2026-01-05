@@ -89,11 +89,12 @@ Projects Under Budget: {delivery_metrics.get('projects_under_budget', 0)}
                 return get_field(p, "projectStatus", "project_status")
 
             # Active projects (case-insensitive partial match)
-            active = [
-                p
-                for p in projects_data
-                if "active" in status_lower(get_status(p)) or "progress" in status_lower(get_status(p))
-            ]
+            # Match: Active, In Progress, Live, In Development, Confirmed
+            def is_active_status(s):
+                sl = status_lower(s)
+                return any(term in sl for term in ["active", "progress", "live", "development", "confirmed"])
+
+            active = [p for p in projects_data if is_active_status(get_status(p))]
             if active:
                 context += "\n-- Active Projects --\n"
                 for p in sorted(
