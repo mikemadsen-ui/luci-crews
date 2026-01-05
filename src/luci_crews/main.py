@@ -748,31 +748,73 @@ async def run_pm_coaching_crew(request: Request):
         crew = PMCoachingCrew()
 
         if stream:
+            import asyncio
+            import concurrent.futures
+
             async def generate():
-                progress_messages = []
+                progress_queue = asyncio.Queue()
+                result_holder = {"result": None, "error": None}
 
                 def step_callback(message: str):
-                    progress_messages.append(message)
+                    # Put progress message in queue (thread-safe via asyncio)
+                    asyncio.get_event_loop().call_soon_threadsafe(
+                        progress_queue.put_nowait,
+                        {"type": "progress", "message": message}
+                    )
+
+                def run_crew():
+                    try:
+                        result_holder["result"] = crew.run(
+                            pm_name=req.pmName,
+                            pm_email=req.pmEmail,
+                            salesforce_owner_id=req.salesforceOwnerId,
+                            projects_data=req.projectsData,
+                            delivery_metrics=req.deliveryMetrics,
+                            sentiment_data=req.sentimentData,
+                            transcription_samples=req.transcriptionSamples,
+                            escalation_data=req.escalationData,
+                            days_back=req.daysBack or 365,
+                            step_callback=step_callback,
+                        )
+                    except Exception as e:
+                        result_holder["error"] = str(e)
+                    finally:
+                        # Signal completion
+                        asyncio.get_event_loop().call_soon_threadsafe(
+                            progress_queue.put_nowait,
+                            {"type": "done"}
+                        )
 
                 try:
                     yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting coaching analysis...'})}\n\n"
 
-                    result = crew.run(
-                        pm_name=req.pmName,
-                        pm_email=req.pmEmail,
-                        salesforce_owner_id=req.salesforceOwnerId,
-                        projects_data=req.projectsData,
-                        delivery_metrics=req.deliveryMetrics,
-                        sentiment_data=req.sentimentData,
-                        transcription_samples=req.transcriptionSamples,
-                        escalation_data=req.escalationData,
-                        days_back=req.daysBack or 365,
-                        step_callback=step_callback,
-                    )
+                    # Run crew in thread pool
+                    loop = asyncio.get_event_loop()
+                    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                    crew_task = loop.run_in_executor(executor, run_crew)
 
-                    for msg in progress_messages:
-                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
+                    # Stream progress messages as they arrive
+                    while True:
+                        try:
+                            msg = await asyncio.wait_for(progress_queue.get(), timeout=1.0)
+                            if msg["type"] == "done":
+                                break
+                            elif msg["type"] == "progress":
+                                yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg['message']})}\n\n"
+                        except asyncio.TimeoutError:
+                            # No message yet, check if crew is still running
+                            if crew_task.done():
+                                break
+                            continue
 
+                    # Wait for crew to complete
+                    await crew_task
+                    executor.shutdown(wait=False)
+
+                    if result_holder["error"]:
+                        raise Exception(result_holder["error"])
+
+                    result = result_holder["result"]
                     execution_time = (datetime.utcnow() - start_time).total_seconds()
                     logger.info(f"PM coaching crew completed in {execution_time:.2f}s")
 
