@@ -77,51 +77,60 @@ Projects Under Budget: {delivery_metrics.get('projects_under_budget', 0)}
         if projects_data:
             context += "\n=== CURRENT PROJECT PORTFOLIO ===\n"
 
+            # Helper to get field from either camelCase or snake_case (frontend sends camelCase)
+            def get_field(p, camel_case, snake_case):
+                return p.get(camel_case) if p.get(camel_case) is not None else p.get(snake_case)
+
             # Helper for case-insensitive status matching
             def status_lower(s):
                 return (s or "").lower()
+
+            def get_status(p):
+                return get_field(p, "projectStatus", "project_status")
 
             # Active projects (case-insensitive partial match)
             active = [
                 p
                 for p in projects_data
-                if "active" in status_lower(p.get("project_status")) or "progress" in status_lower(p.get("project_status"))
+                if "active" in status_lower(get_status(p)) or "progress" in status_lower(get_status(p))
             ]
             if active:
                 context += "\n-- Active Projects --\n"
                 for p in sorted(
-                    active, key=lambda x: x.get("target_go_live_date", "")
+                    active, key=lambda x: get_field(x, "targetGoLiveDate", "target_go_live_date") or ""
                 )[:10]:
-                    completion = p.get("completion_percentage", 0) or 0
-                    context += f"\n{p.get('project_name', 'Unknown')}\n"
-                    context += f"  Account: {p.get('account_name', 'Unknown')}\n"
+                    completion = get_field(p, "completionPercentage", "completion_percentage") or 0
+                    context += f"\n{get_field(p, 'projectName', 'project_name') or 'Unknown'}\n"
+                    context += f"  Account: {get_field(p, 'accountName', 'account_name') or 'Unknown'}\n"
                     context += (
-                        f"  Target Go-Live: {p.get('target_go_live_date', 'Not set')}\n"
+                        f"  Target Go-Live: {get_field(p, 'targetGoLiveDate', 'target_go_live_date') or 'Not set'}\n"
                     )
                     context += f"  Completion: {completion:.0f}%\n"
-                    if p.get("budget") and p.get("budget_used"):
-                        budget_pct = (p.get("budget_used", 0) / p.get("budget", 1)) * 100
+                    budget = get_field(p, "budget", "budget")
+                    budget_used = get_field(p, "budgetUsed", "budget_used")
+                    if budget and budget_used:
+                        budget_pct = (budget_used / budget) * 100
                         context += f"  Budget Used: {budget_pct:.0f}%\n"
 
             # On hold projects (case-insensitive partial match)
-            on_hold = [p for p in projects_data if "hold" in status_lower(p.get("project_status"))]
+            on_hold = [p for p in projects_data if "hold" in status_lower(get_status(p))]
             if on_hold:
                 context += "\n-- On Hold Projects --\n"
                 for p in on_hold[:5]:
-                    context += f"  {p.get('project_name', 'Unknown')} ({p.get('account_name', 'Unknown')})\n"
+                    context += f"  {get_field(p, 'projectName', 'project_name') or 'Unknown'} ({get_field(p, 'accountName', 'account_name') or 'Unknown'})\n"
 
             # Recently completed (case-insensitive partial match)
             completed = [
                 p
                 for p in projects_data
-                if "complete" in status_lower(p.get("project_status")) or "closed" in status_lower(p.get("project_status")) or "done" in status_lower(p.get("project_status"))
+                if "complete" in status_lower(get_status(p)) or "closed" in status_lower(get_status(p)) or "done" in status_lower(get_status(p))
             ]
             if completed:
                 context += f"\n-- Recently Completed ({len(completed)} total) --\n"
                 for p in sorted(
-                    completed, key=lambda x: x.get("updated_at", ""), reverse=True
+                    completed, key=lambda x: x.get("updated_at") or x.get("lastSyncedAt") or "", reverse=True
                 )[:5]:
-                    context += f"  {p.get('project_name', 'Unknown')}\n"
+                    context += f"  {get_field(p, 'projectName', 'project_name') or 'Unknown'}\n"
 
         # Sentiment data
         if sentiment_data:

@@ -753,12 +753,17 @@ async def run_pm_coaching_crew(request: Request):
         logger.info(f"Transcription samples: {len(req.transcriptionSamples) if req.transcriptionSamples else 0}")
         logger.info(f"Escalation data items: {len(req.escalationData) if req.escalationData else 0}")
         if req.projectsData and len(req.projectsData) > 0:
-            statuses = [p.get('project_status', 'None') for p in req.projectsData[:10]]
+            # Handle both camelCase and snake_case field names
+            def get_field(p, camel, snake):
+                return p.get(camel) if p.get(camel) is not None else p.get(snake)
+            statuses = [get_field(p, 'projectStatus', 'project_status') or 'None' for p in req.projectsData[:10]]
             logger.info(f"Sample project statuses: {statuses}")
-            with_target = sum(1 for p in req.projectsData if p.get('target_go_live_date'))
-            with_actual = sum(1 for p in req.projectsData if p.get('actual_go_live_date'))
+            with_target = sum(1 for p in req.projectsData if get_field(p, 'targetGoLiveDate', 'target_go_live_date'))
+            with_actual = sum(1 for p in req.projectsData if get_field(p, 'actualGoLiveDate', 'actual_go_live_date'))
             logger.info(f"Projects with target_go_live_date: {with_target}")
             logger.info(f"Projects with actual_go_live_date: {with_actual}")
+            # Log first project keys to understand the data format
+            logger.info(f"First project keys: {list(req.projectsData[0].keys())[:10]}")
         logger.info(f"================================")
 
         crew = PMCoachingCrew()
