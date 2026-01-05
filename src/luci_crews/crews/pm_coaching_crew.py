@@ -1,0 +1,516 @@
+"""
+Implementation Consultant (PM) Coaching Crew
+
+Analyzes an Implementation Consultant's project portfolio to provide personalized
+coaching on on-time delivery rates, customer sentiment trends, escalation patterns,
+and communication effectiveness.
+"""
+
+import os
+import json
+from datetime import datetime, timedelta
+from typing import Dict, Any, List, Optional
+from crewai import Agent, Task, Crew, Process
+from supabase import create_client, Client
+
+from ..config_loader import load_agents_config, load_tasks_config
+
+
+class PMCoachingCrew:
+    """Crew for analyzing Implementation Consultant performance and providing coaching."""
+
+    def __init__(self):
+        self.agents_config = load_agents_config()
+        self.tasks_config = load_tasks_config()
+        self.supabase = self._get_supabase_client()
+
+    def _get_supabase_client(self) -> Optional[Client]:
+        """Get Supabase client for database access."""
+        url = os.getenv("SUPABASE_URL")
+        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        if url and key:
+            return create_client(url, key)
+        return None
+
+    def _build_pm_context(
+        self,
+        projects_data: List[Dict[str, Any]],
+        delivery_metrics: Dict[str, Any] = None,
+        sentiment_data: List[Dict[str, Any]] = None,
+        transcription_samples: List[Dict[str, Any]] = None,
+        escalation_data: List[Dict[str, Any]] = None,
+    ) -> str:
+        """Build context string from Implementation Consultant portfolio data."""
+
+        context = "=== IMPLEMENTATION CONSULTANT PORTFOLIO OVERVIEW ===\n"
+
+        if delivery_metrics:
+            on_time_rate = 0
+            if delivery_metrics.get("completed_projects"):
+                on_time_rate = (
+                    delivery_metrics.get("on_time_projects", 0)
+                    / delivery_metrics.get("completed_projects", 1)
+                    * 100
+                )
+
+            context += f"""
+Total Projects (Portfolio): {delivery_metrics.get('total_projects', 0)}
+Completed: {delivery_metrics.get('completed_projects', 0)}
+Active: {delivery_metrics.get('active_projects', 0)}
+On Hold: {delivery_metrics.get('on_hold_projects', 0)}
+
+=== DELIVERY PERFORMANCE ===
+On-Time Deliveries: {delivery_metrics.get('on_time_projects', 0)}
+Delayed: {delivery_metrics.get('delayed_projects', 0)}
+On-Time Rate: {on_time_rate:.1f}%
+Average Completion Rate: {delivery_metrics.get('avg_completion_rate', 0):.1f}%
+
+=== BUDGET PERFORMANCE ===
+Projects Over Budget: {delivery_metrics.get('projects_over_budget', 0)}
+Projects Under Budget: {delivery_metrics.get('projects_under_budget', 0)}
+"""
+
+        # Project details
+        if projects_data:
+            context += "\n=== CURRENT PROJECT PORTFOLIO ===\n"
+
+            # Active projects
+            active = [
+                p
+                for p in projects_data
+                if p.get("project_status") in ["Active", "In Progress"]
+            ]
+            if active:
+                context += "\n-- Active Projects --\n"
+                for p in sorted(
+                    active, key=lambda x: x.get("target_go_live_date", "")
+                )[:10]:
+                    completion = p.get("completion_percentage", 0) or 0
+                    context += f"\n{p.get('project_name', 'Unknown')}\n"
+                    context += f"  Account: {p.get('account_name', 'Unknown')}\n"
+                    context += (
+                        f"  Target Go-Live: {p.get('target_go_live_date', 'Not set')}\n"
+                    )
+                    context += f"  Completion: {completion:.0f}%\n"
+                    if p.get("budget") and p.get("budget_used"):
+                        budget_pct = (p.get("budget_used", 0) / p.get("budget", 1)) * 100
+                        context += f"  Budget Used: {budget_pct:.0f}%\n"
+
+            # On hold projects
+            on_hold = [p for p in projects_data if p.get("project_status") == "On Hold"]
+            if on_hold:
+                context += "\n-- On Hold Projects --\n"
+                for p in on_hold[:5]:
+                    context += f"  {p.get('project_name', 'Unknown')} ({p.get('account_name', 'Unknown')})\n"
+
+            # Recently completed
+            completed = [
+                p
+                for p in projects_data
+                if p.get("project_status") in ["Completed", "Closed"]
+            ]
+            if completed:
+                context += f"\n-- Recently Completed ({len(completed)} total) --\n"
+                for p in sorted(
+                    completed, key=lambda x: x.get("updated_at", ""), reverse=True
+                )[:5]:
+                    context += f"  {p.get('project_name', 'Unknown')}\n"
+
+        # Sentiment data
+        if sentiment_data:
+            context += "\n=== CUSTOMER SENTIMENT SCORES ===\n"
+            avg_pm_score = (
+                sum(s.get("pm_effectiveness_score", 0) or 0 for s in sentiment_data)
+                / len(sentiment_data)
+                if sentiment_data
+                else 0
+            )
+            avg_customer_score = (
+                sum(s.get("customer_reception_score", 0) or 0 for s in sentiment_data)
+                / len(sentiment_data)
+                if sentiment_data
+                else 0
+            )
+
+            context += f"""
+Average IC Effectiveness Score: {avg_pm_score:.1f}/10
+Average Customer Reception Score: {avg_customer_score:.1f}/10
+
+Project-Level Sentiment:
+"""
+            for s in sorted(
+                sentiment_data, key=lambda x: x.get("overall_score", 0) or 0
+            )[:10]:
+                context += f"  {s.get('project_id', 'Unknown')}: IC={s.get('pm_effectiveness_score', 'N/A')}, Customer={s.get('customer_reception_score', 'N/A')}\n"
+
+        # Escalation data
+        if escalation_data:
+            context += "\n=== ESCALATION PATTERNS ===\n"
+            total_cases = sum(e.get("total_cases", 0) for e in escalation_data)
+            high_priority = sum(e.get("high_priority", 0) for e in escalation_data)
+
+            context += f"""
+Total Support Cases Across Projects: {total_cases}
+High Priority Cases: {high_priority}
+
+Projects with Escalations:
+"""
+            for e in sorted(
+                escalation_data, key=lambda x: x.get("high_priority", 0), reverse=True
+            )[:10]:
+                if e.get("total_cases", 0) > 0:
+                    context += f"  {e.get('project_name', 'Unknown')}: {e.get('open_cases', 0)} open, {e.get('high_priority', 0)} high priority\n"
+
+        # Transcript samples
+        if transcription_samples:
+            context += "\n=== CUSTOMER COMMUNICATION SAMPLES ===\n"
+            for sample in transcription_samples[:3]:
+                context += f"\n{sample.get('project_name', 'Unknown')} ({sample.get('project_status', 'Unknown')})\n"
+                for t in sample.get("transcripts", [])[:1]:
+                    context += f"  Meeting: {t.get('subject', 'Unknown')} ({t.get('date', 'Unknown')})\n"
+                    text = (t.get("text", "") or "")[:1500]
+                    if text:
+                        context += f"  Excerpt: {text}...\n"
+
+        return context
+
+    def run(
+        self,
+        pm_name: str,
+        pm_email: str,
+        salesforce_owner_id: Optional[str] = None,
+        projects_data: Optional[List[Dict[str, Any]]] = None,
+        delivery_metrics: Optional[Dict[str, Any]] = None,
+        sentiment_data: Optional[List[Dict[str, Any]]] = None,
+        transcription_samples: Optional[List[Dict[str, Any]]] = None,
+        escalation_data: Optional[List[Dict[str, Any]]] = None,
+        days_back: int = 365,
+        step_callback: Optional[callable] = None,
+    ) -> Dict[str, Any]:
+        """
+        Run the Implementation Consultant coaching crew analysis.
+
+        Args:
+            pm_name: Name of the Implementation Consultant
+            pm_email: Email of the Implementation Consultant
+            salesforce_owner_id: Salesforce Owner ID
+            projects_data: Pre-fetched project data
+            delivery_metrics: Pre-calculated delivery metrics
+            sentiment_data: Pre-fetched sentiment data
+            transcription_samples: Pre-fetched transcription samples
+            escalation_data: Pre-fetched escalation data
+            days_back: Number of days to analyze
+            step_callback: Optional callback for progress updates
+
+        Returns:
+            Coaching analysis results
+        """
+        if not projects_data:
+            return {
+                "success": False,
+                "error": "No project data provided for analysis",
+                "pm_name": pm_name,
+                "pm_email": pm_email,
+            }
+
+        # Build context
+        pm_context = self._build_pm_context(
+            projects_data,
+            delivery_metrics,
+            sentiment_data,
+            transcription_samples,
+            escalation_data,
+        )
+
+        full_context = f"""=== IC COACHING ANALYSIS ===
+Implementation Consultant: {pm_name}
+Email: {pm_email}
+Analysis Period: Last {days_back} days
+
+{pm_context}
+"""
+
+        # Send progress update if callback provided
+        if step_callback:
+            step_callback("Analyzing project portfolio...")
+
+        # Create the agents
+        delivery_analyst_config = self.agents_config.get("delivery_excellence_analyst", {})
+        delivery_analyst = Agent(
+            role=delivery_analyst_config.get("role", "Delivery Excellence Analyst"),
+            goal=delivery_analyst_config.get(
+                "goal",
+                "Analyze on-time delivery performance, project velocity, and schedule management",
+            ),
+            backstory=delivery_analyst_config.get(
+                "backstory",
+                "You are an expert in project delivery who has managed hundreds of implementations. You identify patterns in delays and techniques for consistent on-time delivery.",
+            ),
+            verbose=delivery_analyst_config.get("verbose", True),
+            allow_delegation=delivery_analyst_config.get("allow_delegation", False),
+        )
+
+        customer_analyst_config = self.agents_config.get("customer_experience_analyst", {})
+        customer_analyst = Agent(
+            role=customer_analyst_config.get("role", "Customer Experience Analyst"),
+            goal=customer_analyst_config.get(
+                "goal",
+                "Evaluate customer sentiment, communication quality, and relationship health across projects",
+            ),
+            backstory=customer_analyst_config.get(
+                "backstory",
+                "You specialize in analyzing customer interactions to identify communication patterns that drive satisfaction or dissatisfaction.",
+            ),
+            verbose=customer_analyst_config.get("verbose", True),
+            allow_delegation=customer_analyst_config.get("allow_delegation", False),
+        )
+
+        risk_analyst_config = self.agents_config.get("risk_escalation_analyst", {})
+        risk_analyst = Agent(
+            role=risk_analyst_config.get("role", "Risk & Escalation Analyst"),
+            goal=risk_analyst_config.get(
+                "goal",
+                "Assess escalation patterns, proactive risk management, and issue resolution effectiveness",
+            ),
+            backstory=risk_analyst_config.get(
+                "backstory",
+                "You are an expert at identifying early warning signs and coaching ICs on proactive risk management and escalation prevention.",
+            ),
+            verbose=risk_analyst_config.get("verbose", True),
+            allow_delegation=risk_analyst_config.get("allow_delegation", False),
+        )
+
+        coach_config = self.agents_config.get("implementation_coach", {})
+        coach = Agent(
+            role=coach_config.get("role", "Implementation Coach"),
+            goal=coach_config.get(
+                "goal",
+                "Provide actionable coaching to improve delivery rates, customer satisfaction, and IC effectiveness",
+            ),
+            backstory=coach_config.get(
+                "backstory",
+                "You are a senior implementation leader who has coached hundreds of ICs. You provide direct, specific, and actionable feedback.",
+            ),
+            verbose=coach_config.get("verbose", True),
+            allow_delegation=coach_config.get("allow_delegation", False),
+        )
+
+        if step_callback:
+            step_callback("Running delivery analysis...")
+
+        # Create tasks
+        delivery_task = Task(
+            description=f"""{full_context}
+
+ANALYZE DELIVERY PERFORMANCE:
+
+1. **On-Time Delivery Rate**
+   - What is the IC's on-time delivery rate?
+   - How does this compare to benchmark (target: 80%+)?
+   - What patterns exist in delayed projects?
+
+2. **Project Velocity**
+   - Are projects progressing at appropriate pace?
+   - Are there stalled or slow-moving projects?
+   - What is causing velocity issues?
+
+3. **Budget Management**
+   - Are projects staying within budget?
+   - What causes projects to go over budget?
+   - Is scope being managed effectively?
+
+4. **Portfolio Balance**
+   - Is the IC's portfolio appropriately sized?
+   - Are there too many active projects?
+   - Which projects need most attention right now?
+
+5. **Completion Quality**
+   - Are projects being closed cleanly?
+   - Are there lingering tasks or issues?
+
+Provide specific metrics and project examples.""",
+            expected_output="Detailed delivery performance analysis with specific projects and improvement areas",
+            agent=delivery_analyst,
+        )
+
+        if step_callback:
+            step_callback("Running customer experience analysis...")
+
+        customer_task = Task(
+            description="""ANALYZE CUSTOMER EXPERIENCE:
+
+1. **Sentiment Trends**
+   - What are the average IC effectiveness and customer reception scores?
+   - Are there projects with declining sentiment?
+   - What's driving positive vs negative sentiment?
+
+2. **Communication Quality** (from transcripts if available)
+   - Is the IC communicating proactively?
+   - Are issues being addressed transparently?
+   - Is the IC building trust with customers?
+
+3. **Meeting Effectiveness**
+   - Are meetings productive with clear outcomes?
+   - Are action items being tracked and completed?
+   - Is the IC running effective status calls?
+
+4. **Customer Relationship Health**
+   - Are there strained customer relationships?
+   - Which accounts need relationship repair?
+   - What's working well in healthy relationships?
+
+Identify specific examples and patterns.""",
+            expected_output="Customer experience analysis with specific relationship health indicators",
+            agent=customer_analyst,
+        )
+
+        if step_callback:
+            step_callback("Running risk analysis...")
+
+        risk_task = Task(
+            description="""ANALYZE RISK & ESCALATION PATTERNS:
+
+1. **Escalation Volume**
+   - How many escalations/support cases across the IC's projects?
+   - What percentage are high priority?
+   - Are there recurring issues?
+
+2. **Proactive vs Reactive**
+   - Is the IC identifying risks early?
+   - Are escalations being prevented or just managed?
+   - What warning signs are being missed?
+
+3. **Resolution Effectiveness**
+   - How quickly are issues being resolved?
+   - Are the same issues recurring?
+   - Is root cause being addressed?
+
+4. **Project-Specific Risks**
+   - Which projects have the most risk right now?
+   - What immediate actions are needed?
+   - Are at-risk projects getting appropriate attention?
+
+Provide specific examples and risk mitigation recommendations.""",
+            expected_output="Risk and escalation analysis with specific projects needing attention",
+            agent=risk_analyst,
+        )
+
+        if step_callback:
+            step_callback("Generating coaching recommendations...")
+
+        coaching_task = Task(
+            description="""Based on delivery, customer, and risk analysis, provide targeted IC coaching.
+
+PROVIDE COACHING ON:
+
+1. **Top 3 Immediate Priorities** - What should the IC do THIS WEEK?
+
+2. **Project-Specific Actions**
+   - At-risk projects: Specific recovery plays
+   - Delayed projects: How to get back on track
+   - Healthy projects: How to maintain momentum
+
+3. **Delivery Improvement**
+   - How to improve on-time delivery rate
+   - Better scope and timeline management
+   - Proactive customer communication
+
+4. **Customer Relationship Building**
+   - How to improve sentiment scores
+   - Communication techniques to adopt
+   - Rebuilding strained relationships
+
+5. **Risk Management**
+   - How to be more proactive on risks
+   - Earlier identification techniques
+   - Prevention vs reaction strategies
+
+6. **Time Management**
+   - How to manage a large portfolio effectively
+   - Which projects need more/less attention
+   - Prioritization framework
+
+Be SPECIFIC and reference actual projects. Avoid generic advice.
+
+Return your analysis in this JSON format:
+{
+    "summary": {
+        "headline": "One-sentence summary of IC performance",
+        "overall_score": 1-10,
+        "delivery_performance": "excellent/good/needs improvement",
+        "customer_satisfaction": "high/moderate/low"
+    },
+    "strengths": ["2-3 specific strengths with project examples"],
+    "improvement_areas": ["2-3 specific areas with project examples"],
+    "immediate_priorities": [
+        {"action": "specific action", "project": "project name", "impact": "why this matters"}
+    ],
+    "at_risk_projects": [
+        {"name": "project", "risk": "description", "recommended_action": "specific play"}
+    ],
+    "delivery_coaching": {
+        "timeline_management": "Specific recommendations",
+        "scope_management": "Specific recommendations",
+        "communication_cadence": "Specific recommendations"
+    },
+    "customer_coaching": {
+        "relationship_building": "Specific techniques",
+        "proactive_communication": "What to do differently"
+    },
+    "risk_coaching": {
+        "early_warning_signs": ["What to watch for"],
+        "prevention_strategies": ["How to prevent escalations"]
+    },
+    "skill_development": {
+        "priority_skill": "The #1 skill to develop",
+        "practice_plan": "How to develop this skill"
+    }
+}""",
+            expected_output="JSON coaching analysis with specific recommendations",
+            agent=coach,
+            context=[delivery_task, customer_task, risk_task],
+        )
+
+        # Create and run the crew
+        crew = Crew(
+            agents=[delivery_analyst, customer_analyst, risk_analyst, coach],
+            tasks=[delivery_task, customer_task, risk_task, coaching_task],
+            process=Process.sequential,
+            verbose=True,
+        )
+
+        result = crew.kickoff()
+        result_text = str(result)
+
+        # Try to extract JSON from the result
+        try:
+            import re
+
+            json_match = re.search(r"\{[\s\S]*\}", result_text)
+            if json_match:
+                parsed_result = json.loads(json_match.group())
+                return {
+                    "success": True,
+                    "result": parsed_result,
+                    "pm_name": pm_name,
+                    "pm_email": pm_email,
+                    "projects_analyzed": len(projects_data) if projects_data else 0,
+                    "days_back": days_back,
+                    "provider": "openai",
+                    "model": os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"),
+                }
+        except json.JSONDecodeError:
+            pass
+
+        # Return raw result if JSON parsing fails
+        return {
+            "success": True,
+            "result": result_text,
+            "pm_name": pm_name,
+            "pm_email": pm_email,
+            "projects_analyzed": len(projects_data) if projects_data else 0,
+            "days_back": days_back,
+            "raw_response": True,
+            "provider": "openai",
+            "model": os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"),
+        }

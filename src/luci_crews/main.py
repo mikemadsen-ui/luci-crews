@@ -25,6 +25,7 @@ from .crews.opportunity_strategy_crew import OpportunityStrategyCrew
 from .crews.support_coaching_crew import SupportCoachingCrew
 from .crews.support_resolution_crew import SupportResolutionCrew
 from .crews.sc_prep_crew import SCPrepCrew
+from .crews.pm_coaching_crew import PMCoachingCrew
 from . import config_store
 
 # Load environment variables
@@ -192,6 +193,19 @@ class SupportCoachingRequest(BaseModel):
     daysBack: Optional[int] = 90
 
 
+class PMCoachingRequest(BaseModel):
+    """Request model for Implementation Consultant (PM) coaching analysis."""
+    pmName: str
+    pmEmail: str
+    salesforceOwnerId: Optional[str] = None
+    projectsData: Optional[List[Dict[str, Any]]] = None
+    deliveryMetrics: Optional[Dict[str, Any]] = None
+    sentimentData: Optional[List[Dict[str, Any]]] = None
+    transcriptionSamples: Optional[List[Dict[str, Any]]] = None
+    escalationData: Optional[List[Dict[str, Any]]] = None
+    daysBack: Optional[int] = 365
+
+
 class SupportResolutionRequest(BaseModel):
     caseSubject: str
     caseDescription: Optional[str] = None
@@ -260,6 +274,7 @@ async def root():
             "support_resolution": "/api/crew/support_resolution",
             "support_training": "/api/crew/support_training",
             "sc_prep": "/api/crew/sc-prep",
+            "pm_coaching": "/api/crew/pm-coaching",
         },
         "docs": "/docs",
     }
@@ -674,6 +689,97 @@ async def run_support_coaching_crew(request: Request):
 
     except Exception as e:
         logger.error(f"Support coaching crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/crew/pm-coaching")
+async def run_pm_coaching_crew(request: Request):
+    """Run the Implementation Consultant (PM) coaching analysis crew with optional streaming."""
+    import json
+    start_time = datetime.utcnow()
+
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = PMCoachingRequest(**body)
+
+        logger.info(f"Running PM coaching crew for: {req.pmName} ({req.pmEmail})")
+
+        crew = PMCoachingCrew()
+
+        if stream:
+            async def generate():
+                progress_messages = []
+
+                def step_callback(message: str):
+                    progress_messages.append(message)
+
+                try:
+                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting coaching analysis...'})}\n\n"
+
+                    result = crew.run(
+                        pm_name=req.pmName,
+                        pm_email=req.pmEmail,
+                        salesforce_owner_id=req.salesforceOwnerId,
+                        projects_data=req.projectsData,
+                        delivery_metrics=req.deliveryMetrics,
+                        sentiment_data=req.sentimentData,
+                        transcription_samples=req.transcriptionSamples,
+                        escalation_data=req.escalationData,
+                        days_back=req.daysBack or 365,
+                        step_callback=step_callback,
+                    )
+
+                    for msg in progress_messages:
+                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
+
+                    execution_time = (datetime.utcnow() - start_time).total_seconds()
+                    logger.info(f"PM coaching crew completed in {execution_time:.2f}s")
+
+                    yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'pm_name': result.get('pm_name'), 'pm_email': result.get('pm_email'), 'projects_analyzed': result.get('projects_analyzed'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+
+                except Exception as e:
+                    logger.error(f"PM coaching crew failed: {str(e)}")
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                }
+            )
+        else:
+            result = crew.run(
+                pm_name=req.pmName,
+                pm_email=req.pmEmail,
+                salesforce_owner_id=req.salesforceOwnerId,
+                projects_data=req.projectsData,
+                delivery_metrics=req.deliveryMetrics,
+                sentiment_data=req.sentimentData,
+                transcription_samples=req.transcriptionSamples,
+                escalation_data=req.escalationData,
+                days_back=req.daysBack or 365,
+            )
+
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"PM coaching crew completed in {execution_time:.2f}s")
+
+            return {
+                "success": True,
+                "result": result.get("result"),
+                "pm_name": result.get("pm_name"),
+                "pm_email": result.get("pm_email"),
+                "projects_analyzed": result.get("projects_analyzed"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"PM coaching crew failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
