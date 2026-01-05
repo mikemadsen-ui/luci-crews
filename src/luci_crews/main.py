@@ -750,17 +750,16 @@ async def run_pm_coaching_crew(request: Request):
         if stream:
             import asyncio
             import concurrent.futures
+            import queue
 
             async def generate():
-                progress_queue = asyncio.Queue()
-                result_holder = {"result": None, "error": None}
+                # Use a thread-safe queue instead of asyncio.Queue
+                progress_queue = queue.Queue()
+                result_holder = {"result": None, "error": None, "done": False}
 
                 def step_callback(message: str):
-                    # Put progress message in queue (thread-safe via asyncio)
-                    asyncio.get_event_loop().call_soon_threadsafe(
-                        progress_queue.put_nowait,
-                        {"type": "progress", "message": message}
-                    )
+                    # Thread-safe put to regular queue
+                    progress_queue.put({"type": "progress", "message": message})
 
                 def run_crew():
                     try:
@@ -777,38 +776,41 @@ async def run_pm_coaching_crew(request: Request):
                             step_callback=step_callback,
                         )
                     except Exception as e:
+                        logger.error(f"Crew execution error: {str(e)}")
                         result_holder["error"] = str(e)
                     finally:
-                        # Signal completion
-                        asyncio.get_event_loop().call_soon_threadsafe(
-                            progress_queue.put_nowait,
-                            {"type": "done"}
-                        )
+                        result_holder["done"] = True
 
                 try:
                     yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting coaching analysis...'})}\n\n"
 
                     # Run crew in thread pool
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-                    crew_task = loop.run_in_executor(executor, run_crew)
+                    crew_future = executor.submit(run_crew)
 
                     # Stream progress messages as they arrive
-                    while True:
+                    while not result_holder["done"]:
                         try:
-                            msg = await asyncio.wait_for(progress_queue.get(), timeout=1.0)
-                            if msg["type"] == "done":
-                                break
-                            elif msg["type"] == "progress":
+                            msg = progress_queue.get(timeout=0.5)
+                            if msg["type"] == "progress":
                                 yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg['message']})}\n\n"
-                        except asyncio.TimeoutError:
-                            # No message yet, check if crew is still running
-                            if crew_task.done():
-                                break
+                        except queue.Empty:
+                            # Send keepalive comment to prevent connection timeout
+                            yield f": keepalive\n\n"
                             continue
 
-                    # Wait for crew to complete
-                    await crew_task
+                    # Drain any remaining messages
+                    while not progress_queue.empty():
+                        try:
+                            msg = progress_queue.get_nowait()
+                            if msg["type"] == "progress":
+                                yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg['message']})}\n\n"
+                        except queue.Empty:
+                            break
+
+                    # Wait for thread to complete
+                    crew_future.result(timeout=5)
                     executor.shutdown(wait=False)
 
                     if result_holder["error"]:
@@ -822,6 +824,8 @@ async def run_pm_coaching_crew(request: Request):
 
                 except Exception as e:
                     logger.error(f"PM coaching crew failed: {str(e)}")
+                    import traceback
+                    logger.error(traceback.format_exc())
                     yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
             return StreamingResponse(
@@ -830,6 +834,7 @@ async def run_pm_coaching_crew(request: Request):
                 headers={
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
                 }
             )
         else:
