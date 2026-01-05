@@ -45,13 +45,15 @@ class PMCoachingCrew:
         context = "=== IMPLEMENTATION CONSULTANT PORTFOLIO OVERVIEW ===\n"
 
         if delivery_metrics:
+            # Calculate on-time rate only from projects with actual go-live dates
+            on_time_projects = delivery_metrics.get("on_time_projects", 0)
+            delayed_projects = delivery_metrics.get("delayed_projects", 0)
+            projects_with_dates = on_time_projects + delayed_projects
+            missing_dates = delivery_metrics.get("completed_missing_dates", 0)
+
             on_time_rate = 0
-            if delivery_metrics.get("completed_projects"):
-                on_time_rate = (
-                    delivery_metrics.get("on_time_projects", 0)
-                    / delivery_metrics.get("completed_projects", 1)
-                    * 100
-                )
+            if projects_with_dates > 0:
+                on_time_rate = (on_time_projects / projects_with_dates) * 100
 
             context += f"""
 Total Projects (Portfolio): {delivery_metrics.get('total_projects', 0)}
@@ -60,9 +62,10 @@ Active: {delivery_metrics.get('active_projects', 0)}
 On Hold: {delivery_metrics.get('on_hold_projects', 0)}
 
 === DELIVERY PERFORMANCE ===
-On-Time Deliveries: {delivery_metrics.get('on_time_projects', 0)}
-Delayed: {delivery_metrics.get('delayed_projects', 0)}
-On-Time Rate: {on_time_rate:.1f}%
+On-Time Deliveries: {on_time_projects}
+Delayed: {delayed_projects}
+On-Time Rate: {on_time_rate:.1f}% (based on {projects_with_dates} projects with actual go-live dates)
+NOTE: {missing_dates} completed projects missing actual go-live date data
 Average Completion Rate: {delivery_metrics.get('avg_completion_rate', 0):.1f}%
 
 === BUDGET PERFORMANCE ===
