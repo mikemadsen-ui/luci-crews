@@ -745,6 +745,22 @@ async def run_pm_coaching_crew(request: Request):
 
         logger.info(f"Running PM coaching crew for: {req.pmName} ({req.pmEmail})")
 
+        # Detailed logging for debugging data flow
+        logger.info(f"=== PM Coaching Request Data ===")
+        logger.info(f"Projects received: {len(req.projectsData) if req.projectsData else 0}")
+        logger.info(f"Delivery metrics: {req.deliveryMetrics}")
+        logger.info(f"Sentiment data items: {len(req.sentimentData) if req.sentimentData else 0}")
+        logger.info(f"Transcription samples: {len(req.transcriptionSamples) if req.transcriptionSamples else 0}")
+        logger.info(f"Escalation data items: {len(req.escalationData) if req.escalationData else 0}")
+        if req.projectsData and len(req.projectsData) > 0:
+            statuses = [p.get('project_status', 'None') for p in req.projectsData[:10]]
+            logger.info(f"Sample project statuses: {statuses}")
+            with_target = sum(1 for p in req.projectsData if p.get('target_go_live_date'))
+            with_actual = sum(1 for p in req.projectsData if p.get('actual_go_live_date'))
+            logger.info(f"Projects with target_go_live_date: {with_target}")
+            logger.info(f"Projects with actual_go_live_date: {with_actual}")
+        logger.info(f"================================")
+
         crew = PMCoachingCrew()
 
         if stream:

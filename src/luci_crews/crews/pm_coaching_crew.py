@@ -77,11 +77,15 @@ Projects Under Budget: {delivery_metrics.get('projects_under_budget', 0)}
         if projects_data:
             context += "\n=== CURRENT PROJECT PORTFOLIO ===\n"
 
-            # Active projects
+            # Helper for case-insensitive status matching
+            def status_lower(s):
+                return (s or "").lower()
+
+            # Active projects (case-insensitive partial match)
             active = [
                 p
                 for p in projects_data
-                if p.get("project_status") in ["Active", "In Progress"]
+                if "active" in status_lower(p.get("project_status")) or "progress" in status_lower(p.get("project_status"))
             ]
             if active:
                 context += "\n-- Active Projects --\n"
@@ -99,18 +103,18 @@ Projects Under Budget: {delivery_metrics.get('projects_under_budget', 0)}
                         budget_pct = (p.get("budget_used", 0) / p.get("budget", 1)) * 100
                         context += f"  Budget Used: {budget_pct:.0f}%\n"
 
-            # On hold projects
-            on_hold = [p for p in projects_data if p.get("project_status") == "On Hold"]
+            # On hold projects (case-insensitive partial match)
+            on_hold = [p for p in projects_data if "hold" in status_lower(p.get("project_status"))]
             if on_hold:
                 context += "\n-- On Hold Projects --\n"
                 for p in on_hold[:5]:
                     context += f"  {p.get('project_name', 'Unknown')} ({p.get('account_name', 'Unknown')})\n"
 
-            # Recently completed
+            # Recently completed (case-insensitive partial match)
             completed = [
                 p
                 for p in projects_data
-                if p.get("project_status") in ["Completed", "Closed"]
+                if "complete" in status_lower(p.get("project_status")) or "closed" in status_lower(p.get("project_status")) or "done" in status_lower(p.get("project_status"))
             ]
             if completed:
                 context += f"\n-- Recently Completed ({len(completed)} total) --\n"
