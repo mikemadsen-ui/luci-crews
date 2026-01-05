@@ -81,6 +81,10 @@ Projects Under Budget: {delivery_metrics.get('projects_under_budget', 0)}
             def get_field(p, camel_case, snake_case):
                 return p.get(camel_case) if p.get(camel_case) is not None else p.get(snake_case)
 
+            # Helper to get target date - PS Forecasted Live Date is the primary field
+            def get_target_date(p):
+                return get_field(p, "psForecastedLiveDate", "ps_forecasted_live_date") or get_field(p, "targetGoLiveDate", "target_go_live_date")
+
             # Helper for case-insensitive status matching
             def status_lower(s):
                 return (s or "").lower()
@@ -98,14 +102,13 @@ Projects Under Budget: {delivery_metrics.get('projects_under_budget', 0)}
             if active:
                 context += "\n-- Active Projects --\n"
                 for p in sorted(
-                    active, key=lambda x: get_field(x, "targetGoLiveDate", "target_go_live_date") or ""
+                    active, key=lambda x: get_target_date(x) or ""
                 )[:10]:
                     completion = get_field(p, "completionPercentage", "completion_percentage") or 0
+                    target_date = get_target_date(p)
                     context += f"\n{get_field(p, 'projectName', 'project_name') or 'Unknown'}\n"
                     context += f"  Account: {get_field(p, 'accountName', 'account_name') or 'Unknown'}\n"
-                    context += (
-                        f"  Target Go-Live: {get_field(p, 'targetGoLiveDate', 'target_go_live_date') or 'Not set'}\n"
-                    )
+                    context += f"  PS Forecasted Live Date: {target_date or 'Not set'}\n"
                     context += f"  Completion: {completion:.0f}%\n"
                     budget = get_field(p, "budget", "budget")
                     budget_used = get_field(p, "budgetUsed", "budget_used")
