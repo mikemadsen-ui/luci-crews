@@ -26,6 +26,9 @@ from .crews.support_coaching_crew import SupportCoachingCrew
 from .crews.support_resolution_crew import SupportResolutionCrew
 from .crews.sc_prep_crew import SCPrepCrew
 from .crews.pm_coaching_crew import PMCoachingCrew
+from .crews.ae_coaching_crew import AECoachingCrew
+from .crews.csm_coaching_crew import CSMCoachingCrew
+from .crews.sc_coaching_crew import SCCoachingCrew
 from . import config_store
 
 # Load environment variables
@@ -206,6 +209,39 @@ class PMCoachingRequest(BaseModel):
     daysBack: Optional[int] = 365
 
 
+class AECoachingRequest(BaseModel):
+    """Request model for Account Executive coaching analysis."""
+    aeName: str
+    aeEmail: str
+    salesforceOwnerId: Optional[str] = None
+    opportunitiesData: Optional[List[Dict[str, Any]]] = None
+    transcriptionSamples: Optional[List[Dict[str, Any]]] = None
+    daysBack: Optional[int] = 180
+
+
+class CSMCoachingRequest(BaseModel):
+    """Request model for Customer Success Manager coaching analysis."""
+    csmName: str
+    csmEmail: str
+    salesforceOwnerId: Optional[str] = None
+    accountsData: Optional[List[Dict[str, Any]]] = None
+    accountEngagementData: Optional[List[Dict[str, Any]]] = None
+    transcriptionSamples: Optional[List[Dict[str, Any]]] = None
+    daysBack: Optional[int] = 180
+
+
+class SCCoachingRequest(BaseModel):
+    """Request model for Solutions Consultant coaching analysis."""
+    scName: str
+    scEmail: str
+    salesforceUserId: Optional[str] = None
+    opportunitiesData: Optional[List[Dict[str, Any]]] = None
+    demoTranscripts: Optional[List[Dict[str, Any]]] = None
+    discoveryTranscripts: Optional[List[Dict[str, Any]]] = None
+    dealOutcomes: Optional[Dict[str, Any]] = None
+    daysBack: Optional[int] = 180
+
+
 class SupportResolutionRequest(BaseModel):
     caseSubject: str
     caseDescription: Optional[str] = None
@@ -275,6 +311,9 @@ async def root():
             "support_training": "/api/crew/support_training",
             "sc_prep": "/api/crew/sc-prep",
             "pm_coaching": "/api/crew/pm-coaching",
+            "ae_coaching": "/api/crew/ae-coaching",
+            "csm_coaching": "/api/crew/csm-coaching",
+            "sc_coaching": "/api/crew/sc-coaching",
         },
         "docs": "/docs",
     }
@@ -780,6 +819,261 @@ async def run_pm_coaching_crew(request: Request):
 
     except Exception as e:
         logger.error(f"PM coaching crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/crew/ae-coaching")
+async def run_ae_coaching_crew(request: Request):
+    """Run the Account Executive coaching analysis crew with optional streaming."""
+    import json
+    start_time = datetime.utcnow()
+
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = AECoachingRequest(**body)
+
+        logger.info(f"Running AE coaching crew for: {req.aeName} ({req.aeEmail})")
+
+        crew = AECoachingCrew()
+
+        if stream:
+            async def generate():
+                progress_messages = []
+
+                def step_callback(message: str):
+                    progress_messages.append(message)
+
+                try:
+                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting coaching analysis...'})}\n\n"
+
+                    result = crew.run(
+                        ae_name=req.aeName,
+                        ae_email=req.aeEmail,
+                        opportunities_data=req.opportunitiesData,
+                        transcription_samples=req.transcriptionSamples,
+                        days_back=req.daysBack or 180,
+                        step_callback=step_callback,
+                    )
+
+                    for msg in progress_messages:
+                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
+
+                    execution_time = (datetime.utcnow() - start_time).total_seconds()
+                    logger.info(f"AE coaching crew completed in {execution_time:.2f}s")
+
+                    yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'ae_name': result.get('ae_name'), 'ae_email': result.get('ae_email'), 'opportunities_analyzed': result.get('opportunities_analyzed'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+
+                except Exception as e:
+                    logger.error(f"AE coaching crew failed: {str(e)}")
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                }
+            )
+        else:
+            result = crew.run(
+                ae_name=req.aeName,
+                ae_email=req.aeEmail,
+                opportunities_data=req.opportunitiesData,
+                transcription_samples=req.transcriptionSamples,
+                days_back=req.daysBack or 180,
+            )
+
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"AE coaching crew completed in {execution_time:.2f}s")
+
+            return {
+                "success": True,
+                "result": result.get("result"),
+                "ae_name": result.get("ae_name"),
+                "ae_email": result.get("ae_email"),
+                "opportunities_analyzed": result.get("opportunities_analyzed"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"AE coaching crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/crew/csm-coaching")
+async def run_csm_coaching_crew(request: Request):
+    """Run the Customer Success Manager coaching analysis crew with optional streaming."""
+    import json
+    start_time = datetime.utcnow()
+
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = CSMCoachingRequest(**body)
+
+        logger.info(f"Running CSM coaching crew for: {req.csmName} ({req.csmEmail})")
+
+        crew = CSMCoachingCrew()
+
+        if stream:
+            async def generate():
+                progress_messages = []
+
+                def step_callback(message: str):
+                    progress_messages.append(message)
+
+                try:
+                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting coaching analysis...'})}\n\n"
+
+                    result = crew.run(
+                        csm_name=req.csmName,
+                        csm_email=req.csmEmail,
+                        accounts_data=req.accountsData,
+                        engagement_data=req.accountEngagementData,
+                        transcription_samples=req.transcriptionSamples,
+                        days_back=req.daysBack or 180,
+                        step_callback=step_callback,
+                    )
+
+                    for msg in progress_messages:
+                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
+
+                    execution_time = (datetime.utcnow() - start_time).total_seconds()
+                    logger.info(f"CSM coaching crew completed in {execution_time:.2f}s")
+
+                    yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'csm_name': result.get('csm_name'), 'csm_email': result.get('csm_email'), 'accounts_analyzed': result.get('accounts_analyzed'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+
+                except Exception as e:
+                    logger.error(f"CSM coaching crew failed: {str(e)}")
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                }
+            )
+        else:
+            result = crew.run(
+                csm_name=req.csmName,
+                csm_email=req.csmEmail,
+                accounts_data=req.accountsData,
+                engagement_data=req.accountEngagementData,
+                transcription_samples=req.transcriptionSamples,
+                days_back=req.daysBack or 180,
+            )
+
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"CSM coaching crew completed in {execution_time:.2f}s")
+
+            return {
+                "success": True,
+                "result": result.get("result"),
+                "csm_name": result.get("csm_name"),
+                "csm_email": result.get("csm_email"),
+                "accounts_analyzed": result.get("accounts_analyzed"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"CSM coaching crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/crew/sc-coaching")
+async def run_sc_coaching_crew(request: Request):
+    """Run the Solutions Consultant coaching analysis crew with optional streaming."""
+    import json
+    start_time = datetime.utcnow()
+
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = SCCoachingRequest(**body)
+
+        logger.info(f"Running SC coaching crew for: {req.scName} ({req.scEmail})")
+
+        crew = SCCoachingCrew()
+
+        if stream:
+            async def generate():
+                progress_messages = []
+
+                def step_callback(message: str):
+                    progress_messages.append(message)
+
+                try:
+                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting coaching analysis...'})}\n\n"
+
+                    result = crew.run(
+                        sc_name=req.scName,
+                        sc_email=req.scEmail,
+                        opportunities_data=req.opportunitiesData,
+                        demo_transcripts=req.demoTranscripts,
+                        discovery_transcripts=req.discoveryTranscripts,
+                        deal_outcomes=req.dealOutcomes,
+                        days_back=req.daysBack or 180,
+                        step_callback=step_callback,
+                    )
+
+                    for msg in progress_messages:
+                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
+
+                    execution_time = (datetime.utcnow() - start_time).total_seconds()
+                    logger.info(f"SC coaching crew completed in {execution_time:.2f}s")
+
+                    yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'sc_name': result.get('sc_name'), 'sc_email': result.get('sc_email'), 'opportunities_analyzed': result.get('opportunities_analyzed'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+
+                except Exception as e:
+                    logger.error(f"SC coaching crew failed: {str(e)}")
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                }
+            )
+        else:
+            result = crew.run(
+                sc_name=req.scName,
+                sc_email=req.scEmail,
+                opportunities_data=req.opportunitiesData,
+                demo_transcripts=req.demoTranscripts,
+                discovery_transcripts=req.discoveryTranscripts,
+                deal_outcomes=req.dealOutcomes,
+                days_back=req.daysBack or 180,
+            )
+
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"SC coaching crew completed in {execution_time:.2f}s")
+
+            return {
+                "success": True,
+                "result": result.get("result"),
+                "sc_name": result.get("sc_name"),
+                "sc_email": result.get("sc_email"),
+                "opportunities_analyzed": result.get("opportunities_analyzed"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"SC coaching crew failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
