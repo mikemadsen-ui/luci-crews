@@ -46,15 +46,17 @@ class ProjectSentimentCrew:
         self,
         salesforce_account_id: str,
         transcription_ids: Optional[List[str]] = None,
+        mavenlink_workspace_id: Optional[str] = None,
         use_mcp_fallback: bool = True,
     ) -> List[Dict[str, Any]]:
         """
-        Fetch transcriptions from Supabase cache, with optional MCP fallback.
+        Fetch transcriptions from Supabase cache, with optional MCP/Mavenlink fallback.
 
         Args:
             salesforce_account_id: The Salesforce account ID
             transcription_ids: Optional list of specific transcription IDs
-            use_mcp_fallback: If True and cache is empty, try fetching from Avoma MCP
+            mavenlink_workspace_id: Optional Mavenlink workspace ID for email fallback
+            use_mcp_fallback: If True and cache is empty, try fetching from Avoma
 
         Returns:
             List of transcription dicts
@@ -94,19 +96,22 @@ class ProjectSentimentCrew:
         else:
             logger.warning("Supabase not configured")
 
-        # If cache is empty and MCP fallback is enabled, try Avoma MCP
+        # If cache is empty and MCP fallback is enabled, try Avoma with Mavenlink email fallback
         if not transcriptions and use_mcp_fallback:
-            logger.info(f"No cached transcriptions for account {salesforce_account_id}, trying Avoma MCP")
+            logger.info(f"No cached transcriptions for account {salesforce_account_id}, trying Avoma with fallback")
             try:
                 avoma = get_avoma_client()
-                transcriptions = avoma.fetch_transcriptions_for_account(
+                # Use the new fallback method that tries CRM account ID first,
+                # then falls back to customer emails from Mavenlink
+                transcriptions = avoma.fetch_transcriptions_with_fallback(
                     salesforce_account_id=salesforce_account_id,
+                    mavenlink_workspace_id=mavenlink_workspace_id,
                     limit=10,
                 )
                 if transcriptions:
-                    logger.info(f"Fetched {len(transcriptions)} transcriptions from Avoma MCP")
+                    logger.info(f"Fetched {len(transcriptions)} transcriptions from Avoma")
             except Exception as e:
-                logger.error(f"Error fetching from Avoma MCP: {e}")
+                logger.error(f"Error fetching from Avoma: {e}")
 
         return transcriptions
 
@@ -118,7 +123,7 @@ class ProjectSentimentCrew:
 
         try:
             result = supabase.table("implementation_projects").select(
-                "project_name, salesforce_account_id, account"
+                "project_name, salesforce_account_id, mavenlink_workspace_id, account"
             ).eq("salesforce_project_id", salesforce_project_id).maybeSingle().execute()
             return result.data
         except Exception as e:
@@ -252,14 +257,16 @@ class ProjectSentimentCrew:
         project_name = project.get("project_name", "Unknown Project") if project else "Unknown Project"
         account = project.get("account", {}) if project else {}
         account_name = account.get("name", "Unknown Account") if isinstance(account, dict) else "Unknown Account"
+        mavenlink_workspace_id = project.get("mavenlink_workspace_id") if project else None
 
         if step_callback:
             step_callback("Fetching transcriptions...")
 
-        # Fetch transcriptions
+        # Fetch transcriptions (with Mavenlink email fallback if CRM account ID search fails)
         transcriptions = self._fetch_transcriptions(
             salesforce_account_id,
             transcription_ids,
+            mavenlink_workspace_id=mavenlink_workspace_id,
         )
 
         if not transcriptions:
