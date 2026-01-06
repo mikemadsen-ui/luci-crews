@@ -5,11 +5,16 @@ Analyzes implementation project health and provides recommendations.
 """
 
 import os
+import re
+import json
 import yaml
+import logging
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from crewai import Agent, Task, Crew, Process
 from crewai import LLM
+
+logger = logging.getLogger(__name__)
 
 
 class ImplementationCrew:
@@ -225,6 +230,61 @@ class ImplementationCrew:
 
         return "\n".join(lines)
 
+    def _parse_json_result(self, result_text: str) -> Dict[str, Any]:
+        """Extract JSON from the crew result, handling markdown code blocks."""
+        # Try to find JSON in code blocks first
+        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', result_text)
+        if json_match:
+            try:
+                return json.loads(json_match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # Try to find raw JSON object
+        brace_match = re.search(r'\{[\s\S]*\}', result_text)
+        if brace_match:
+            try:
+                return json.loads(brace_match.group())
+            except json.JSONDecodeError:
+                pass
+
+        # Return a default structure if parsing fails
+        logger.warning("Failed to parse JSON from implementation crew result")
+        return {
+            "status": "at_risk",
+            "status_summary": "Analysis could not be parsed into structured format.",
+            "score": 5,
+            "executive_summary": result_text[:1000] if result_text else "Analysis unavailable.",
+            "risks": [],
+            "customer_engagement": {
+                "assessment": "unknown",
+                "meeting_frequency": "Unable to determine",
+                "communication_gaps": [],
+                "sentiment_indicators": [],
+                "recommendations": []
+            },
+            "task_analysis": {
+                "summary": "Unable to parse task analysis",
+                "overdue_count": 0,
+                "unassigned_count": 0,
+                "overdue_tasks": [],
+                "unassigned_tasks": [],
+                "upcoming_milestones": []
+            },
+            "actions": [],
+            "timeline_assessment": {
+                "on_track": False,
+                "confidence": "low",
+                "notes": "Unable to determine timeline status"
+            },
+            "escalation": {
+                "needed": False,
+                "reason": None,
+                "recommended_to": None
+            },
+            "coaching": "Review the raw analysis text for insights."
+        }
+
     def _create_tasks(
         self,
         project_name: str,
@@ -291,8 +351,33 @@ class ImplementationCrew:
         risks_data: Optional[str] = None,
         call_activity: Optional[dict] = None,
         mavenlink_tasks: Optional[List[dict]] = None,
-    ) -> str:
-        """Run the implementation crew and return the analysis."""
+        step_callback: Optional[callable] = None,
+    ) -> Dict[str, Any]:
+        """Run the implementation crew and return structured analysis.
+
+        Args:
+            project_name: Name of the project
+            account_name: Customer account name
+            project_status: Current project status
+            start_date: Project start date
+            target_go_live: Target go-live date
+            completion_pct: Completion percentage
+            hours_used: Hours consumed
+            hours_budgeted: Hours budgeted
+            budget_used: Budget consumed
+            budget_total: Total budget
+            milestones_data: Formatted milestone info
+            risks_data: Formatted risk info
+            call_activity: Call activity data dict
+            mavenlink_tasks: List of Mavenlink task dicts
+            step_callback: Optional callback for progress updates
+
+        Returns:
+            Dict with parsed result and metadata
+        """
+        if step_callback:
+            step_callback("Creating analysis agents...")
+
         self._create_agents()
         self._create_tasks(
             project_name, account_name, project_status,
@@ -300,6 +385,9 @@ class ImplementationCrew:
             hours_used, hours_budgeted, budget_used, budget_total,
             milestones_data, risks_data, call_activity, mavenlink_tasks
         )
+
+        if step_callback:
+            step_callback("Running implementation health analysis...")
 
         crew = Crew(
             agents=[self.analyst],
@@ -309,4 +397,23 @@ class ImplementationCrew:
         )
 
         result = crew.kickoff()
-        return str(result)
+        result_text = str(result)
+
+        if step_callback:
+            step_callback("Parsing analysis results...")
+
+        # Parse the JSON result
+        parsed_result = self._parse_json_result(result_text)
+
+        # Ensure score is a valid integer 1-10
+        if parsed_result.get("score"):
+            try:
+                parsed_result["score"] = max(1, min(10, int(parsed_result["score"])))
+            except (ValueError, TypeError):
+                parsed_result["score"] = 5
+
+        return {
+            "result": parsed_result,
+            "provider": "openai",
+            "model": os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini"),
+        }

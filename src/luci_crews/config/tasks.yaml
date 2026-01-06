@@ -134,14 +134,83 @@ analyze_implementation:
     6. Task planning assessment (are tasks properly assigned and scheduled?)
     7. Recommendations for staying on track
   expected_output: >
-    A project health report including:
-    - Overall status (On Track / At Risk / Critical)
-    - Key risks ranked by severity and likelihood (including task-related risks like overdue items, unassigned tasks)
-    - Customer engagement assessment (are we meeting often enough? gaps in communication?)
-    - Task planning assessment (are tasks properly assigned? are due dates realistic?)
-    - Specific recommendations with owners and deadlines
-    - Revised timeline if needed
-    - Escalation recommendations if applicable
+    You must return a valid JSON object with this exact structure:
+    {{
+      "status": "<on_track|at_risk|critical>",
+      "status_summary": "<2-3 sentence explanation of overall status>",
+      "score": <1-10 integer>,
+
+      "executive_summary": "<6-10 sentence comprehensive summary of project health>",
+
+      "risks": [
+        {{
+          "risk": "<description of the risk>",
+          "severity": "<critical|high|medium|low>",
+          "likelihood": "<high|medium|low>",
+          "mitigation": "<recommended action to address>",
+          "category": "<timeline|resource|customer|technical|scope>"
+        }}
+      ],
+
+      "customer_engagement": {{
+        "assessment": "<strong|adequate|weak|concerning>",
+        "meeting_frequency": "<description of meeting cadence>",
+        "communication_gaps": ["<gap1>", "<gap2>"],
+        "sentiment_indicators": ["<positive or negative signals>"],
+        "recommendations": ["<recommendation1>", "<recommendation2>"]
+      }},
+
+      "task_analysis": {{
+        "summary": "<overall assessment of task health>",
+        "overdue_count": <number>,
+        "unassigned_count": <number>,
+        "overdue_tasks": [
+          {{"task": "<name>", "due_date": "<date>", "assignee": "<name or null>", "days_overdue": <number>}}
+        ],
+        "unassigned_tasks": [
+          {{"task": "<name>", "due_date": "<date or null>"}}
+        ],
+        "upcoming_milestones": [
+          {{"milestone": "<name>", "due_date": "<date>", "status": "<on_track|at_risk>"}}
+        ]
+      }},
+
+      "actions": [
+        {{
+          "action": "<what needs to be done>",
+          "owner": "<who should do it - IC, Customer, Manager, etc.>",
+          "priority": "<critical|high|medium|low>",
+          "due_date": "<suggested date in YYYY-MM-DD format or null>",
+          "category": "<customer|internal|task|escalation>"
+        }}
+      ],
+
+      "timeline_assessment": {{
+        "on_track": <true|false>,
+        "confidence": "<high|medium|low>",
+        "notes": "<explanation of timeline status>",
+        "target_date": "<current target go-live date>",
+        "revised_date": "<recommended new date if off track, or null>"
+      }},
+
+      "escalation": {{
+        "needed": <true|false>,
+        "reason": "<why escalation is needed, or null>",
+        "recommended_to": "<who to escalate to, or null>"
+      }},
+
+      "coaching": "<2-4 sentences of personalized coaching for the IC>"
+    }}
+
+    SCORING RUBRIC:
+    - 9-10: On track, strong customer engagement, no significant risks, clear path to go-live
+    - 7-8: Mostly healthy, minor issues being addressed, good momentum
+    - 5-6: At risk, notable gaps or concerns, needs attention
+    - 3-4: Significant risk, multiple issues, customer frustration or timeline slippage
+    - 1-2: Critical, project may fail without immediate intervention
+
+    Include 3-7 risks ranked by severity. Include 3-10 recommended actions.
+    For task_analysis, only include tasks that are actually overdue or unassigned.
   agent: implementation_analyst
 
 # =============================================================================

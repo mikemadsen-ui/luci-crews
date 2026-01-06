@@ -288,7 +288,7 @@ class SCPrepRequest(BaseModel):
 class CrewResponse(BaseModel):
     success: bool
     job_id: Optional[str] = None
-    result: Optional[str] = None
+    result: Optional[Any] = None  # Changed from str to Any to support structured results
     error: Optional[str] = None
     execution_time: Optional[float] = None
 
