@@ -17,6 +17,7 @@ from crewai import Agent, Task, Crew, Process
 from crewai import LLM
 
 from ..config_store import get_supabase
+from ..avoma_mcp import get_avoma_client
 
 logger = logging.getLogger(__name__)
 
@@ -45,48 +46,69 @@ class ProjectSentimentCrew:
         self,
         salesforce_account_id: str,
         transcription_ids: Optional[List[str]] = None,
+        use_mcp_fallback: bool = True,
     ) -> List[Dict[str, Any]]:
-        """Fetch transcriptions from Supabase."""
+        """
+        Fetch transcriptions from Supabase cache, with optional MCP fallback.
+
+        Args:
+            salesforce_account_id: The Salesforce account ID
+            transcription_ids: Optional list of specific transcription IDs
+            use_mcp_fallback: If True and cache is empty, try fetching from Avoma MCP
+
+        Returns:
+            List of transcription dicts
+        """
         supabase = get_supabase()
-        if not supabase:
-            logger.error("Supabase not configured")
-            return []
+        transcriptions = []
 
-        try:
-            # Select actual column names from the transcriptions table
-            select_cols = "id, transcription_text, meeting_subject, meeting_date, meeting_url, salesforce_account_id"
+        # Try Supabase cache first
+        if supabase:
+            try:
+                select_cols = "id, transcription_text, meeting_subject, meeting_date, meeting_url, salesforce_account_id"
 
-            if transcription_ids and len(transcription_ids) > 0:
-                # Fetch specific transcriptions by ID
-                result = supabase.table("transcriptions").select(
-                    select_cols
-                ).in_("id", transcription_ids).execute()
-            else:
-                # Fetch recent transcriptions for the account (last 60 days, max 10)
-                cutoff = (datetime.utcnow() - timedelta(days=60)).isoformat()
-                result = supabase.table("transcriptions").select(
-                    select_cols
-                ).eq("salesforce_account_id", salesforce_account_id).gte(
-                    "meeting_date", cutoff
-                ).order("meeting_date", desc=True).limit(10).execute()
+                if transcription_ids and len(transcription_ids) > 0:
+                    result = supabase.table("transcriptions").select(
+                        select_cols
+                    ).in_("id", transcription_ids).execute()
+                else:
+                    cutoff = (datetime.utcnow() - timedelta(days=60)).isoformat()
+                    result = supabase.table("transcriptions").select(
+                        select_cols
+                    ).eq("salesforce_account_id", salesforce_account_id).gte(
+                        "meeting_date", cutoff
+                    ).order("meeting_date", desc=True).limit(10).execute()
 
-            # Map to expected format
-            transcriptions = []
-            for t in result.data or []:
-                transcriptions.append({
-                    "id": t.get("id"),
-                    "transcription": t.get("transcription_text"),
-                    "meeting": {
-                        "subject": t.get("meeting_subject"),
-                        "meeting_date": t.get("meeting_date"),
-                        "url": t.get("meeting_url"),
-                    }
-                })
+                for t in result.data or []:
+                    transcriptions.append({
+                        "id": t.get("id"),
+                        "transcription": t.get("transcription_text"),
+                        "meeting": {
+                            "subject": t.get("meeting_subject"),
+                            "meeting_date": t.get("meeting_date"),
+                            "url": t.get("meeting_url"),
+                        }
+                    })
+            except Exception as e:
+                logger.error(f"Error fetching transcriptions from Supabase: {e}")
+        else:
+            logger.warning("Supabase not configured")
 
-            return transcriptions
-        except Exception as e:
-            logger.error(f"Error fetching transcriptions: {e}")
-            return []
+        # If cache is empty and MCP fallback is enabled, try Avoma MCP
+        if not transcriptions and use_mcp_fallback:
+            logger.info(f"No cached transcriptions for account {salesforce_account_id}, trying Avoma MCP")
+            try:
+                avoma = get_avoma_client()
+                transcriptions = avoma.fetch_transcriptions_for_account(
+                    salesforce_account_id=salesforce_account_id,
+                    limit=10,
+                )
+                if transcriptions:
+                    logger.info(f"Fetched {len(transcriptions)} transcriptions from Avoma MCP")
+            except Exception as e:
+                logger.error(f"Error fetching from Avoma MCP: {e}")
+
+        return transcriptions
 
     def _fetch_project(self, salesforce_project_id: str) -> Optional[Dict[str, Any]]:
         """Fetch project details from Supabase."""
