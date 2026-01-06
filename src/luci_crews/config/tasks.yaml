@@ -116,6 +116,14 @@ analyze_implementation:
     CALL ACTIVITY (Customer Engagement):
     {call_activity}
 
+    IMPORTANT - CALENDAR CONNECTION STATUS:
+    If the call activity shows "CALENDAR NOT CONNECTED", this means:
+    - We CANNOT see upcoming scheduled meetings (data unavailable)
+    - Do NOT flag "no upcoming calls" as a customer engagement risk
+    - Instead, note that calendar visibility is limited and recommend connecting calendar
+    - Only assess engagement based on PAST calls (Avoma data) which IS available
+    - The lack of upcoming call data is a data availability issue, not necessarily poor engagement
+
     MAVENLINK TASKS (Project Work Breakdown):
     {mavenlink_tasks}
 
