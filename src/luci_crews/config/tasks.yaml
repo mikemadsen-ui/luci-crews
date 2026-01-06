@@ -246,9 +246,25 @@ analyze_project_sentiment:
         "notes": "<2-4 coaching notes about interaction dynamics>"
       }},
       "key_quotes": [
-        {{"speaker": "", "quote": "", "call": "", "call_date": ""}}
+        {{"speaker": "", "quote": "", "sentiment": "positive|negative|neutral", "call": "", "call_date": ""}}
       ]
     }}
+
+    KEY QUOTES INSTRUCTIONS:
+    Select 3-6 quotes that DIRECTLY express sentiment about the project, relationship, or experience.
+    Each quote MUST clearly convey emotion or opinion - NOT factual statements or questions.
+
+    GOOD examples (include these types):
+    - "We're really excited about this rollout" (positive)
+    - "I'm frustrated we keep pushing this back" (negative)
+    - "The team has been great to work with" (positive)
+    - "I'm concerned about hitting the deadline" (negative)
+    - "This is exactly what we needed" (positive)
+
+    BAD examples (do NOT include these types):
+    - "Let's schedule a follow-up for next week" (neutral/logistical)
+    - "Can you send me the documentation?" (question, not sentiment)
+    - "The integration uses REST APIs" (factual, no sentiment)
 
     SCORING RUBRIC:
     - 9-10: Clear plan, owners, dates; customer aligned/positive; risks managed
