@@ -108,9 +108,16 @@ class ImplementationCrew:
         lines = []
         issues = []
 
-        # Categorize tasks
-        incomplete_tasks = [t for t in tasks if not t.get('completed_at')]
-        completed_tasks = [t for t in tasks if t.get('completed_at')]
+        # Categorize tasks - check both completed_at field AND status field
+        # Mavenlink API may not set completed_at even when status is 'completed'
+        def is_completed(task):
+            if task.get('completed_at'):
+                return True
+            status = (task.get('status') or '').lower()
+            return status == 'completed'
+
+        incomplete_tasks = [t for t in tasks if not is_completed(t)]
+        completed_tasks = [t for t in tasks if is_completed(t)]
 
         # Summary
         lines.append("=== MAVENLINK TASKS SUMMARY ===")
