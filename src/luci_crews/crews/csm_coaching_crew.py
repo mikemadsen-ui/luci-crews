@@ -154,8 +154,10 @@ Total Expansion Revenue: ${total_expansion_value:,.0f}
             return {
                 "success": False,
                 "error": "No account data provided for analysis",
+                "result": "Unable to provide coaching analysis: No accounts found for this CSM. Please ensure the CSM has accounts assigned in Salesforce.",
                 "csm_name": csm_name,
                 "csm_email": csm_email,
+                "accounts_analyzed": 0,
             }
 
         # Build context
