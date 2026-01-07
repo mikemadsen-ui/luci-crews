@@ -31,21 +31,30 @@ class CSMCoachingCrew:
         if not accounts_data:
             return "No account data available for analysis."
 
+        def to_number(val, default=0):
+            """Safely convert a value to a number."""
+            if val is None:
+                return default
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return default
+
         # Portfolio metrics
         total_accounts = len(accounts_data)
-        total_arr = sum(a.get("arr", 0) or 0 for a in accounts_data)
+        total_arr = sum(to_number(a.get("arr")) for a in accounts_data)
         avg_health = (
-            sum(a.get("health_score", 0) or 0 for a in accounts_data) / total_accounts
+            sum(to_number(a.get("health_score")) for a in accounts_data) / total_accounts
             if total_accounts
             else 0
         )
 
         # Health distribution
-        healthy = [a for a in accounts_data if (a.get("health_score") or 0) >= 70]
+        healthy = [a for a in accounts_data if to_number(a.get("health_score")) >= 70]
         at_risk = [
-            a for a in accounts_data if 40 <= (a.get("health_score") or 0) < 70
+            a for a in accounts_data if 40 <= to_number(a.get("health_score")) < 70
         ]
-        critical = [a for a in accounts_data if (a.get("health_score") or 0) < 40]
+        critical = [a for a in accounts_data if to_number(a.get("health_score")) < 40]
 
         # Upcoming renewals (next 90 days)
         now = datetime.now()
@@ -73,25 +82,25 @@ Critical (<40): {len(critical)} accounts
 {len(upcoming_renewals)} renewals upcoming
 """
         for a in sorted(upcoming_renewals, key=lambda x: x.get("renewal_date", ""))[:5]:
-            arr = a.get("arr", 0) or 0
-            health = a.get("health_score", 0) or 0
-            context += f"  {a.get('name', 'Unknown')}: ${arr:,.0f} ARR, Health: {health}\n"
+            arr = to_number(a.get("arr"))
+            health = to_number(a.get("health_score"))
+            context += f"  {a.get('name', 'Unknown')}: ${arr:,.0f} ARR, Health: {health:.0f}\n"
 
         # Add engagement data if available
         if engagement_data:
             context += "\n=== ACCOUNT ENGAGEMENT ANALYSIS ===\n"
 
             # Calculate engagement metrics
-            low_touch = [e for e in engagement_data if e.get("meeting_count", 0) == 0]
+            low_touch = [e for e in engagement_data if to_number(e.get("meeting_count")) == 0]
             high_case_accounts = [
-                e for e in engagement_data if e.get("high_priority_cases", 0) > 0
+                e for e in engagement_data if to_number(e.get("high_priority_cases")) > 0
             ]
             expansion_success = [
-                e for e in engagement_data if e.get("expansion_won", 0) > 0
+                e for e in engagement_data if to_number(e.get("expansion_won")) > 0
             ]
 
             total_expansion_value = sum(
-                e.get("expansion_value", 0) or 0 for e in engagement_data
+                to_number(e.get("expansion_value")) for e in engagement_data
             )
 
             context += f"""
@@ -104,13 +113,13 @@ Total Expansion Revenue: ${total_expansion_value:,.0f}
 """
             # Show engagement for key accounts
             for e in sorted(
-                engagement_data, key=lambda x: x.get("arr", 0) or 0, reverse=True
+                engagement_data, key=lambda x: to_number(x.get("arr")), reverse=True
             )[:10]:
                 context += f"\n{e.get('account_name', 'Unknown')} (Tier: {e.get('account_tier', 'Unknown')})\n"
-                context += f"  ARR: ${e.get('arr', 0) or 0:,.0f} | Health: {e.get('health_score', 0) or 0} | NPS: {e.get('nps_score', 'N/A')}\n"
-                context += f"  Meetings: {e.get('meeting_count', 0)} | Last Meeting: {e.get('last_meeting_date', 'Never')}\n"
-                context += f"  Open Cases: {e.get('open_cases', 0)} | High Priority: {e.get('high_priority_cases', 0)}\n"
-                context += f"  Expansion Opps: {e.get('expansion_opportunities', 0)} | Won: ${e.get('expansion_value', 0) or 0:,.0f}\n"
+                context += f"  ARR: ${to_number(e.get('arr')):,.0f} | Health: {to_number(e.get('health_score')):.0f} | NPS: {e.get('nps_score', 'N/A')}\n"
+                context += f"  Meetings: {to_number(e.get('meeting_count')):.0f} | Last Meeting: {e.get('last_meeting_date', 'Never')}\n"
+                context += f"  Open Cases: {to_number(e.get('open_cases')):.0f} | High Priority: {to_number(e.get('high_priority_cases')):.0f}\n"
+                context += f"  Expansion Opps: {to_number(e.get('expansion_opportunities')):.0f} | Won: ${to_number(e.get('expansion_value')):,.0f}\n"
 
         # Add transcript samples if available
         if transcription_samples:
