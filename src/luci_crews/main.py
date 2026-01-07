@@ -88,8 +88,14 @@ class SalesPipelineRequest(BaseModel):
 
 
 class AccountHealthRequest(BaseModel):
-    account_id: str
-    account_name: str
+    """Request model for account health analysis."""
+    accountId: Optional[str] = None
+    salesforceAccountId: Optional[str] = None
+    userId: Optional[str] = None
+    userEmail: Optional[str] = None
+    # Legacy fields for backwards compatibility
+    account_id: Optional[str] = None
+    account_name: Optional[str] = None
     account_tier: Optional[str] = None
     arr: Optional[float] = None
     activity_data: Optional[str] = None
@@ -386,13 +392,48 @@ async def run_account_health_crew(request: AccountHealthRequest):
     start_time = datetime.utcnow()
 
     try:
-        logger.info(f"Running account health crew for: {request.account_name}")
+        # Get account details - either from request or fetch from Supabase
+        account_name = request.account_name
+        account_tier = request.account_tier
+        arr = request.arr
+
+        # If we have accountId or salesforceAccountId but no account_name, fetch from Supabase
+        if not account_name and (request.accountId or request.salesforceAccountId):
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+
+            if supabase_url and supabase_key:
+                from supabase import create_client
+                supabase = create_client(supabase_url, supabase_key)
+
+                # Try to fetch account by ID or salesforce ID
+                query = supabase.table("accounts").select("name, account_tier, arr")
+                if request.accountId:
+                    query = query.eq("id", request.accountId)
+                elif request.salesforceAccountId:
+                    query = query.eq("salesforce_id", request.salesforceAccountId)
+
+                result = query.limit(1).execute()
+                if result.data and len(result.data) > 0:
+                    account_data = result.data[0]
+                    account_name = account_data.get("name")
+                    account_tier = account_tier or account_data.get("account_tier")
+                    arr = arr or account_data.get("arr")
+                    logger.info(f"Fetched account from Supabase: {account_name}")
+
+        if not account_name:
+            return CrewResponse(
+                success=False,
+                error="Account name is required. Please provide account_name or a valid accountId/salesforceAccountId.",
+            )
+
+        logger.info(f"Running account health crew for: {account_name}")
 
         crew = AccountHealthCrew()
         result = crew.run(
-            account_name=request.account_name,
-            account_tier=request.account_tier,
-            arr=request.arr,
+            account_name=account_name,
+            account_tier=account_tier,
+            arr=arr,
             activity_data=request.activity_data,
             support_data=request.support_data,
             engagement_data=request.engagement_data,
