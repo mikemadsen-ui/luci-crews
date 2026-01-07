@@ -407,7 +407,7 @@ async def run_account_health_crew(request: AccountHealthRequest):
                 supabase = create_client(supabase_url, supabase_key)
 
                 # Try to fetch account by ID or salesforce ID
-                query = supabase.table("accounts").select("name, account_tier, arr")
+                query = supabase.table("accounts").select("name, account_tier, contract_value")
                 if request.accountId:
                     query = query.eq("id", request.accountId)
                 elif request.salesforceAccountId:
@@ -418,7 +418,7 @@ async def run_account_health_crew(request: AccountHealthRequest):
                     account_data = result.data[0]
                     account_name = account_data.get("name")
                     account_tier = account_tier or account_data.get("account_tier")
-                    arr = arr or account_data.get("arr")
+                    arr = arr or account_data.get("contract_value")
                     logger.info(f"Fetched account from Supabase: {account_name}")
 
         if not account_name:
