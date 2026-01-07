@@ -136,11 +136,14 @@ class ImplementationRequest(BaseModel):
 
 
 class SentimentRequest(BaseModel):
-    account_id: str
-    account_name: str
-    communications_data: Optional[str] = None
-    support_data: Optional[str] = None
-    meeting_notes: Optional[str] = None
+    """Request model for account sentiment analysis."""
+    userId: Optional[str] = None
+    accountId: Optional[str] = None
+    salesforceAccountId: Optional[str] = None
+    userEmail: Optional[str] = None
+    transcription: Optional[str] = None
+    salesforceContext: Optional[Dict[str, Any]] = None
+    customerIdentifier: Optional[str] = None
 
 
 class ProjectSentimentRequest(BaseModel):
@@ -466,14 +469,33 @@ async def run_sentiment_crew(request: SentimentRequest):
     start_time = datetime.utcnow()
 
     try:
-        logger.info(f"Running sentiment crew for: {request.account_name}")
+        # Extract account name from salesforceContext or customerIdentifier
+        account_name = request.customerIdentifier
+        if request.salesforceContext and request.salesforceContext.get("account_name"):
+            account_name = request.salesforceContext.get("account_name")
+
+        logger.info(f"Running sentiment crew for: {account_name}")
+
+        # Build support data summary from salesforceContext
+        support_data = None
+        if request.salesforceContext:
+            ctx = request.salesforceContext
+            recent_tickets = ctx.get("recent_tickets", [])
+            support_parts = []
+            if ctx.get("total_cases_count"):
+                support_parts.append(f"Total support cases: {ctx.get('total_cases_count')}")
+            if recent_tickets:
+                support_parts.append(f"Recent tickets ({len(recent_tickets)}):")
+                for ticket in recent_tickets[:10]:
+                    support_parts.append(f"  - {ticket.get('subject', 'No subject')} [{ticket.get('status', 'Unknown')}] Priority: {ticket.get('priority', 'Unknown')}")
+            support_data = "\n".join(support_parts) if support_parts else None
 
         crew = SentimentCrew()
         result = crew.run(
-            account_name=request.account_name,
-            communications_data=request.communications_data,
-            support_data=request.support_data,
-            meeting_notes=request.meeting_notes,
+            account_name=account_name or "Unknown Account",
+            communications_data=request.transcription,  # Use transcription as communications data
+            support_data=support_data,
+            meeting_notes=None,  # No separate meeting notes - transcription contains this
         )
 
         execution_time = (datetime.utcnow() - start_time).total_seconds()
