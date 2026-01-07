@@ -778,7 +778,9 @@ async def run_support_coaching_crew(request: Request):
                     execution_time = (datetime.utcnow() - start_time).total_seconds()
                     logger.info(f"Support coaching crew completed in {execution_time:.2f}s")
 
-                    yield f"data: {json.dumps({'type': 'result', 'result': result})}\n\n"
+                    # Extract the analysis part for the frontend - it expects the analysis object directly
+                    analysis_result = result.get("analysis") if isinstance(result, dict) else result
+                    yield f"data: {json.dumps({'type': 'result', 'result': analysis_result})}\n\n"
 
                 except Exception as e:
                     logger.error(f"Support coaching crew failed: {str(e)}")
