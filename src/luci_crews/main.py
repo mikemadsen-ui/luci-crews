@@ -249,6 +249,7 @@ class CSMCoachingRequest(BaseModel):
     accountEngagementData: Optional[List[Dict[str, Any]]] = None
     transcriptionSamples: Optional[List[Dict[str, Any]]] = None
     daysBack: Optional[int] = 180
+    calendarConnected: Optional[bool] = False
 
 
 class SCCoachingRequest(BaseModel):
@@ -1032,6 +1033,7 @@ async def run_csm_coaching_crew(request: Request):
                         engagement_data=req.accountEngagementData,
                         transcription_samples=req.transcriptionSamples,
                         days_back=req.daysBack or 180,
+                        calendar_connected=req.calendarConnected or False,
                         step_callback=step_callback,
                     )
 
@@ -1063,6 +1065,7 @@ async def run_csm_coaching_crew(request: Request):
                 engagement_data=req.accountEngagementData,
                 transcription_samples=req.transcriptionSamples,
                 days_back=req.daysBack or 180,
+                calendar_connected=req.calendarConnected or False,
             )
 
             execution_time = (datetime.utcnow() - start_time).total_seconds()

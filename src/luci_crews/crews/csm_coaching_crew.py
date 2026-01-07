@@ -26,6 +26,7 @@ class CSMCoachingCrew:
         accounts_data: List[Dict[str, Any]],
         engagement_data: List[Dict[str, Any]] = None,
         transcription_samples: List[Dict[str, Any]] = None,
+        calendar_connected: bool = False,
     ) -> str:
         """Build context string from CSM account data."""
         if not accounts_data:
@@ -90,6 +91,17 @@ Critical (<40): {len(critical)} accounts
         if engagement_data:
             context += "\n=== ACCOUNT ENGAGEMENT ANALYSIS ===\n"
 
+            # Calendar connection warning
+            if not calendar_connected:
+                context += """
+⚠️ CALENDAR NOT CONNECTED
+The CSM has not connected their Google Calendar. Upcoming meeting data is NOT available.
+- Only PAST meetings from Avoma call recordings are included
+- Do NOT flag "no upcoming calls" as a risk - we simply don't have visibility
+- Recommend connecting Google Calendar as an action item for better engagement tracking
+
+"""
+
             # Calculate engagement metrics
             low_touch = [e for e in engagement_data if to_number(e.get("meeting_count")) == 0]
             high_case_accounts = [
@@ -98,26 +110,41 @@ Critical (<40): {len(critical)} accounts
             expansion_success = [
                 e for e in engagement_data if to_number(e.get("expansion_won")) > 0
             ]
+            accounts_with_upcoming = [e for e in engagement_data if to_number(e.get("upcoming_calls_count")) > 0]
 
             total_expansion_value = sum(
                 to_number(e.get("expansion_value")) for e in engagement_data
             )
 
             context += f"""
-Accounts with No Meetings: {len(low_touch)}
+Accounts with No Past Meetings (Avoma): {len(low_touch)}
 Accounts with High Priority Cases: {len(high_case_accounts)}
 Accounts with Expansion Wins: {len(expansion_success)}
 Total Expansion Revenue: ${total_expansion_value:,.0f}
-
-=== ENGAGEMENT DETAILS BY ACCOUNT ===
 """
+            if calendar_connected:
+                context += f"Accounts with Upcoming Calls Scheduled: {len(accounts_with_upcoming)}\n"
+
+            context += "\n=== ENGAGEMENT DETAILS BY ACCOUNT ===\n"
+
             # Show engagement for key accounts
             for e in sorted(
                 engagement_data, key=lambda x: to_number(x.get("arr")), reverse=True
             )[:10]:
                 context += f"\n{e.get('account_name', 'Unknown')} (Tier: {e.get('account_tier', 'Unknown')})\n"
                 context += f"  ARR: ${to_number(e.get('arr')):,.0f} | Health: {to_number(e.get('health_score')):.0f} | NPS: {e.get('nps_score', 'N/A')}\n"
-                context += f"  Meetings: {to_number(e.get('meeting_count')):.0f} | Last Meeting: {e.get('last_meeting_date', 'Never')}\n"
+
+                # Past meetings from Avoma
+                days_since = e.get('days_since_last_meeting')
+                days_str = f" ({days_since} days ago)" if days_since is not None else ""
+                context += f"  Past Meetings (Avoma): {to_number(e.get('meeting_count')):.0f} | Last Meeting: {e.get('last_meeting_date', 'Never')}{days_str}\n"
+
+                # Upcoming calls (only if calendar connected)
+                if calendar_connected:
+                    upcoming_count = to_number(e.get('upcoming_calls_count'))
+                    next_call = e.get('next_call_date', 'None scheduled')
+                    context += f"  Upcoming Calls: {upcoming_count:.0f} | Next Call: {next_call}\n"
+
                 context += f"  Open Cases: {to_number(e.get('open_cases')):.0f} | High Priority: {to_number(e.get('high_priority_cases')):.0f}\n"
                 context += f"  Expansion Opps: {to_number(e.get('expansion_opportunities')):.0f} | Won: ${to_number(e.get('expansion_value')):,.0f}\n"
 
@@ -142,6 +169,7 @@ Total Expansion Revenue: ${total_expansion_value:,.0f}
         engagement_data: Optional[List[Dict[str, Any]]] = None,
         transcription_samples: Optional[List[Dict[str, Any]]] = None,
         days_back: int = 180,
+        calendar_connected: bool = False,
         step_callback: Optional[callable] = None,
     ) -> Dict[str, Any]:
         """
@@ -154,6 +182,7 @@ Total Expansion Revenue: ${total_expansion_value:,.0f}
             engagement_data: Pre-fetched engagement data
             transcription_samples: Pre-fetched transcription samples
             days_back: Number of days to analyze
+            calendar_connected: Whether the CSM has connected their calendar
             step_callback: Optional callback for progress updates
 
         Returns:
@@ -171,7 +200,7 @@ Total Expansion Revenue: ${total_expansion_value:,.0f}
 
         # Build context
         csm_context = self._build_csm_context(
-            accounts_data, engagement_data, transcription_samples
+            accounts_data, engagement_data, transcription_samples, calendar_connected
         )
 
         full_context = f"""=== CSM COACHING ANALYSIS ===
