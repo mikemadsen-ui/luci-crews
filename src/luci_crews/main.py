@@ -30,6 +30,7 @@ from .crews.ae_coaching_crew import AECoachingCrew
 from .crews.csm_coaching_crew import CSMCoachingCrew
 from .crews.sc_coaching_crew import SCCoachingCrew
 from . import config_store
+from .batch_router import router as batch_router
 
 # Load environment variables
 load_dotenv()
@@ -74,6 +75,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register batch processing router for overnight sync jobs
+app.include_router(batch_router)
 
 
 # =============================================================================
