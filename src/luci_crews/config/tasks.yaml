@@ -240,19 +240,28 @@ analyze_sentiment:
     MEETING NOTES:
     {meeting_notes}
 
-    Provide:
-    1. Overall sentiment score (-100 to +100)
-    2. Sentiment trend (improving/stable/declining)
-    3. Key themes and concerns identified
-    4. Positive signals
-    5. Warning signs requiring attention
+    Analyze the sentiment and return your analysis as JSON with this exact structure:
+    {{
+      "score": <number from 1-10 where 1=very negative, 5=neutral, 10=very positive>,
+      "confidence": "<high/medium/low>",
+      "trend": "<improving/stable/declining>",
+      "summary": "<2-3 sentence executive summary of overall sentiment>",
+      "positive_signals": ["<signal 1>", "<signal 2>", ...],
+      "warning_signs": ["<warning 1>", "<warning 2>", ...],
+      "key_themes": ["<theme 1>", "<theme 2>", ...],
+      "key_quotes": [
+        {{"quote": "<exact quote>", "context": "<why this matters>"}},
+        ...
+      ],
+      "recommended_actions": ["<action 1>", "<action 2>", ...],
+      "talking_points": ["<point 1>", "<point 2>", ...]
+    }}
+
+    IMPORTANT: Return ONLY the JSON object, no other text.
   expected_output: >
-    A sentiment analysis including:
-    - Sentiment score with confidence level
-    - Trend analysis over time
-    - Specific quotes/examples supporting the assessment
-    - Recommended talking points for next interaction
-    - Suggested actions to improve sentiment
+    A JSON object containing sentiment analysis with score, confidence, trend,
+    summary, positive_signals, warning_signs, key_themes, key_quotes,
+    recommended_actions, and talking_points.
   agent: sentiment_analyst
 
 # =============================================================================

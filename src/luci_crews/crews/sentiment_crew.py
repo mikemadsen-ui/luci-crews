@@ -5,10 +5,15 @@ Analyzes customer sentiment from communications and interactions.
 """
 
 import os
+import json
+import re
 import yaml
-from typing import Optional
+import logging
+from typing import Optional, Dict, Any
 from crewai import Agent, Task, Crew, Process
 from crewai import LLM
+
+logger = logging.getLogger(__name__)
 
 
 class SentimentCrew:
@@ -67,13 +72,31 @@ class SentimentCrew:
             agent=self.analyst,
         )
 
+    def _parse_json_result(self, result_text: str) -> Dict[str, Any]:
+        """Parse JSON from the crew result, handling various formats."""
+        # Try to find JSON in the result
+        json_match = re.search(r'\{[\s\S]*\}', result_text)
+        if json_match:
+            try:
+                parsed = json.loads(json_match.group())
+                return parsed
+            except json.JSONDecodeError:
+                logger.warning("Found JSON-like content but failed to parse")
+
+        # If no JSON found, return raw text in a structured format
+        return {
+            "score": None,
+            "summary": None,
+            "comprehensiveAnalysis": result_text,
+        }
+
     def run(
         self,
         account_name: str,
         communications_data: Optional[str] = None,
         support_data: Optional[str] = None,
         meeting_notes: Optional[str] = None,
-    ) -> str:
+    ) -> Dict[str, Any]:
         """Run the sentiment crew and return the analysis."""
         self._create_agents()
         self._create_tasks(
@@ -89,4 +112,22 @@ class SentimentCrew:
         )
 
         result = crew.kickoff()
-        return str(result)
+        result_text = str(result)
+
+        # Parse the JSON result
+        parsed_result = self._parse_json_result(result_text)
+
+        # Map to frontend expected format
+        return {
+            "score": parsed_result.get("score"),
+            "confidence": parsed_result.get("confidence"),
+            "trend": parsed_result.get("trend"),
+            "summary": parsed_result.get("summary"),
+            "positive_signals": parsed_result.get("positive_signals", []),
+            "warning_signs": parsed_result.get("warning_signs", []),
+            "key_themes": parsed_result.get("key_themes", []),
+            "key_quotes": parsed_result.get("key_quotes", []),
+            "recommended_actions": parsed_result.get("recommended_actions", []),
+            "talking_points": parsed_result.get("talking_points", []),
+            "comprehensiveAnalysis": parsed_result.get("comprehensiveAnalysis"),
+        }
