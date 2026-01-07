@@ -221,7 +221,7 @@ class CaseDataModel(BaseModel):
 class SupportCoachingRequest(BaseModel):
     agentName: str
     agentEmail: str
-    ownerId: str
+    ownerId: Optional[str] = None  # Optional - needed to fetch cases from DB, but not if casesData provided
     casesData: Optional[List[CaseDataModel]] = None
     daysBack: Optional[int] = 90
 

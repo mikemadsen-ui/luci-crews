@@ -162,15 +162,21 @@ Case #{case.get('case_number', 'N/A')}
         Returns:
             Coaching analysis results
         """
-        # Fetch cases if not provided
-        if cases_data is None:
+        # Fetch cases if not provided and owner_id is available
+        if cases_data is None and owner_id:
             cases_data = self._fetch_agent_cases(owner_id, days_back)
+        elif cases_data is None:
+            cases_data = []
 
         # Format cases for the prompt
         formatted_cases = self._format_cases_data(cases_data)
 
-        # Get team benchmarks
-        benchmarks = self._calculate_team_benchmarks(owner_id)
+        # Get team benchmarks (only if owner_id provided)
+        benchmarks = self._calculate_team_benchmarks(owner_id) if owner_id else {
+            "team_avg_cases": "N/A",
+            "team_avg_resolution_time": "N/A",
+            "team_avg_csat": "N/A"
+        }
 
         # Send progress update if callback provided
         if step_callback:
