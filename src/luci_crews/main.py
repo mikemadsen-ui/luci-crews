@@ -257,6 +257,7 @@ class CSMCoachingRequest(BaseModel):
     accountsData: Optional[List[Dict[str, Any]]] = None
     accountEngagementData: Optional[List[Dict[str, Any]]] = None
     transcriptionSamples: Optional[List[Dict[str, Any]]] = None
+    semanticInsights: Optional[Dict[str, List[Dict[str, Any]]]] = None  # NEW: Structured signals from vector search
     daysBack: Optional[int] = 180
     calendarConnected: Optional[bool] = False
 
@@ -1097,6 +1098,7 @@ async def run_csm_coaching_crew(request: Request):
                         accounts_data=req.accountsData,
                         engagement_data=req.accountEngagementData,
                         transcription_samples=req.transcriptionSamples,
+                        semantic_insights=req.semanticInsights,  # NEW: Structured signals from vector search
                         days_back=req.daysBack or 180,
                         calendar_connected=req.calendarConnected or False,
                         step_callback=step_callback,
@@ -1129,6 +1131,7 @@ async def run_csm_coaching_crew(request: Request):
                 accounts_data=req.accountsData,
                 engagement_data=req.accountEngagementData,
                 transcription_samples=req.transcriptionSamples,
+                semantic_insights=req.semanticInsights,  # NEW: Structured signals from vector search
                 days_back=req.daysBack or 180,
                 calendar_connected=req.calendarConnected or False,
             )

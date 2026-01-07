@@ -161,6 +161,55 @@ Total Expansion Revenue: ${total_expansion_value:,.0f}
 
         return context
 
+    def _format_semantic_insights(self, semantic_insights: Dict[str, List[Dict[str, Any]]]) -> str:
+        """Format semantic insights from vector search into coaching context."""
+        if not semantic_insights:
+            return ""
+
+        sections = []
+
+        # Map signal types to human-readable descriptions
+        signal_descriptions = {
+            "churn_signals": ("🚨 CHURN RISK SIGNALS", "Concerns, frustrations, or dissatisfaction detected in conversations"),
+            "expansion_signals": ("📈 EXPANSION OPPORTUNITIES", "Growth interest or additional use cases mentioned"),
+            "product_feedback": ("💡 PRODUCT FEEDBACK", "Feature requests and improvement suggestions"),
+            "competitive_mentions": ("⚔️ COMPETITIVE INTELLIGENCE", "Alternative solutions or vendor comparisons discussed"),
+            "success_indicators": ("✅ SUCCESS SIGNALS", "Positive outcomes and satisfaction expressed"),
+            "stakeholder_changes": ("👥 STAKEHOLDER CHANGES", "Organizational changes or key decision makers mentioned"),
+        }
+
+        for signal_type, insights in semantic_insights.items():
+            if not insights:
+                continue
+
+            title, description = signal_descriptions.get(
+                signal_type, (signal_type.upper(), "Relevant conversation snippets")
+            )
+
+            section_parts = [f"\n{title}", f"({description})"]
+
+            # Group by account
+            by_account = {}
+            for insight in insights:
+                account = insight.get("account_name", "Unknown")
+                if account not in by_account:
+                    by_account[account] = []
+                by_account[account].append(insight)
+
+            for account, account_insights in by_account.items():
+                section_parts.append(f"\n  {account}:")
+                for i, insight in enumerate(account_insights[:3], 1):  # Max 3 per account
+                    content = insight.get("content", "")[:800]  # Limit snippet size
+                    similarity = insight.get("similarity", 0)
+                    section_parts.append(f"    [{i}] (relevance: {similarity:.0%}) {content}")
+
+            sections.append("\n".join(section_parts))
+
+        if not sections:
+            return ""
+
+        return "\n\n=== SEMANTIC INSIGHTS FROM CONVERSATION ANALYSIS ===\n" + "\n".join(sections)
+
     def run(
         self,
         csm_name: str,
@@ -168,6 +217,7 @@ Total Expansion Revenue: ${total_expansion_value:,.0f}
         accounts_data: Optional[List[Dict[str, Any]]] = None,
         engagement_data: Optional[List[Dict[str, Any]]] = None,
         transcription_samples: Optional[List[Dict[str, Any]]] = None,
+        semantic_insights: Optional[Dict[str, List[Dict[str, Any]]]] = None,  # NEW
         days_back: int = 180,
         calendar_connected: bool = False,
         step_callback: Optional[callable] = None,
@@ -181,6 +231,7 @@ Total Expansion Revenue: ${total_expansion_value:,.0f}
             accounts_data: Pre-fetched account data
             engagement_data: Pre-fetched engagement data
             transcription_samples: Pre-fetched transcription samples
+            semantic_insights: Structured signals from vector search (churn, expansion, etc.)
             days_back: Number of days to analyze
             calendar_connected: Whether the CSM has connected their calendar
             step_callback: Optional callback for progress updates
@@ -203,12 +254,23 @@ Total Expansion Revenue: ${total_expansion_value:,.0f}
             accounts_data, engagement_data, transcription_samples, calendar_connected
         )
 
+        # Add semantic insights if available
+        semantic_context = self._format_semantic_insights(semantic_insights) if semantic_insights else ""
+
+        # Log what we received
+        if semantic_insights:
+            total_insights = sum(len(v) for v in semantic_insights.values())
+            print(f"[CSM Coaching] Received {total_insights} semantic insights across {len([k for k, v in semantic_insights.items() if v])} categories")
+        else:
+            print("[CSM Coaching] No semantic insights provided, using transcription samples if available")
+
         full_context = f"""=== CSM COACHING ANALYSIS ===
 Customer Success Manager: {csm_name}
 Email: {csm_email}
 Analysis Period: Last {days_back} days
 
 {csm_context}
+{semantic_context}
 """
 
         if step_callback:
