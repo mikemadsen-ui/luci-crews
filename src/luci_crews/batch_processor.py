@@ -142,37 +142,97 @@ class OvernightBatchProcessor:
         else:
             logger.warning("No active Avoma configuration found")
 
-    async def fetch_all_accounts(self) -> List[Dict[str, Any]]:
+    async def fetch_accounts_needing_embeddings(self) -> List[Dict[str, Any]]:
         """
-        Fetch all accounts from the database.
+        Fetch accounts that have recent transcriptions but are missing embeddings.
+
+        Only returns accounts where:
+        1. Transcriptions exist from the last 90 days
+        2. Those transcriptions don't have embeddings yet
 
         Returns:
             List of account dictionaries with id, salesforce_id, and name
         """
         self._ensure_supabase()
 
-        # Fetch accounts in batches to avoid memory issues
-        all_accounts = []
-        page_size = 1000
-        offset = 0
+        # Get accounts with transcriptions in the last 90 days
+        ninety_days_ago = (datetime.utcnow() - timedelta(days=90)).isoformat()
 
-        while True:
-            result = self.supabase.table("accounts").select(
+        # Step 1: Get salesforce_account_ids with recent transcriptions
+        transcription_result = self.supabase.table("transcriptions").select(
+            "salesforce_account_id, avoma_meeting_uuid"
+        ).gte("meeting_date", ninety_days_ago).execute()
+
+        if not transcription_result.data:
+            logger.info("No recent transcriptions found")
+            return []
+
+        # Build a map of salesforce_account_id -> list of meeting_uuids
+        account_transcripts = {}
+        for t in transcription_result.data:
+            sf_id = t.get("salesforce_account_id")
+            meeting_uuid = t.get("avoma_meeting_uuid")
+            if sf_id and meeting_uuid:
+                if sf_id not in account_transcripts:
+                    account_transcripts[sf_id] = []
+                account_transcripts[sf_id].append(meeting_uuid)
+
+        if not account_transcripts:
+            logger.info("No accounts with recent transcriptions")
+            return []
+
+        logger.info(f"Found {len(account_transcripts)} accounts with recent transcriptions")
+
+        # Step 2: Get existing embeddings for these accounts
+        sf_account_ids = list(account_transcripts.keys())
+
+        # Query in batches to avoid URL length limits
+        existing_embeddings = set()
+        batch_size = 50
+        for i in range(0, len(sf_account_ids), batch_size):
+            batch_ids = sf_account_ids[i:i + batch_size]
+            embed_result = self.supabase.table("account_embeddings").select(
+                "salesforce_account_id, source_id"
+            ).in_("salesforce_account_id", batch_ids).eq(
+                "data_type", "transcription"
+            ).execute()
+
+            for e in (embed_result.data or []):
+                # Track which transcriptions already have embeddings
+                key = f"{e.get('salesforce_account_id')}:{e.get('source_id')}"
+                existing_embeddings.add(key)
+
+        # Step 3: Find accounts with transcriptions missing embeddings
+        accounts_needing_work = []
+        for sf_id, meeting_uuids in account_transcripts.items():
+            has_missing = False
+            for uuid in meeting_uuids:
+                key = f"{sf_id}:{uuid}"
+                if key not in existing_embeddings:
+                    has_missing = True
+                    break
+
+            if has_missing:
+                accounts_needing_work.append(sf_id)
+
+        if not accounts_needing_work:
+            logger.info("All recent transcriptions already have embeddings")
+            return []
+
+        logger.info(f"Found {len(accounts_needing_work)} accounts needing embeddings")
+
+        # Step 4: Get full account details for accounts needing work
+        accounts = []
+        for i in range(0, len(accounts_needing_work), batch_size):
+            batch_ids = accounts_needing_work[i:i + batch_size]
+            account_result = self.supabase.table("accounts").select(
                 "id, salesforce_id, name"
-            ).range(offset, offset + page_size - 1).execute()
+            ).in_("salesforce_id", batch_ids).execute()
 
-            if not result.data:
-                break
+            accounts.extend(account_result.data or [])
 
-            all_accounts.extend(result.data)
-
-            if len(result.data) < page_size:
-                break
-
-            offset += page_size
-
-        logger.info(f"Fetched {len(all_accounts)} accounts for batch processing")
-        return all_accounts
+        logger.info(f"Returning {len(accounts)} accounts for batch processing")
+        return accounts
 
     async def init_batch_record(self, batch_id: str, accounts_total: int, triggered_by: str):
         """

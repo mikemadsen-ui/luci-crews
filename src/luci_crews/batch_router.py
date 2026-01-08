@@ -252,9 +252,17 @@ async def run_batch_processing(
     processor = OvernightBatchProcessor()
 
     try:
-        # Fetch all accounts from Supabase
-        accounts = await processor.fetch_all_accounts()
+        # Fetch only accounts with recent transcriptions missing embeddings
+        accounts = await processor.fetch_accounts_needing_embeddings()
         status["accountsTotal"] = len(accounts)
+
+        if len(accounts) == 0:
+            logger.info(f"Batch {batch_id}: No accounts need processing")
+            status["status"] = "completed"
+            status["completedAt"] = datetime.utcnow().isoformat()
+            await processor.init_batch_record(batch_id, 0, triggered_by)
+            await processor.complete_batch(batch_id, "completed", [])
+            return
 
         # Initialize database record
         await processor.init_batch_record(batch_id, len(accounts), triggered_by)
