@@ -2,9 +2,8 @@
 Batch Processor for Overnight Sync Jobs
 
 Handles the actual processing logic for pre-syncing:
-1. Accounts from user relationships
-2. Avoma transcriptions for those accounts
-3. Embeddings (vectorization) for new transcriptions
+1. Avoma transcriptions for all accounts
+2. Embeddings (vectorization) for new transcriptions
 """
 
 import os
@@ -105,10 +104,10 @@ async def generate_openai_embedding(text: str, api_key: str) -> List[float]:
 
 class OvernightBatchProcessor:
     """
-    Processes overnight batch sync jobs for CSM users.
+    Processes overnight batch sync jobs for all accounts.
 
     Handles:
-    - Fetching user accounts
+    - Fetching all accounts
     - Syncing Avoma transcriptions
     - Generating embeddings for new content
     """
@@ -143,13 +142,45 @@ class OvernightBatchProcessor:
         else:
             logger.warning("No active Avoma configuration found")
 
-    async def init_batch_record(self, batch_id: str, users_total: int, triggered_by: str):
+    async def fetch_all_accounts(self) -> List[Dict[str, Any]]:
+        """
+        Fetch all accounts from the database.
+
+        Returns:
+            List of account dictionaries with id, salesforce_id, and name
+        """
+        self._ensure_supabase()
+
+        # Fetch accounts in batches to avoid memory issues
+        all_accounts = []
+        page_size = 1000
+        offset = 0
+
+        while True:
+            result = self.supabase.table("accounts").select(
+                "id, salesforce_id, name"
+            ).range(offset, offset + page_size - 1).execute()
+
+            if not result.data:
+                break
+
+            all_accounts.extend(result.data)
+
+            if len(result.data) < page_size:
+                break
+
+            offset += page_size
+
+        logger.info(f"Fetched {len(all_accounts)} accounts for batch processing")
+        return all_accounts
+
+    async def init_batch_record(self, batch_id: str, accounts_total: int, triggered_by: str):
         """
         Initialize a batch processing record in the database.
 
         Args:
             batch_id: Unique batch identifier
-            users_total: Total number of users to process
+            accounts_total: Total number of accounts to process
             triggered_by: 'cron' or 'manual'
         """
         self._ensure_supabase()
@@ -159,7 +190,7 @@ class OvernightBatchProcessor:
                 "batch_id": batch_id,
                 "batch_type": "overnight_sync",
                 "status": "running",
-                "users_total": users_total,
+                "users_total": accounts_total,  # Reusing field for accounts
                 "triggered_by": triggered_by,
                 "started_at": datetime.utcnow().isoformat(),
             }).execute()
@@ -170,8 +201,8 @@ class OvernightBatchProcessor:
     async def update_batch_progress(
         self,
         batch_id: str,
-        users_processed: int,
-        accounts_synced: int,
+        accounts_processed: int,
+        accounts_total: int,
         transcriptions_synced: int,
         embeddings_generated: int,
         embeddings_skipped: int,
@@ -181,8 +212,9 @@ class OvernightBatchProcessor:
 
         try:
             self.supabase.table("batch_processing_runs").update({
-                "users_processed": users_processed,
-                "accounts_synced": accounts_synced,
+                "users_processed": accounts_processed,  # Reusing field
+                "users_total": accounts_total,  # Reusing field
+                "accounts_synced": accounts_processed,
                 "transcriptions_synced": transcriptions_synced,
                 "embeddings_generated": embeddings_generated,
                 "embeddings_skipped": embeddings_skipped,
@@ -204,97 +236,12 @@ class OvernightBatchProcessor:
         except Exception as e:
             logger.error(f"Error completing batch: {e}")
 
-    async def process_user(
-        self,
-        user_id: str,
-        user_email: str,
-        salesforce_user_id: Optional[str],
-        batch_id: str,
-    ) -> Dict[str, int]:
-        """
-        Process a single user's accounts, transcriptions, and embeddings.
-
-        Args:
-            user_id: The user's UUID
-            user_email: The user's email
-            salesforce_user_id: The user's Salesforce ID (optional)
-            batch_id: The batch ID for logging
-
-        Returns:
-            Dict with counts: accounts, transcriptions, embeddings, skipped
-        """
-        result = {"accounts": 0, "transcriptions": 0, "embeddings": 0, "skipped": 0}
-
-        self._ensure_supabase()
-        await self._load_avoma_config()
-
-        logger.info(f"Processing user {user_email} (SF ID: {salesforce_user_id})")
-
-        # 1. Get user's accounts
-        accounts = await self._get_user_accounts(user_id, salesforce_user_id)
-        result["accounts"] = len(accounts)
-
-        if not accounts:
-            logger.info(f"No accounts found for user {user_email}")
-            # Update user's last_batch_sync_at
-            await self._update_user_last_sync(user_id)
-            return result
-
-        # 2. Process each account
-        for account in accounts[:50]:  # Limit to 50 accounts per user per night
-            try:
-                account_result = await self._process_account(
-                    account_id=account.get("id"),
-                    salesforce_account_id=account.get("salesforce_id"),
-                    account_name=account.get("name"),
-                )
-
-                result["transcriptions"] += account_result.get("transcriptions", 0)
-                result["embeddings"] += account_result.get("embeddings", 0)
-                result["skipped"] += account_result.get("skipped", 0)
-
-                # Rate limiting delay between accounts
-                await asyncio.sleep(0.1)
-
-            except Exception as e:
-                logger.error(f"Error processing account {account.get('name')}: {e}")
-
-        # Update user's last_batch_sync_at
-        await self._update_user_last_sync(user_id)
-
-        return result
-
-    async def _get_user_accounts(
-        self,
-        user_id: str,
-        salesforce_user_id: Optional[str],
-    ) -> List[Dict[str, Any]]:
-        """Get accounts associated with a user."""
-        self._ensure_supabase()
-
-        # Get accounts through user_accounts relationship
-        result = self.supabase.table("user_accounts").select(
-            "account_id, accounts(id, salesforce_id, name)"
-        ).eq("user_id", user_id).execute()
-
-        accounts = []
-        for ua in (result.data or []):
-            acc = ua.get("accounts")
-            if acc:
-                accounts.append({
-                    "id": acc.get("id"),
-                    "salesforce_id": acc.get("salesforce_id"),
-                    "name": acc.get("name"),
-                })
-
-        logger.info(f"Found {len(accounts)} accounts for user {user_id}")
-        return accounts
-
-    async def _process_account(
+    async def process_account(
         self,
         account_id: str,
         salesforce_account_id: str,
         account_name: str,
+        batch_id: str,
     ) -> Dict[str, int]:
         """
         Process a single account: sync transcriptions and generate embeddings.
@@ -303,11 +250,17 @@ class OvernightBatchProcessor:
             account_id: The account's UUID
             salesforce_account_id: The account's Salesforce ID
             account_name: The account name (for logging)
+            batch_id: The batch ID for logging
 
         Returns:
             Dict with counts: transcriptions, embeddings, skipped
         """
         result = {"transcriptions": 0, "embeddings": 0, "skipped": 0}
+
+        self._ensure_supabase()
+        await self._load_avoma_config()
+
+        logger.info(f"Processing account: {account_name} (SF ID: {salesforce_account_id})")
 
         # 1. Sync Avoma transcriptions for this account
         if self.avoma_api_key and salesforce_account_id:
@@ -323,6 +276,9 @@ class OvernightBatchProcessor:
             )
             result["embeddings"] = embed_result.get("generated", 0)
             result["skipped"] = embed_result.get("skipped", 0)
+
+        # Rate limiting delay between accounts
+        await asyncio.sleep(0.1)
 
         return result
 
@@ -543,14 +499,3 @@ class OvernightBatchProcessor:
                     logger.error(f"Error generating embedding for chunk: {e}")
 
         return result
-
-    async def _update_user_last_sync(self, user_id: str):
-        """Update the user's last_batch_sync_at timestamp."""
-        self._ensure_supabase()
-
-        try:
-            self.supabase.table("users").update({
-                "last_batch_sync_at": datetime.utcnow().isoformat()
-            }).eq("id", user_id).execute()
-        except Exception as e:
-            logger.error(f"Error updating user last_batch_sync_at: {e}")

@@ -2,16 +2,15 @@
 Batch Processing Router for Overnight Sync Jobs
 
 Provides FastAPI endpoints for triggering and monitoring overnight batch processing
-that pre-syncs accounts, Avoma transcriptions, and embeddings for active CSM users.
+that pre-syncs Avoma transcriptions and embeddings for all accounts.
 """
 
 import os
-import json
 import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Header, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -25,18 +24,11 @@ router = APIRouter(prefix="/api/batch", tags=["batch"])
 batch_statuses: Dict[str, Dict[str, Any]] = {}
 
 
-class UserDetail(BaseModel):
-    """Details about a user to process in the batch."""
-    id: str
-    email: str
-    salesforceUserId: Optional[str] = None
-
-
 class OvernightSyncRequest(BaseModel):
     """Request model for overnight sync batch processing."""
     batchId: str
-    activeUserIds: List[str]
-    userDetails: List[UserDetail]
+    batchSize: int = 10  # Process accounts in batches of 10
+    totalAccounts: int
     triggeredBy: str = "cron"  # 'cron' or 'manual'
 
 
@@ -44,9 +36,8 @@ class BatchStatusResponse(BaseModel):
     """Response model for batch status queries."""
     batchId: str
     status: str
-    usersTotal: int
-    usersProcessed: int
-    accountsSynced: int
+    accountsTotal: int
+    accountsProcessed: int
     transcriptionsSynced: int
     embeddingsGenerated: int
     embeddingsSkipped: int
@@ -71,13 +62,14 @@ async def overnight_sync(
     x_internal_cron_secret: Optional[str] = Header(None),
 ):
     """
-    Trigger overnight batch processing for active CSM users.
+    Trigger overnight batch processing for all accounts.
 
+    Processes accounts in batches of 10 to avoid overwhelming APIs.
     This endpoint returns immediately after accepting the request.
     Processing happens in the background.
 
     Args:
-        request: Contains batchId, list of user IDs, and user details
+        request: Contains batchId, batchSize, and totalAccounts
         background_tasks: FastAPI background tasks handler
         x_internal_cron_secret: Secret header for authentication
 
@@ -88,7 +80,7 @@ async def overnight_sync(
     if not verify_cron_secret(x_internal_cron_secret):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    logger.info(f"Received overnight sync request: batch={request.batchId}, users={len(request.userDetails)}")
+    logger.info(f"Received overnight sync request: batch={request.batchId}, accounts={request.totalAccounts}")
 
     # Check if batch is already running
     if request.batchId in batch_statuses and batch_statuses[request.batchId].get("status") == "running":
@@ -101,9 +93,8 @@ async def overnight_sync(
     # Initialize status tracking
     batch_statuses[request.batchId] = {
         "status": "running",
-        "usersTotal": len(request.userDetails),
-        "usersProcessed": 0,
-        "accountsSynced": 0,
+        "accountsTotal": request.totalAccounts,
+        "accountsProcessed": 0,
         "transcriptionsSynced": 0,
         "embeddingsGenerated": 0,
         "embeddingsSkipped": 0,
@@ -116,14 +107,15 @@ async def overnight_sync(
     background_tasks.add_task(
         run_batch_processing,
         request.batchId,
-        request.userDetails,
+        request.batchSize,
         request.triggeredBy
     )
 
     return {
         "status": "accepted",
         "batchId": request.batchId,
-        "usersQueued": len(request.userDetails),
+        "accountsTotal": request.totalAccounts,
+        "batchSize": request.batchSize,
         "message": "Batch processing started in background"
     }
 
@@ -149,9 +141,8 @@ async def get_batch_status(
         return BatchStatusResponse(
             batchId=batch_id,
             status=status.get("status", "unknown"),
-            usersTotal=status.get("usersTotal", 0),
-            usersProcessed=status.get("usersProcessed", 0),
-            accountsSynced=status.get("accountsSynced", 0),
+            accountsTotal=status.get("accountsTotal", 0),
+            accountsProcessed=status.get("accountsProcessed", 0),
             transcriptionsSynced=status.get("transcriptionsSynced", 0),
             embeddingsGenerated=status.get("embeddingsGenerated", 0),
             embeddingsSkipped=status.get("embeddingsSkipped", 0),
@@ -175,9 +166,8 @@ async def get_batch_status(
                 return BatchStatusResponse(
                     batchId=batch_id,
                     status=data.get("status", "unknown"),
-                    usersTotal=data.get("users_total", 0),
-                    usersProcessed=data.get("users_processed", 0),
-                    accountsSynced=data.get("accounts_synced", 0),
+                    accountsTotal=data.get("accounts_total", data.get("users_total", 0)),
+                    accountsProcessed=data.get("accounts_synced", 0),
                     transcriptionsSynced=data.get("transcriptions_synced", 0),
                     embeddingsGenerated=data.get("embeddings_generated", 0),
                     embeddingsSkipped=data.get("embeddings_skipped", 0),
@@ -225,8 +215,7 @@ async def get_recent_batches(
                 "batchId": data.get("batch_id"),
                 "batchType": data.get("batch_type"),
                 "status": data.get("status"),
-                "usersTotal": data.get("users_total", 0),
-                "usersProcessed": data.get("users_processed", 0),
+                "accountsTotal": data.get("accounts_total", data.get("users_total", 0)),
                 "accountsSynced": data.get("accounts_synced", 0),
                 "transcriptionsSynced": data.get("transcriptions_synced", 0),
                 "embeddingsGenerated": data.get("embeddings_generated", 0),
@@ -245,65 +234,72 @@ async def get_recent_batches(
 
 async def run_batch_processing(
     batch_id: str,
-    users: List[UserDetail],
+    batch_size: int,
     triggered_by: str
 ):
     """
     Main batch processing function that runs in the background.
 
-    Processes each user sequentially to avoid overwhelming external APIs.
+    Fetches all accounts and processes them in batches of batch_size.
     Updates progress in both in-memory status and database.
 
     Args:
         batch_id: Unique identifier for this batch run
-        users: List of users to process
+        batch_size: Number of accounts to process at a time
         triggered_by: 'cron' or 'manual'
     """
     status = batch_statuses[batch_id]
     processor = OvernightBatchProcessor()
 
     try:
+        # Fetch all accounts from Supabase
+        accounts = await processor.fetch_all_accounts()
+        status["accountsTotal"] = len(accounts)
+
         # Initialize database record
-        await processor.init_batch_record(batch_id, len(users), triggered_by)
+        await processor.init_batch_record(batch_id, len(accounts), triggered_by)
 
-        # Process each user
-        for user in users:
-            try:
-                result = await processor.process_user(
-                    user_id=user.id,
-                    user_email=user.email,
-                    salesforce_user_id=user.salesforceUserId,
-                    batch_id=batch_id,
-                )
+        # Process accounts in batches
+        for i in range(0, len(accounts), batch_size):
+            batch = accounts[i:i + batch_size]
+            logger.info(f"Processing batch {i // batch_size + 1}: accounts {i} to {i + len(batch)}")
 
-                # Update progress
-                status["usersProcessed"] += 1
-                status["accountsSynced"] += result.get("accounts", 0)
-                status["transcriptionsSynced"] += result.get("transcriptions", 0)
-                status["embeddingsGenerated"] += result.get("embeddings", 0)
-                status["embeddingsSkipped"] += result.get("skipped", 0)
+            for account in batch:
+                try:
+                    result = await processor.process_account(
+                        account_id=account.get("id"),
+                        salesforce_account_id=account.get("salesforce_id"),
+                        account_name=account.get("name"),
+                        batch_id=batch_id,
+                    )
 
-                # Update database progress
-                await processor.update_batch_progress(
-                    batch_id=batch_id,
-                    users_processed=status["usersProcessed"],
-                    accounts_synced=status["accountsSynced"],
-                    transcriptions_synced=status["transcriptionsSynced"],
-                    embeddings_generated=status["embeddingsGenerated"],
-                    embeddings_skipped=status["embeddingsSkipped"],
-                )
+                    # Update progress
+                    status["accountsProcessed"] += 1
+                    status["transcriptionsSynced"] += result.get("transcriptions", 0)
+                    status["embeddingsGenerated"] += result.get("embeddings", 0)
+                    status["embeddingsSkipped"] += result.get("skipped", 0)
 
-                logger.info(
-                    f"Processed user {user.email}: "
-                    f"{result.get('accounts', 0)} accounts, "
-                    f"{result.get('transcriptions', 0)} transcriptions, "
-                    f"{result.get('embeddings', 0)} embeddings"
-                )
+                except Exception as e:
+                    error_msg = f"Account {account.get('name', account.get('id'))}: {str(e)}"
+                    logger.error(f"Error processing account: {error_msg}")
+                    status["errors"].append(error_msg)
+                    status["accountsProcessed"] += 1
 
-            except Exception as e:
-                error_msg = f"User {user.email}: {str(e)}"
-                logger.error(f"Error processing user: {error_msg}")
-                status["errors"].append(error_msg)
+            # Update database progress after each batch
+            await processor.update_batch_progress(
+                batch_id=batch_id,
+                accounts_processed=status["accountsProcessed"],
+                accounts_total=status["accountsTotal"],
+                transcriptions_synced=status["transcriptionsSynced"],
+                embeddings_generated=status["embeddingsGenerated"],
+                embeddings_skipped=status["embeddingsSkipped"],
+            )
+
+            logger.info(
+                f"Batch progress: {status['accountsProcessed']}/{status['accountsTotal']} accounts, "
+                f"{status['transcriptionsSynced']} transcriptions, "
+                f"{status['embeddingsGenerated']} embeddings"
+            )
 
         # Mark batch as complete
         final_status = "completed" if not status["errors"] else "partial"
@@ -318,8 +314,7 @@ async def run_batch_processing(
 
         logger.info(
             f"Batch {batch_id} completed: "
-            f"{status['usersProcessed']}/{status['usersTotal']} users, "
-            f"{status['accountsSynced']} accounts, "
+            f"{status['accountsProcessed']}/{status['accountsTotal']} accounts, "
             f"{status['transcriptionsSynced']} transcriptions, "
             f"{status['embeddingsGenerated']} embeddings, "
             f"{len(status['errors'])} errors"
