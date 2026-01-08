@@ -14,17 +14,29 @@ from typing import Optional, List, Dict, Any
 from crewai import Agent, Task, Crew, Process
 from crewai import LLM
 
+from ..ai_settings_helper import create_llm_for_user, AISettings, DEFAULT_AI_SETTINGS
+
 logger = logging.getLogger(__name__)
 
 
 class ImplementationCrew:
     """Crew for analyzing implementation project health."""
 
-    def __init__(self):
-        self.llm = LLM(
-            model=os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini"),
-            api_key=os.environ.get("OPENAI_API_KEY"),
-        )
+    def __init__(self, user_id: Optional[str] = None):
+        """Initialize the crew with optional user-specific AI settings.
+
+        Args:
+            user_id: Optional user ID to fetch management-level AI settings.
+                    If not provided, uses default settings.
+        """
+        self.user_id = user_id
+        if user_id:
+            self.llm = create_llm_for_user(user_id)
+        else:
+            self.llm = LLM(
+                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
+                api_key=os.environ.get("OPENAI_API_KEY"),
+            )
         self._load_configs()
 
     def _load_configs(self):
@@ -412,8 +424,16 @@ class ImplementationCrew:
             except (ValueError, TypeError):
                 parsed_result["score"] = 5
 
+        # Get actual model info from LLM
+        model_name = getattr(self.llm, 'model', os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini"))
+        provider = "openai"
+        if "claude" in model_name.lower() or "anthropic" in model_name.lower():
+            provider = "anthropic"
+        elif "gemini" in model_name.lower():
+            provider = "google"
+
         return {
             "result": parsed_result,
-            "provider": "openai",
-            "model": os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini"),
+            "provider": provider,
+            "model": model_name,
         }

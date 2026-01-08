@@ -131,6 +131,7 @@ class ImplementationRequest(BaseModel):
     project_id: str
     project_name: str
     account_name: str
+    userId: Optional[str] = None  # For management-level AI settings
     project_status: Optional[str] = None
     start_date: Optional[str] = None
     target_go_live: Optional[str] = None
@@ -226,6 +227,7 @@ class SupportCoachingRequest(BaseModel):
     agentName: str
     agentEmail: str
     ownerId: Optional[str] = None  # Optional - needed to fetch cases from DB, but not if casesData provided
+    userId: Optional[str] = None  # For management-level AI settings
     casesData: Optional[List[CaseDataModel]] = None
     daysBack: Optional[int] = 90
 
@@ -235,6 +237,7 @@ class PMCoachingRequest(BaseModel):
     pmName: str
     pmEmail: str
     salesforceOwnerId: Optional[str] = None
+    userId: Optional[str] = None  # For management-level AI settings
     projectsData: Optional[List[Dict[str, Any]]] = None
     deliveryMetrics: Optional[Dict[str, Any]] = None
     sentimentData: Optional[List[Dict[str, Any]]] = None
@@ -248,6 +251,7 @@ class AECoachingRequest(BaseModel):
     aeName: str
     aeEmail: str
     salesforceOwnerId: Optional[str] = None
+    userId: Optional[str] = None  # For management-level AI settings
     opportunitiesData: Optional[List[Dict[str, Any]]] = None
     transcriptionSamples: Optional[List[Dict[str, Any]]] = None
     daysBack: Optional[int] = 180
@@ -258,6 +262,7 @@ class CSMCoachingRequest(BaseModel):
     csmName: str
     csmEmail: str
     salesforceOwnerId: Optional[str] = None
+    userId: Optional[str] = None  # For management-level AI settings
     accountsData: Optional[List[Dict[str, Any]]] = None
     accountEngagementData: Optional[List[Dict[str, Any]]] = None
     transcriptionSamples: Optional[List[Dict[str, Any]]] = None
@@ -271,6 +276,7 @@ class SCCoachingRequest(BaseModel):
     scName: str
     scEmail: str
     salesforceUserId: Optional[str] = None
+    userId: Optional[str] = None  # For management-level AI settings
     opportunitiesData: Optional[List[Dict[str, Any]]] = None
     demoTranscripts: Optional[List[Dict[str, Any]]] = None
     discoveryTranscripts: Optional[List[Dict[str, Any]]] = None
@@ -367,7 +373,7 @@ async def run_sales_pipeline_crew(request: SalesPipelineRequest):
     try:
         logger.info(f"Running sales pipeline crew for user: {request.user_email}")
 
-        crew = SalesPipelineCrew()
+        crew = SalesPipelineCrew(user_id=request.user_id)
         result = crew.run(
             user_email=request.user_email,
             opportunities=request.opportunities,
@@ -434,7 +440,7 @@ async def run_account_health_crew(request: AccountHealthRequest):
 
         logger.info(f"Running account health crew for: {account_name}")
 
-        crew = AccountHealthCrew()
+        crew = AccountHealthCrew(user_id=request.userId)
         result = crew.run(
             account_name=account_name,
             account_tier=account_tier,
@@ -474,7 +480,7 @@ async def run_implementation_crew(request: ImplementationRequest):
         if request.mavenlinkTasks:
             logger.info(f"Mavenlink tasks: {len(request.mavenlinkTasks)} stories/tasks")
 
-        crew = ImplementationCrew()
+        crew = ImplementationCrew(user_id=request.userId)
         result = crew.run(
             project_name=request.project_name,
             account_name=request.account_name,
@@ -536,7 +542,7 @@ async def run_sentiment_crew(request: SentimentRequest):
                     support_parts.append(f"  - {ticket.get('subject', 'No subject')} [{ticket.get('status', 'Unknown')}] Priority: {ticket.get('priority', 'Unknown')}")
             support_data = "\n".join(support_parts) if support_parts else None
 
-        crew = SentimentCrew()
+        crew = SentimentCrew(user_id=request.userId)
         result = crew.run(
             account_name=account_name or "Unknown Account",
             communications_data=request.transcription,  # Use transcription as communications data
@@ -576,7 +582,7 @@ async def run_project_sentiment_crew(request: Request):
 
         logger.info(f"Running project sentiment crew for project: {req.salesforceProjectId}")
 
-        crew = ProjectSentimentCrew()
+        crew = ProjectSentimentCrew(user_id=req.userId)
 
         if stream:
             # Streaming response
@@ -665,7 +671,7 @@ async def run_opportunity_strategy_crew(request: Request):
 
         logger.info(f"Running opportunity strategy crew for: {req.opportunityId}")
 
-        crew = OpportunityStrategyCrew()
+        crew = OpportunityStrategyCrew(user_id=req.userId)
 
         if stream:
             async def generate():
@@ -751,7 +757,7 @@ async def run_support_coaching_crew(request: Request):
 
         logger.info(f"Running support coaching crew for agent: {req.agentName} ({req.agentEmail})")
 
-        crew = SupportCoachingCrew()
+        crew = SupportCoachingCrew(user_id=req.userId)
 
         # Convert cases data to dict format if provided
         cases_data = None
@@ -863,7 +869,7 @@ async def run_pm_coaching_crew(request: Request):
             logger.info(f"First project keys: {list(req.projectsData[0].keys())}")
         logger.info(f"================================")
 
-        crew = PMCoachingCrew()
+        crew = PMCoachingCrew(user_id=req.userId)
 
         if stream:
             import asyncio
@@ -1001,7 +1007,7 @@ async def run_ae_coaching_crew(request: Request):
 
         logger.info(f"Running AE coaching crew for: {req.aeName} ({req.aeEmail})")
 
-        crew = AECoachingCrew()
+        crew = AECoachingCrew(user_id=req.userId)
 
         if stream:
             async def generate():
@@ -1084,7 +1090,7 @@ async def run_csm_coaching_crew(request: Request):
 
         logger.info(f"Running CSM coaching crew for: {req.csmName} ({req.csmEmail})")
 
-        crew = CSMCoachingCrew()
+        crew = CSMCoachingCrew(user_id=req.userId)
 
         if stream:
             async def generate():
@@ -1173,7 +1179,7 @@ async def run_sc_coaching_crew(request: Request):
 
         logger.info(f"Running SC coaching crew for: {req.scName} ({req.scEmail})")
 
-        crew = SCCoachingCrew()
+        crew = SCCoachingCrew(user_id=req.userId)
 
         if stream:
             async def generate():
@@ -1260,7 +1266,7 @@ async def run_support_resolution_crew(request: Request):
 
         logger.info(f"Running support resolution crew for case: {req.caseSubject[:50] if req.caseSubject else 'Unknown'}...")
 
-        crew = SupportResolutionCrew()
+        crew = SupportResolutionCrew(user_id=req.userId)
 
         if stream:
             async def generate():
@@ -1346,7 +1352,7 @@ async def run_sc_prep_crew(request: Request):
 
         logger.info(f"Running SC prep crew for opportunity: {req.opportunityId} (type: {req.prepType})")
 
-        crew = SCPrepCrew()
+        crew = SCPrepCrew(user_id=req.userId)
 
         if stream:
             async def generate():

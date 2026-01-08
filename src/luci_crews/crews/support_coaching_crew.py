@@ -10,16 +10,31 @@ import os
 import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
-from crewai import Agent, Task, Crew, Process
+from crewai import Agent, Task, Crew, Process, LLM
 from supabase import create_client, Client
 
 from ..config_loader import load_agents_config, load_tasks_config
+from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
 
 
 class SupportCoachingCrew:
     """Crew for analyzing support agent performance and providing coaching."""
 
-    def __init__(self):
+    def __init__(self, user_id: Optional[str] = None):
+        """Initialize the crew with optional user-specific AI settings.
+
+        Args:
+            user_id: Optional user ID to fetch management-level AI settings.
+                    If not provided, uses default settings.
+        """
+        self.user_id = user_id
+        if user_id:
+            self.llm = create_llm_for_user(user_id)
+        else:
+            self.llm = LLM(
+                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
+                api_key=os.environ.get("OPENAI_API_KEY"),
+            )
         self.agents_config = load_agents_config()
         self.tasks_config = load_tasks_config()
         self.supabase = self._get_supabase_client()
@@ -190,6 +205,7 @@ Case #{case.get('case_number', 'N/A')}
             backstory=coach_config.get("backstory", "You are an experienced support coach."),
             verbose=coach_config.get("verbose", True),
             allow_delegation=coach_config.get("allow_delegation", False),
+            llm=self.llm,
         )
 
         # Create the analysis task

@@ -8,15 +8,30 @@ including a suggested response, diagnostic questions, and resolution steps.
 import os
 import json
 from typing import Dict, Any, Optional
-from crewai import Agent, Task, Crew, Process
+from crewai import Agent, Task, Crew, Process, LLM
 
 from ..config_loader import load_agents_config, load_tasks_config
+from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
 
 
 class SupportResolutionCrew:
     """Crew for analyzing support cases and providing resolution suggestions."""
 
-    def __init__(self):
+    def __init__(self, user_id: Optional[str] = None):
+        """Initialize the crew with optional user-specific AI settings.
+
+        Args:
+            user_id: Optional user ID to fetch management-level AI settings.
+                    If not provided, uses default settings.
+        """
+        self.user_id = user_id
+        if user_id:
+            self.llm = create_llm_for_user(user_id)
+        else:
+            self.llm = LLM(
+                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
+                api_key=os.environ.get("OPENAI_API_KEY"),
+            )
         self.agents_config = load_agents_config()
         self.tasks_config = load_tasks_config()
 
@@ -57,6 +72,7 @@ class SupportResolutionCrew:
             empathetic, and thorough.""",
             verbose=True,
             allow_delegation=False,
+            llm=self.llm,
         )
 
         # Send progress update if callback provided

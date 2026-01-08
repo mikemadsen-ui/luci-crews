@@ -10,16 +10,31 @@ import os
 import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
-from crewai import Agent, Task, Crew, Process
+from crewai import Agent, Task, Crew, Process, LLM
 from supabase import create_client, Client
 
 from ..config_loader import load_agents_config, load_tasks_config
+from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
 
 
 class PMCoachingCrew:
     """Crew for analyzing Implementation Consultant performance and providing coaching."""
 
-    def __init__(self):
+    def __init__(self, user_id: Optional[str] = None):
+        """Initialize the crew with optional user-specific AI settings.
+
+        Args:
+            user_id: Optional user ID to fetch management-level AI settings.
+                    If not provided, uses default settings.
+        """
+        self.user_id = user_id
+        if user_id:
+            self.llm = create_llm_for_user(user_id)
+        else:
+            self.llm = LLM(
+                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
+                api_key=os.environ.get("OPENAI_API_KEY"),
+            )
         self.agents_config = load_agents_config()
         self.tasks_config = load_tasks_config()
         self.supabase = self._get_supabase_client()
@@ -277,6 +292,7 @@ Analysis Period: Last {days_back} days
             ),
             verbose=delivery_analyst_config.get("verbose", True),
             allow_delegation=delivery_analyst_config.get("allow_delegation", False),
+            llm=self.llm,
         )
 
         customer_analyst_config = self.agents_config.get("customer_experience_analyst", {})
@@ -292,6 +308,7 @@ Analysis Period: Last {days_back} days
             ),
             verbose=customer_analyst_config.get("verbose", True),
             allow_delegation=customer_analyst_config.get("allow_delegation", False),
+            llm=self.llm,
         )
 
         risk_analyst_config = self.agents_config.get("risk_escalation_analyst", {})
@@ -307,6 +324,7 @@ Analysis Period: Last {days_back} days
             ),
             verbose=risk_analyst_config.get("verbose", True),
             allow_delegation=risk_analyst_config.get("allow_delegation", False),
+            llm=self.llm,
         )
 
         coach_config = self.agents_config.get("implementation_coach", {})
@@ -322,6 +340,7 @@ Analysis Period: Last {days_back} days
             ),
             verbose=coach_config.get("verbose", True),
             allow_delegation=coach_config.get("allow_delegation", False),
+            llm=self.llm,
         )
 
         if step_callback:
@@ -511,6 +530,14 @@ Return your analysis in this JSON format:
         result = crew.kickoff()
         result_text = str(result)
 
+        # Get actual model info from LLM
+        model_name = getattr(self.llm, 'model', os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"))
+        provider = "openai"
+        if "claude" in model_name.lower() or "anthropic" in model_name.lower():
+            provider = "anthropic"
+        elif "gemini" in model_name.lower():
+            provider = "google"
+
         # Try to extract JSON from the result
         try:
             import re
@@ -525,8 +552,8 @@ Return your analysis in this JSON format:
                     "pm_email": pm_email,
                     "projects_analyzed": len(projects_data) if projects_data else 0,
                     "days_back": days_back,
-                    "provider": "openai",
-                    "model": os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"),
+                    "provider": provider,
+                    "model": model_name,
                 }
         except json.JSONDecodeError:
             pass
@@ -540,6 +567,6 @@ Return your analysis in this JSON format:
             "projects_analyzed": len(projects_data) if projects_data else 0,
             "days_back": days_back,
             "raw_response": True,
-            "provider": "openai",
-            "model": os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"),
+            "provider": provider,
+            "model": model_name,
         }
