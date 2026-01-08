@@ -14,6 +14,8 @@ from supabase import create_client, Client
 logger = logging.getLogger(__name__)
 
 # Default AI settings if database lookup fails
+# Note: Using OpenAI as default since it's most reliable
+# Google's gemini-1.5-flash was deprecated in late 2025
 DEFAULT_AI_SETTINGS = {
     "provider": "openai",
     "model_id": "gpt-4o-mini",
@@ -44,10 +46,11 @@ class AISettings:
 
     def get_api_key_env_var(self) -> str:
         """Get the environment variable name for this provider's API key."""
+        # Note: Google's genai library uses GOOGLE_API_KEY by default
         key_map = {
             "openai": "OPENAI_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY",
-            "google": "GEMINI_API_KEY",
+            "google": "GOOGLE_API_KEY",
         }
         return key_map.get(self.provider, "OPENAI_API_KEY")
 
