@@ -348,37 +348,25 @@ async def get_capabilities():
         "timestamp": datetime.utcnow().isoformat(),
     }
 
-    # Check OpenAI
-    openai_available = False
+    # Check OpenAI - always available via litellm, just needs API key
     openai_key = os.environ.get("OPENAI_API_KEY")
-    try:
-        import openai
-        openai_available = bool(openai_key)
-    except ImportError:
-        pass
     capabilities["providers"]["openai"] = {
-        "installed": True,  # OpenAI is always installed (comes with crewai)
+        "installed": True,  # OpenAI support included via litellm in crewai
         "api_key_set": bool(openai_key),
-        "available": openai_available,
+        "available": bool(openai_key),
         "env_var": "OPENAI_API_KEY",
     }
 
-    # Check Anthropic
-    anthropic_available = False
+    # Check Anthropic - available via litellm, just needs API key
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-    try:
-        import anthropic
-        anthropic_available = bool(anthropic_key)
-    except ImportError:
-        pass
     capabilities["providers"]["anthropic"] = {
-        "installed": True,  # Anthropic comes with litellm in crewai
+        "installed": True,  # Anthropic support included via litellm in crewai
         "api_key_set": bool(anthropic_key),
-        "available": anthropic_available,
+        "available": bool(anthropic_key),
         "env_var": "ANTHROPIC_API_KEY",
     }
 
-    # Check Google (Gemini)
+    # Check Google (Gemini) - requires optional crewai[google-genai] extra
     google_installed = False
     google_key = os.environ.get("GOOGLE_API_KEY")
     try:
