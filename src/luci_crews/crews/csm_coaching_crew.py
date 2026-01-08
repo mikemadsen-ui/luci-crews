@@ -16,25 +16,47 @@ from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
 
 
 class CSMCoachingCrew:
-    """Crew for analyzing Customer Success Manager performance and providing coaching."""
+    """Crew for analyzing Customer Success Manager performance and providing coaching.
+
+    Uses tiered model strategy for optimal cost/speed/quality:
+    - Fast model (GPT-4o-mini): Data analysis agents (retention, engagement, expansion)
+    - Quality model (GPT-4o or user-configured): Coach agent (final synthesis)
+    """
 
     def __init__(self, user_id: Optional[str] = None):
-        """Initialize the crew with optional user-specific AI settings.
+        """Initialize the crew with tiered model strategy.
 
         Args:
             user_id: Optional user ID to fetch management-level AI settings.
                     If not provided, uses default settings.
         """
         self.user_id = user_id
+
+        # Fast model for analysis agents (data crunching, pattern matching)
+        # GPT-4o-mini is fast, cheap, and great for structured analysis
+        self.fast_llm = LLM(
+            model="gpt-4o-mini",
+            api_key=os.environ.get("OPENAI_API_KEY"),
+        )
+
+        # Quality model for coach agent (synthesis, strategic recommendations)
+        # Uses user-configured model or defaults to GPT-4o for best reasoning
         if user_id:
-            self.llm = create_llm_for_user(user_id)
+            self.quality_llm = create_llm_for_user(user_id)
         else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
+            self.quality_llm = LLM(
+                model=os.environ.get("OPENAI_MODEL_NAME", "gpt-4o"),
                 api_key=os.environ.get("OPENAI_API_KEY"),
             )
+
+        # Keep self.llm for backward compatibility
+        self.llm = self.quality_llm
+
         self.agents_config = load_agents_config()
         self.tasks_config = load_tasks_config()
+
+        # Log the tiered model strategy
+        print(f"[CSM Coaching] Using tiered models: fast={self.fast_llm.model}, quality={self.quality_llm.model}")
 
     def _build_csm_context(
         self,
@@ -291,7 +313,11 @@ Analysis Period: Last {days_back} days
         if step_callback:
             step_callback("Analyzing retention patterns...")
 
-        # Create the agents
+        # Create the agents with tiered model strategy:
+        # - Analysis agents use fast_llm (GPT-4o-mini) for speed and cost efficiency
+        # - Coach agent uses quality_llm (GPT-4o) for best reasoning and output quality
+
+        # ANALYSIS AGENT 1: Retention Analyst (uses fast model)
         retention_config = self.agents_config.get("retention_analyst", {})
         retention_analyst = Agent(
             role=retention_config.get("role", "Retention Analyst"),
@@ -305,9 +331,10 @@ Analysis Period: Last {days_back} days
             ),
             verbose=retention_config.get("verbose", True),
             allow_delegation=retention_config.get("allow_delegation", False),
-            llm=self.llm,
+            llm=self.fast_llm,  # Fast model for data analysis
         )
 
+        # ANALYSIS AGENT 2: Engagement Specialist (uses fast model)
         engagement_config = self.agents_config.get("engagement_specialist", {})
         engagement_specialist = Agent(
             role=engagement_config.get("role", "Engagement Specialist"),
@@ -319,11 +346,12 @@ Analysis Period: Last {days_back} days
                 "backstory",
                 "You analyze customer touchpoints and engagement patterns to identify accounts that need more attention and those being over-serviced.",
             ),
-            verbose=engagement_config.get("verbose", True),
-            allow_delegation=engagement_config.get("allow_delegation", False),
-            llm=self.llm,
+            verbose=retention_config.get("verbose", True),
+            allow_delegation=retention_config.get("allow_delegation", False),
+            llm=self.fast_llm,  # Fast model for data analysis
         )
 
+        # ANALYSIS AGENT 3: Expansion Strategist (uses fast model)
         expansion_config = self.agents_config.get("expansion_strategist", {})
         expansion_strategist = Agent(
             role=expansion_config.get("role", "Expansion Strategist"),
@@ -337,9 +365,10 @@ Analysis Period: Last {days_back} days
             ),
             verbose=expansion_config.get("verbose", True),
             allow_delegation=expansion_config.get("allow_delegation", False),
-            llm=self.llm,
+            llm=self.fast_llm,  # Fast model for opportunity identification
         )
 
+        # SYNTHESIS AGENT: CSM Coach (uses quality model for best output)
         coach_config = self.agents_config.get("csm_coach", {})
         coach = Agent(
             role=coach_config.get("role", "CSM Coach"),
@@ -353,7 +382,7 @@ Analysis Period: Last {days_back} days
             ),
             verbose=coach_config.get("verbose", True),
             allow_delegation=coach_config.get("allow_delegation", False),
-            llm=self.llm,
+            llm=self.quality_llm,  # Quality model for strategic synthesis
         )
 
         # Create tasks
