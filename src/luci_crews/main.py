@@ -332,6 +332,71 @@ async def health_check():
     }
 
 
+@app.get("/api/capabilities")
+async def get_capabilities():
+    """
+    Report which AI providers and models are available.
+
+    Checks:
+    1. Whether the provider's optional dependency is installed
+    2. Whether the required API key environment variable is set
+
+    The frontend uses this to validate which models can be enabled.
+    """
+    capabilities = {
+        "providers": {},
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+    # Check OpenAI
+    openai_available = False
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    try:
+        import openai
+        openai_available = bool(openai_key)
+    except ImportError:
+        pass
+    capabilities["providers"]["openai"] = {
+        "installed": True,  # OpenAI is always installed (comes with crewai)
+        "api_key_set": bool(openai_key),
+        "available": openai_available,
+        "env_var": "OPENAI_API_KEY",
+    }
+
+    # Check Anthropic
+    anthropic_available = False
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+    try:
+        import anthropic
+        anthropic_available = bool(anthropic_key)
+    except ImportError:
+        pass
+    capabilities["providers"]["anthropic"] = {
+        "installed": True,  # Anthropic comes with litellm in crewai
+        "api_key_set": bool(anthropic_key),
+        "available": anthropic_available,
+        "env_var": "ANTHROPIC_API_KEY",
+    }
+
+    # Check Google (Gemini)
+    google_installed = False
+    google_key = os.environ.get("GOOGLE_API_KEY")
+    try:
+        import google.genai
+        google_installed = True
+    except ImportError:
+        pass
+    capabilities["providers"]["google"] = {
+        "installed": google_installed,
+        "api_key_set": bool(google_key),
+        "available": google_installed and bool(google_key),
+        "env_var": "GOOGLE_API_KEY",
+        "install_hint": 'uv add "crewai[google-genai]"' if not google_installed else None,
+    }
+
+    return capabilities
+
+
 @app.get("/")
 async def root():
     """Root endpoint with service info."""
@@ -340,6 +405,7 @@ async def root():
         "version": "0.1.0",
         "endpoints": {
             "health": "/health",
+            "capabilities": "/api/capabilities",
             "config_agents": "/api/config/agents",
             "config_tasks": "/api/config/tasks",
             "sales_pipeline": "/api/crew/sales_pipeline",
