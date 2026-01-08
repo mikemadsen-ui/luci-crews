@@ -450,60 +450,166 @@ Identify specific expansion opportunities with estimated potential value.""",
             step_callback("Generating coaching recommendations...")
 
         coaching_task = Task(
-            description="""Based on retention, engagement, and expansion analysis, provide targeted CSM coaching.
+            description="""Based on retention, engagement, and expansion analysis, provide DETAILED, ACTIONABLE CSM coaching.
 
-PROVIDE COACHING ON:
+You are a McKinsey-level CS strategist. Your recommendations must be:
+- SPECIFIC (name accounts, people, dates, dollar amounts)
+- ACTIONABLE (clear next steps, not vague advice)
+- EVIDENCE-BASED (reference actual data from the analysis)
+- PRIORITIZED (what to do first, second, third)
+- QUANTIFIED (ARR at risk, potential expansion value, etc.)
 
-1. **Top 3 Immediate Priorities** - What should the CSM do THIS WEEK?
+REQUIRED SECTIONS:
 
-2. **Account-Specific Actions**
-   - At-risk accounts: Specific save plays
-   - Healthy accounts: Expansion plays
-   - Neglected accounts: Re-engagement plays
+1. **EXECUTIVE SUMMARY**
+   - One-paragraph diagnosis of portfolio health
+   - Total ARR at risk with specific accounts
+   - Total expansion opportunity with specific accounts
+   - The single most important thing to fix
 
-3. **Skill Development**
-   - What skills should the CSM focus on developing?
-   - Specific behaviors to start/stop/continue
+2. **THIS WEEK'S PRIORITIES** (Max 5, ranked by ARR impact)
+   For each priority:
+   - Specific account and contact to reach
+   - Exact action to take (call, email, meeting request)
+   - What to say/discuss (specific talking points from transcript insights)
+   - Expected outcome
+   - ARR at stake
 
-4. **Time Management**
-   - How should the CSM reallocate their time?
-   - Which accounts need more/less attention?
+3. **ACCOUNT-BY-ACCOUNT PLAYBOOKS** (Top 10 accounts by ARR)
+   For each account provide:
+   - Current status (health score, days since contact, open issues)
+   - Primary risk or opportunity
+   - Recommended play (save play, expansion play, maintain play)
+   - Specific next step with timeline
+   - Key stakeholder to engage
+   - Talking points based on recent conversations
 
-5. **Metrics to Improve**
-   - Which KPIs should the CSM focus on?
-   - Realistic targets for the next quarter
+4. **CHURN PREVENTION PLAYS**
+   For each at-risk account:
+   - Warning signs detected (from transcript analysis)
+   - Specific quote or signal that triggered concern
+   - Recommended save play with step-by-step actions
+   - Escalation recommendation (when to involve leadership)
+   - Win-back probability estimate
 
-Be SPECIFIC and reference actual accounts. Avoid generic advice.
+5. **EXPANSION OPPORTUNITIES**
+   For each expansion candidate:
+   - Current ARR and expansion potential
+   - Signals detected (usage, sentiment, stated needs)
+   - Recommended expansion motion
+   - Pricing/packaging suggestion
+   - Best time to approach and why
+
+6. **SKILL DEVELOPMENT**
+   - Top 3 skill gaps identified with evidence
+   - Specific behaviors to START (with examples)
+   - Specific behaviors to STOP (with examples)
+   - Recommended training or coaching focus
+
+7. **TIME ALLOCATION RECOMMENDATION**
+   - Accounts getting too much attention (reduce)
+   - Accounts getting too little attention (increase)
+   - Suggested weekly cadence by account tier
+   - Time savings opportunities
+
+8. **30-60-90 DAY ROADMAP**
+   - Week 1-2: Critical saves and quick wins
+   - Week 3-4: Expansion conversations to initiate
+   - Month 2: Relationship deepening plays
+   - Month 3: Strategic reviews and renewals prep
 
 Return your analysis in this JSON format:
 {
-    "summary": {
-        "headline": "One-sentence summary of CSM performance",
+    "executive_summary": {
+        "headline": "One-sentence performance summary",
         "overall_score": 1-10,
-        "retention_health": "strong/moderate/weak",
-        "expansion_performance": "exceeding/meeting/below expectations"
+        "portfolio_health": "critical/concerning/stable/healthy/thriving",
+        "total_arr_at_risk": 0,
+        "total_expansion_potential": 0,
+        "most_critical_issue": "The #1 thing to address immediately"
     },
-    "strengths": ["2-3 specific strengths with evidence"],
-    "improvement_areas": ["2-3 specific areas with evidence"],
-    "immediate_priorities": [
-        {"action": "specific action", "account": "account name", "reason": "why this matters"}
+    "this_week_priorities": [
+        {
+            "priority": 1,
+            "account": "account name",
+            "contact": "person to reach",
+            "action": "specific action",
+            "talking_points": ["point 1", "point 2"],
+            "arr_at_stake": 0,
+            "deadline": "by when"
+        }
     ],
-    "at_risk_accounts": [
-        {"name": "account", "arr": 0, "risk_level": "high/medium", "recommended_action": "specific play"}
+    "account_playbooks": [
+        {
+            "account": "name",
+            "arr": 0,
+            "health_score": 0,
+            "days_since_contact": 0,
+            "status": "at-risk/stable/growth-ready",
+            "primary_issue_or_opportunity": "description",
+            "recommended_play": "save/expand/maintain/re-engage",
+            "next_step": "specific action",
+            "timeline": "by when",
+            "key_stakeholder": "name and role",
+            "talking_points": ["point 1", "point 2"]
+        }
+    ],
+    "churn_prevention": [
+        {
+            "account": "name",
+            "arr": 0,
+            "warning_signs": ["sign 1", "sign 2"],
+            "customer_quote": "actual quote or paraphrase from transcripts",
+            "save_play": ["step 1", "step 2", "step 3"],
+            "escalation_needed": true/false,
+            "escalation_reason": "why leadership should be involved",
+            "save_probability": "high/medium/low"
+        }
     ],
     "expansion_opportunities": [
-        {"name": "account", "opportunity": "description", "estimated_value": 0}
+        {
+            "account": "name",
+            "current_arr": 0,
+            "expansion_potential": 0,
+            "signals": ["signal 1", "signal 2"],
+            "recommended_motion": "upsell/cross-sell/land-expand",
+            "approach": "how to position",
+            "timing": "when to approach",
+            "success_probability": "high/medium/low"
+        }
     ],
     "skill_development": {
-        "priority_focus": "The #1 skill to develop",
-        "specific_practice": "How to develop this skill"
+        "gaps_identified": [
+            {"skill": "skill name", "evidence": "what shows this gap", "impact": "how it hurts performance"}
+        ],
+        "start_doing": [
+            {"behavior": "what to start", "example": "specific example", "expected_impact": "what improves"}
+        ],
+        "stop_doing": [
+            {"behavior": "what to stop", "example": "specific example", "expected_impact": "what improves"}
+        ],
+        "training_recommendation": "specific training or coaching focus"
     },
-    "time_reallocation": {
-        "increase_focus": ["accounts needing more time"],
-        "decrease_focus": ["accounts needing less time"]
-    }
+    "time_allocation": {
+        "reduce_attention": [{"account": "name", "current_state": "why over-served", "recommendation": "new cadence"}],
+        "increase_attention": [{"account": "name", "current_state": "why under-served", "recommendation": "new cadence"}],
+        "tier_cadence": {
+            "enterprise": "recommended touch frequency",
+            "mid_market": "recommended touch frequency",
+            "smb": "recommended touch frequency"
+        }
+    },
+    "roadmap": {
+        "week_1_2": [{"action": "what to do", "accounts": ["account1", "account2"], "expected_outcome": "result"}],
+        "week_3_4": [{"action": "what to do", "accounts": ["account1", "account2"], "expected_outcome": "result"}],
+        "month_2": [{"action": "what to do", "accounts": ["account1", "account2"], "expected_outcome": "result"}],
+        "month_3": [{"action": "what to do", "accounts": ["account1", "account2"], "expected_outcome": "result"}]
+    },
+    "key_metrics_to_track": [
+        {"metric": "metric name", "current": "current value", "target": "target value", "timeline": "achieve by when"}
+    ]
 }""",
-            expected_output="JSON coaching analysis with specific recommendations",
+            expected_output="Comprehensive JSON coaching analysis with specific, actionable recommendations for each account",
             agent=coach,
             context=[retention_task, engagement_task, expansion_task],
         )
