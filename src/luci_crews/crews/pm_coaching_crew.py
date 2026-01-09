@@ -161,19 +161,15 @@ Projects Under Budget: {delivery_metrics.get('projects_under_budget', 0)}
                     context += f"  {get_field(p, 'projectName', 'project_name') or 'Unknown'}\n"
 
         # Sentiment data
-        if sentiment_data:
-            context += "\n=== CUSTOMER SENTIMENT SCORES ===\n"
+        context += "\n=== CUSTOMER SENTIMENT SCORES ===\n"
+        if sentiment_data and len(sentiment_data) > 0:
             avg_pm_score = (
                 sum(s.get("pm_effectiveness_score", 0) or 0 for s in sentiment_data)
                 / len(sentiment_data)
-                if sentiment_data
-                else 0
             )
             avg_customer_score = (
                 sum(s.get("customer_reception_score", 0) or 0 for s in sentiment_data)
                 / len(sentiment_data)
-                if sentiment_data
-                else 0
             )
 
             context += f"""
@@ -186,10 +182,17 @@ Project-Level Sentiment:
                 sentiment_data, key=lambda x: x.get("overall_score", 0) or 0
             )[:10]:
                 context += f"  {s.get('project_id', 'Unknown')}: IC={s.get('pm_effectiveness_score', 'N/A')}, Customer={s.get('customer_reception_score', 'N/A')}\n"
+        else:
+            context += """
+NO SENTIMENT DATA AVAILABLE
+NOTE: Project sentiment analysis has not been run for any of this IC's projects.
+Do NOT report sentiment scores as 0 or low - sentiment data simply does not exist yet.
+To get sentiment data, run Project Sentiment Analysis on individual projects first.
+"""
 
         # Escalation data
-        if escalation_data:
-            context += "\n=== ESCALATION PATTERNS ===\n"
+        context += "\n=== ESCALATION PATTERNS ===\n"
+        if escalation_data and len(escalation_data) > 0:
             total_cases = sum(e.get("total_cases", 0) for e in escalation_data)
             high_priority = sum(e.get("high_priority", 0) for e in escalation_data)
 
@@ -204,10 +207,12 @@ Projects with Escalations:
             )[:10]:
                 if e.get("total_cases", 0) > 0:
                     context += f"  {e.get('project_name', 'Unknown')}: {e.get('open_cases', 0)} open, {e.get('high_priority', 0)} high priority\n"
+        else:
+            context += "No escalation/support case data available for these projects.\n"
 
         # Transcript samples
-        if transcription_samples:
-            context += "\n=== CUSTOMER COMMUNICATION SAMPLES ===\n"
+        context += "\n=== CUSTOMER COMMUNICATION SAMPLES ===\n"
+        if transcription_samples and len(transcription_samples) > 0:
             for sample in transcription_samples[:3]:
                 context += f"\n{sample.get('project_name', 'Unknown')} ({sample.get('project_status', 'Unknown')})\n"
                 for t in sample.get("transcripts", [])[:1]:
@@ -215,6 +220,9 @@ Projects with Escalations:
                     text = (t.get("text", "") or "")[:1500]
                     if text:
                         context += f"  Excerpt: {text}...\n"
+        else:
+            context += "No meeting transcription data available for these projects.\n"
+            context += "NOTE: Transcriptions sync when users visit project detail pages in LUCI.\n"
 
         return context
 
