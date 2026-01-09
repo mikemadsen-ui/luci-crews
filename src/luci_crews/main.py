@@ -998,7 +998,17 @@ async def run_pm_coaching_crew(request: Request):
                     execution_time = (datetime.utcnow() - start_time).total_seconds()
                     logger.info(f"PM coaching crew completed in {execution_time:.2f}s")
 
-                    yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'pm_name': result.get('pm_name'), 'pm_email': result.get('pm_email'), 'projects_analyzed': result.get('projects_analyzed'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+                    # Check if crew returned an error (success: False)
+                    if result and result.get('success') == False:
+                        error_msg = result.get('error', 'Analysis failed - no result returned')
+                        logger.error(f"PM coaching crew returned error: {error_msg}")
+                        yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
+                    elif result and result.get('result'):
+                        yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'pm_name': result.get('pm_name'), 'pm_email': result.get('pm_email'), 'projects_analyzed': result.get('projects_analyzed'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+                    else:
+                        # No result - this shouldn't happen but handle gracefully
+                        logger.error(f"PM coaching crew returned empty result: {result}")
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Analysis completed but no result was returned'})}\n\n"
 
                 except Exception as e:
                     logger.error(f"PM coaching crew failed: {str(e)}")
@@ -1088,7 +1098,16 @@ async def run_ae_coaching_crew(request: Request):
                     execution_time = (datetime.utcnow() - start_time).total_seconds()
                     logger.info(f"AE coaching crew completed in {execution_time:.2f}s")
 
-                    yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'ae_name': result.get('ae_name'), 'ae_email': result.get('ae_email'), 'opportunities_analyzed': result.get('opportunities_analyzed'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+                    # Check if crew returned an error (success: False)
+                    if result and result.get('success') == False:
+                        error_msg = result.get('error', 'Analysis failed - no result returned')
+                        logger.error(f"AE coaching crew returned error: {error_msg}")
+                        yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
+                    elif result and result.get('result'):
+                        yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'ae_name': result.get('ae_name'), 'ae_email': result.get('ae_email'), 'opportunities_analyzed': result.get('opportunities_analyzed'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+                    else:
+                        logger.error(f"AE coaching crew returned empty result: {result}")
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Analysis completed but no result was returned'})}\n\n"
 
                 except Exception as e:
                     logger.error(f"AE coaching crew failed: {str(e)}")
@@ -1174,7 +1193,16 @@ async def run_csm_coaching_crew(request: Request):
                     execution_time = (datetime.utcnow() - start_time).total_seconds()
                     logger.info(f"CSM coaching crew completed in {execution_time:.2f}s")
 
-                    yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'csm_name': result.get('csm_name'), 'csm_email': result.get('csm_email'), 'accounts_analyzed': result.get('accounts_analyzed'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+                    # Check if crew returned an error (success: False)
+                    if result and result.get('success') == False:
+                        error_msg = result.get('error', 'Analysis failed - no result returned')
+                        logger.error(f"CSM coaching crew returned error: {error_msg}")
+                        yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
+                    elif result and result.get('result'):
+                        yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'csm_name': result.get('csm_name'), 'csm_email': result.get('csm_email'), 'accounts_analyzed': result.get('accounts_analyzed'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+                    else:
+                        logger.error(f"CSM coaching crew returned empty result: {result}")
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Analysis completed but no result was returned'})}\n\n"
 
                 except Exception as e:
                     logger.error(f"CSM coaching crew failed: {str(e)}")
@@ -1262,7 +1290,16 @@ async def run_sc_coaching_crew(request: Request):
                     execution_time = (datetime.utcnow() - start_time).total_seconds()
                     logger.info(f"SC coaching crew completed in {execution_time:.2f}s")
 
-                    yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'sc_name': result.get('sc_name'), 'sc_email': result.get('sc_email'), 'opportunities_analyzed': result.get('opportunities_analyzed'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+                    # Check if crew returned an error (success: False)
+                    if result and result.get('success') == False:
+                        error_msg = result.get('error', 'Analysis failed - no result returned')
+                        logger.error(f"SC coaching crew returned error: {error_msg}")
+                        yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
+                    elif result and result.get('result'):
+                        yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'sc_name': result.get('sc_name'), 'sc_email': result.get('sc_email'), 'opportunities_analyzed': result.get('opportunities_analyzed'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+                    else:
+                        logger.error(f"SC coaching crew returned empty result: {result}")
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Analysis completed but no result was returned'})}\n\n"
 
                 except Exception as e:
                     logger.error(f"SC coaching crew failed: {str(e)}")
