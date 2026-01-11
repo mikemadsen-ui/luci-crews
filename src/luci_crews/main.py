@@ -29,6 +29,7 @@ from .crews.pm_coaching_crew import PMCoachingCrew
 from .crews.ae_coaching_crew import AECoachingCrew
 from .crews.csm_coaching_crew import CSMCoachingCrew
 from .crews.sc_coaching_crew import SCCoachingCrew
+from .crews.competitive_crew import CompetitiveCrew
 from . import config_store
 from .batch_router import router as batch_router
 
@@ -304,6 +305,23 @@ class SCPrepRequest(BaseModel):
     forceRefresh: Optional[bool] = False
     opportunityData: Optional[OpportunityDataModel] = None
     transcriptionData: Optional[List[TranscriptionDataModel]] = None
+
+
+class CompetitiveCompanyModel(BaseModel):
+    """Model for company data in competitive analysis."""
+    id: Optional[str] = None
+    name: Optional[str] = None
+    domain: Optional[str] = None
+    properties: Optional[Dict[str, Any]] = None
+
+
+class CompetitiveRequest(BaseModel):
+    """Request model for competitive analysis."""
+    userId: Optional[str] = None
+    userEmail: Optional[str] = None
+    companies: List[CompetitiveCompanyModel]
+    analysisType: Optional[str] = "comparative"  # "single" or "comparative"
+    forceRefresh: Optional[bool] = False
 
 
 class CrewResponse(BaseModel):
@@ -1512,6 +1530,82 @@ async def run_sc_prep_crew(request: Request):
 
     except Exception as e:
         logger.error(f"SC prep crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/crew/competitive")
+async def run_competitive_crew(request: Request):
+    """Run the competitive intelligence analysis crew."""
+    import json
+    start_time = datetime.utcnow()
+
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = CompetitiveRequest(**body)
+
+        logger.info(f"Running competitive crew for {len(req.companies)} companies (type: {req.analysisType})")
+
+        crew = CompetitiveCrew(user_id=req.userId)
+
+        # Convert Pydantic models to dicts for the crew
+        companies_data = [c.model_dump() for c in req.companies]
+
+        if stream:
+            async def generate():
+                progress_messages = []
+
+                try:
+                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting competitive analysis...'})}\n\n"
+
+                    result = crew.run(
+                        companies=companies_data,
+                        analysis_type=req.analysisType or "comparative",
+                    )
+
+                    for msg in progress_messages:
+                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
+
+                    execution_time = (datetime.utcnow() - start_time).total_seconds()
+                    logger.info(f"Competitive crew completed in {execution_time:.2f}s")
+
+                    yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'analysis': result.get('analysis'), 'analysisType': result.get('analysisType'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+
+                except Exception as e:
+                    logger.error(f"Competitive crew failed: {str(e)}")
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                }
+            )
+        else:
+            result = crew.run(
+                companies=companies_data,
+                analysis_type=req.analysisType or "comparative",
+            )
+
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"Competitive crew completed in {execution_time:.2f}s")
+
+            return {
+                "success": True,
+                "result": result.get("result"),
+                "analysis": result.get("analysis"),
+                "analysisType": result.get("analysisType"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"Competitive crew failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

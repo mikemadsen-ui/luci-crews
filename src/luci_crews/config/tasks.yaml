@@ -347,6 +347,73 @@ analyze_competitive_landscape:
     - Win themes to reinforce throughout the sales cycle
   agent: competitive_analyst
 
+analyze_companies_competitive:
+  description: >
+    Analyze the following competitor companies and provide comprehensive
+    competitive intelligence:
+
+    ANALYSIS TYPE: {analysis_type}
+    NUMBER OF COMPANIES: {num_companies}
+
+    COMPANIES TO ANALYZE:
+    {companies_text}
+
+    Provide a detailed competitive analysis. Return a JSON object with this structure:
+    {{
+      "executive_summary": "<2-3 sentence overview of the competitive landscape>",
+
+      "companies": [
+        {{
+          "name": "<company name>",
+          "domain": "<company domain>",
+          "threat_level": "high|medium|low",
+          "market_position": "<brief description of market position>",
+          "key_strengths": ["<strength 1>", "<strength 2>"],
+          "key_weaknesses": ["<weakness 1>", "<weakness 2>"],
+          "typical_customers": "<who they typically sell to>",
+          "pricing_model": "<what's known about their pricing>",
+          "technology_stack": "<relevant tech info if known>"
+        }}
+      ],
+
+      "our_positioning": {{
+        "key_differentiators": ["<how we're different/better>"],
+        "vulnerabilities": ["<where we're weak vs. these competitors>"],
+        "unique_value_props": ["<our unique advantages>"]
+      }},
+
+      "battle_cards": [
+        {{
+          "competitor": "<company name>",
+          "when_you_encounter": "<scenario when you'll face this competitor>",
+          "key_message": "<main positioning message>",
+          "talk_track": "<what to say in conversations>",
+          "objections_to_expect": [
+            {{"objection": "<what they'll say>", "response": "<how to respond>"}}
+          ],
+          "trap_questions": [
+            {{"question": "<question to ask prospect>", "why": "<what it reveals>"}}
+          ],
+          "landmines": ["<topics to avoid>"]
+        }}
+      ],
+
+      "market_insights": {{
+        "market_trends": ["<relevant trends>"],
+        "competitive_dynamics": "<how the competitive landscape is evolving>",
+        "recommendations": ["<strategic recommendations>"]
+      }},
+
+      "win_themes": ["<overarching themes to emphasize in competitive deals>"]
+    }}
+
+    Be specific and actionable. If information about a company is limited,
+    note what's known and what would be valuable to research further.
+  expected_output: >
+    A comprehensive JSON analysis including company profiles, battle cards,
+    positioning strategy, and actionable competitive intelligence.
+  agent: competitive_analyst
+
 # =============================================================================
 # PROJECT SENTIMENT TASKS
 # =============================================================================
