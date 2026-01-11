@@ -70,19 +70,69 @@ assess_account_health:
     ENGAGEMENT METRICS:
     {engagement_data}
 
-    Assess:
-    1. Overall health score (1-100)
+    Assess this account's health and strategic position. Analyze:
+    1. Overall health score (1-10)
     2. Churn risk indicators
     3. Expansion opportunities
     4. Key stakeholder engagement levels
     5. Product adoption status
+    6. Strategic recommendations
+
+    Return your analysis as JSON with this exact structure:
+    {{
+      "score": <number from 1-10 where 1=critical risk, 5=stable, 10=thriving>,
+      "status": "<healthy|stable|at_risk|critical>",
+      "trend": "<improving|stable|declining>",
+      "summary": "<3-5 sentence executive summary of account health>",
+
+      "health_indicators": {{
+        "engagement": "<strong|moderate|weak>",
+        "adoption": "<high|medium|low>",
+        "support_health": "<good|concerning|critical>",
+        "relationship": "<strong|stable|strained>"
+      }},
+
+      "strengths": ["<strength 1>", "<strength 2>", ...],
+      "concerns": ["<concern 1>", "<concern 2>", ...],
+
+      "churn_risk": {{
+        "level": "<low|medium|high|critical>",
+        "factors": ["<risk factor 1>", "<risk factor 2>"],
+        "early_warnings": ["<warning sign 1>", "<warning sign 2>"]
+      }},
+
+      "expansion_opportunities": [
+        {{"opportunity": "<description>", "potential_value": "<estimated ARR impact>", "confidence": "<high|medium|low>"}}
+      ],
+
+      "stakeholder_analysis": {{
+        "champion_status": "<strong|weakening|none>",
+        "executive_engagement": "<active|passive|disengaged>",
+        "key_relationships": ["<relationship note>"],
+        "gaps": ["<relationship gap>"]
+      }},
+
+      "recommended_actions": [
+        {{"action": "<what to do>", "priority": "<critical|high|medium|low>", "owner": "<CSM|AE|Exec|Support>", "timeline": "<immediate|this_week|this_month|this_quarter>"}}
+      ],
+
+      "talking_points": ["<point for next customer meeting>"],
+
+      "strategic_focus": "<1-2 sentences on the most important thing to focus on for this account>"
+    }}
+
+    SCORING RUBRIC:
+    - 9-10: Thriving - expanding, strong champion, excellent engagement, low risk
+    - 7-8: Healthy - stable relationship, good adoption, minor concerns only
+    - 5-6: Stable - meeting expectations, some gaps, manageable risk
+    - 3-4: At Risk - declining engagement, support issues, churn signals
+    - 1-2: Critical - immediate intervention needed, high churn probability
+
+    IMPORTANT: Return ONLY the JSON object, no other text.
   expected_output: >
-    A health assessment including:
-    - Health score with rationale
-    - Red/yellow/green status indicators
-    - Risk factors with severity ratings
-    - Expansion opportunities with estimated value
-    - Recommended actions prioritized by impact
+    A JSON object containing account health analysis with score, status, trend,
+    summary, health_indicators, strengths, concerns, churn_risk, expansion_opportunities,
+    stakeholder_analysis, recommended_actions, talking_points, and strategic_focus.
   agent: account_health_analyst
 
 # =============================================================================
