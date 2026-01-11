@@ -62,11 +62,12 @@ class CompetitiveCrew:
         """Format company data for the prompt."""
         formatted = []
         for i, company in enumerate(companies, 1):
-            props = company.get('properties', company)
-            name = props.get('name', company.get('name', 'Unknown'))
-            domain = props.get('domain', company.get('domain', 'N/A'))
-            industry = props.get('industry', 'N/A')
-            description = props.get('description', '')
+            # Handle both nested properties and flat structure
+            props = company.get('properties') or {}
+            name = props.get('name') or company.get('name') or 'Unknown'
+            domain = props.get('domain') or company.get('domain') or 'N/A'
+            industry = props.get('industry') or company.get('industry') or 'N/A'
+            description = props.get('description') or company.get('description') or ''
 
             company_info = f"""
 Company {i}: {name}
@@ -87,7 +88,7 @@ Company {i}: {name}
         task_config = self.tasks_config.get("analyze_companies_competitive", {})
 
         companies_text = self._format_companies(companies)
-        company_names = [c.get('properties', c).get('name', c.get('name', 'Unknown')) for c in companies]
+        company_names = [(c.get('properties') or {}).get('name') or c.get('name') or 'Unknown' for c in companies]
 
         description = task_config.get("description", "").format(
             companies_text=companies_text,
