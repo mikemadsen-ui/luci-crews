@@ -55,6 +55,52 @@ def verify_cron_secret(secret: Optional[str]) -> bool:
     return secret == expected
 
 
+async def sync_transcriptions_via_nextjs() -> Optional[Dict[str, Any]]:
+    """
+    Call the Next.js batch-transcriptions endpoint to sync transcriptions.
+
+    This endpoint handles both CRM-based and domain-based discovery.
+
+    Returns:
+        Dict with sync results or None if failed
+    """
+    import httpx
+
+    nextjs_url = os.getenv("NEXTJS_APP_URL", "https://luci-app.vercel.app")
+    cron_secret = os.getenv("CRON_SECRET")
+
+    if not nextjs_url:
+        logger.error("NEXTJS_APP_URL not configured")
+        return None
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{nextjs_url}/api/cron/batch-transcriptions",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {cron_secret}" if cron_secret else "",
+                },
+                json={
+                    "method": "both",  # Run both CRM and domain-based sync
+                    "limit": 50,  # Process more accounts in batch mode
+                    "monthsBack": 6,
+                },
+                timeout=180.0,  # 3 minute timeout for batch sync
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("data", data)
+            else:
+                logger.error(f"Transcription sync failed: {response.status_code} - {response.text[:200]}")
+                return None
+
+    except Exception as e:
+        logger.error(f"Error calling transcription sync: {e}")
+        return None
+
+
 @router.post("/overnight-sync")
 async def overnight_sync(
     request: OvernightSyncRequest,
@@ -240,8 +286,8 @@ async def run_batch_processing(
     """
     Main batch processing function that runs in the background.
 
-    Fetches all accounts and processes them in batches of batch_size.
-    Updates progress in both in-memory status and database.
+    Step 1: Call Next.js batch-transcriptions to sync ALL transcriptions (CRM + domain-based)
+    Step 2: Generate embeddings for accounts that need them
 
     Args:
         batch_id: Unique identifier for this batch run
@@ -252,7 +298,17 @@ async def run_batch_processing(
     processor = OvernightBatchProcessor()
 
     try:
-        # Fetch only accounts with recent transcriptions missing embeddings
+        # Step 1: Sync transcriptions via Next.js unified endpoint
+        logger.info(f"Batch {batch_id}: Starting transcription sync via Next.js...")
+        transcription_result = await sync_transcriptions_via_nextjs()
+
+        if transcription_result:
+            status["transcriptionsSynced"] = transcription_result.get("totalTranscriptionsSynced", 0)
+            logger.info(f"Batch {batch_id}: Transcription sync complete - {status['transcriptionsSynced']} synced")
+        else:
+            logger.warning(f"Batch {batch_id}: Transcription sync returned no result")
+
+        # Step 2: Fetch accounts needing embeddings (may include newly synced transcriptions)
         accounts = await processor.fetch_accounts_needing_embeddings()
         status["accountsTotal"] = len(accounts)
 

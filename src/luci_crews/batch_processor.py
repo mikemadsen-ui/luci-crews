@@ -304,7 +304,10 @@ class OvernightBatchProcessor:
         batch_id: str,
     ) -> Dict[str, int]:
         """
-        Process a single account: sync transcriptions and generate embeddings.
+        Process a single account: generate embeddings for transcriptions.
+
+        Note: Transcription sync is done upfront via Next.js batch-transcriptions endpoint,
+        so this method only handles embedding generation.
 
         Args:
             account_id: The account's UUID
@@ -313,23 +316,15 @@ class OvernightBatchProcessor:
             batch_id: The batch ID for logging
 
         Returns:
-            Dict with counts: transcriptions, embeddings, skipped
+            Dict with counts: transcriptions (always 0), embeddings, skipped
         """
         result = {"transcriptions": 0, "embeddings": 0, "skipped": 0}
 
         self._ensure_supabase()
-        await self._load_avoma_config()
 
-        logger.info(f"Processing account: {account_name} (SF ID: {salesforce_account_id})")
+        logger.info(f"Generating embeddings for: {account_name} (SF ID: {salesforce_account_id})")
 
-        # 1. Sync Avoma transcriptions for this account
-        if self.avoma_api_key and salesforce_account_id:
-            transcripts_synced = await self._sync_avoma_transcriptions(
-                salesforce_account_id, account_name
-            )
-            result["transcriptions"] = transcripts_synced
-
-        # 2. Generate embeddings for new transcriptions
+        # Generate embeddings for transcriptions (sync is done upfront via Next.js)
         if self.openai_key:
             embed_result = await self._generate_embeddings_for_account(
                 account_id, salesforce_account_id
