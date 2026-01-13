@@ -30,6 +30,7 @@ from .crews.ae_coaching_crew import AECoachingCrew
 from .crews.csm_coaching_crew import CSMCoachingCrew
 from .crews.sc_coaching_crew import SCCoachingCrew
 from .crews.competitive_crew import CompetitiveCrew
+from .crews.feature_extraction_crew import FeatureExtractionCrew
 from . import config_store
 from .batch_router import router as batch_router
 
@@ -322,6 +323,23 @@ class CompetitiveRequest(BaseModel):
     companies: List[CompetitiveCompanyModel]
     analysisType: Optional[str] = "comparative"  # "single" or "comparative"
     forceRefresh: Optional[bool] = False
+
+
+class TranscriptChunkModel(BaseModel):
+    """Model for transcript chunk in feature extraction."""
+    content: str
+    accountId: Optional[str] = None
+    accountName: Optional[str] = None
+    meetingSubject: Optional[str] = None
+    meetingDate: Optional[str] = None
+    meetingUrl: Optional[str] = None
+    transcriptionId: Optional[str] = None
+
+
+class FeatureExtractionRequest(BaseModel):
+    """Request model for feature request extraction from transcripts."""
+    userId: Optional[str] = None
+    transcriptChunks: List[TranscriptChunkModel]
 
 
 class CrewResponse(BaseModel):
@@ -1760,6 +1778,61 @@ async def reset_task_config(task_name: str):
     except Exception as e:
         logger.error(f"Error resetting task '{task_name}': {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Feature Extraction Crew
+# =============================================================================
+
+@app.post("/api/crew/feature-extraction")
+async def run_feature_extraction_crew(request: FeatureExtractionRequest):
+    """Run the feature extraction crew to extract feature requests from transcript chunks."""
+    start_time = datetime.utcnow()
+
+    try:
+        chunks = request.transcriptChunks
+        if not chunks:
+            raise HTTPException(status_code=400, detail="No transcript chunks provided")
+
+        logger.info(f"Running feature extraction crew on {len(chunks)} transcript chunks")
+
+        # Convert Pydantic models to dicts for the crew
+        chunk_dicts = [
+            {
+                "content": chunk.content,
+                "accountId": chunk.accountId,
+                "accountName": chunk.accountName,
+                "meetingSubject": chunk.meetingSubject,
+                "meetingDate": chunk.meetingDate,
+                "meetingUrl": chunk.meetingUrl,
+                "transcriptionId": chunk.transcriptionId,
+            }
+            for chunk in chunks
+        ]
+
+        crew = FeatureExtractionCrew(user_id=request.userId)
+        result = crew.run(transcript_chunks=chunk_dicts)
+
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        logger.info(f"Feature extraction crew completed in {execution_time:.2f}s, extracted {result.get('count', 0)} requests")
+
+        return {
+            "success": True,
+            "feature_requests": result.get("feature_requests", []),
+            "count": result.get("count", 0),
+            "execution_time": execution_time,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Feature extraction crew failed: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e),
+            "feature_requests": [],
+            "count": 0,
+        }
 
 
 if __name__ == "__main__":

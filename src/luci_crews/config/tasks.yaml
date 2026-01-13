@@ -814,3 +814,80 @@ prepare_sc_materials:
     Every recommendation should be tailored to this specific opportunity and customer.
     Use markdown in string values where appropriate.
   agent: sc_prep_specialist
+
+# =============================================================================
+# FEATURE REQUEST EXTRACTION TASKS
+# =============================================================================
+
+extract_feature_requests:
+  description: >
+    Analyze the following customer transcript excerpts and extract any feature
+    requests, enhancement suggestions, or product feedback.
+
+    TRANSCRIPT EXCERPTS:
+    {transcript_chunks}
+
+    LEANDATA PRODUCT CATEGORIES:
+    - matching: Lead-to-account matching, duplicate detection, data quality
+    - routing: Lead/account routing, assignment rules, round-robin
+    - bookit: Meeting scheduling, calendar integration, booking links
+    - attribution: Marketing attribution, campaign tracking, revenue attribution
+    - revenue_intelligence: Analytics, reporting, forecasting
+    - engagement: Engagement scoring, activity tracking
+    - general: Does not fit a specific product area
+
+    For each feature request or product feedback item you find, extract:
+
+    1. **title**: A clear, concise title (5-10 words) describing the request
+    2. **description**: Detailed description of what the customer wants
+    3. **verbatim_quote**: The EXACT words from the customer (do not paraphrase!)
+    4. **speaker_name**: The speaker's name/role if identifiable, otherwise null
+    5. **product_category**: One of: matching, routing, bookit, attribution, revenue_intelligence, engagement, general
+    6. **request_type**: One of: feature, enhancement, bug, integration, performance, usability
+    7. **urgency**: One of: low, medium, high, critical
+       - low: Nice to have, mentioned casually
+       - medium: Would be helpful, clear interest
+       - high: Important pain point, impacts their work
+       - critical: Blocking issue, frustration expressed, competitive threat
+    8. **sentiment**: One of: positive, neutral, negative, frustrated
+       - positive: Customer excited about the idea
+       - neutral: Matter-of-fact suggestion
+       - negative: Disappointed it doesn't exist
+       - frustrated: Clearly upset about the gap
+    9. **business_impact**: Why this matters to the customer (their words if possible)
+    10. **confidence_score**: 0.0-1.0 how confident you are this is a genuine request
+
+    IMPORTANT RULES:
+    - Only extract GENUINE feature requests or enhancement asks
+    - Do NOT include general complaints without a specific ask
+    - Preserve the EXACT customer language in verbatim_quote
+    - If no feature requests are found, return an empty array []
+    - Higher confidence_score for explicit asks ("we need X", "can you add Y")
+    - Lower confidence_score for implied suggestions ("it would be nice if...")
+    - Include the account name and meeting context with each request
+
+    Return a JSON array with this structure:
+    [
+      {{
+        "title": "string",
+        "description": "string",
+        "verbatim_quote": "string",
+        "speaker_name": "string or null",
+        "account_name": "string",
+        "meeting_subject": "string",
+        "meeting_date": "string or null",
+        "product_category": "matching|routing|bookit|attribution|revenue_intelligence|engagement|general",
+        "request_type": "feature|enhancement|bug|integration|performance|usability",
+        "urgency": "low|medium|high|critical",
+        "sentiment": "positive|neutral|negative|frustrated",
+        "business_impact": "string or null",
+        "confidence_score": 0.0-1.0
+      }}
+    ]
+
+  expected_output: >
+    A valid JSON array of extracted feature requests. Each request should have
+    a clear title, detailed description, verbatim customer quote, and accurate
+    categorization. Return an empty array [] if no feature requests are found.
+    Never fabricate quotes - only include what was actually said.
+  agent: feature_request_extractor
