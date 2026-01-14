@@ -891,3 +891,150 @@ extract_feature_requests:
     categorization. Return an empty array [] if no feature requests are found.
     Never fabricate quotes - only include what was actually said.
   agent: feature_request_extractor
+
+# =============================================================================
+# SDR COACHING TASKS
+# =============================================================================
+
+analyze_sdr_activity_patterns:
+  description: >
+    Analyze the SDR's activity patterns from the provided performance metrics.
+
+    ANALYZE:
+    1. Call Activity:
+       - Total calls made vs. calls connected
+       - Connect rate and comparison to benchmarks (industry avg: 3-5%)
+       - Voicemail strategy effectiveness
+       - Call timing patterns if visible in data
+
+    2. Email Activity:
+       - Total emails sent vs. replies received
+       - Reply rate and comparison to benchmarks (industry avg: 1-3%)
+       - Email sequence performance if available
+       - Personalization indicators
+
+    3. Meeting Activity:
+       - Meetings booked vs. meetings held
+       - Show rate and comparison to benchmarks (target: 80%+)
+       - Meeting source (calls vs. emails vs. inbound)
+
+    4. Activity Patterns:
+       - Daily/weekly activity consistency
+       - Multi-channel coordination
+       - Follow-up cadence effectiveness
+
+    Provide detailed analysis of activity patterns with specific metrics and benchmarks.
+  expected_output: >
+    Detailed analysis of SDR activity patterns including call connect rates,
+    email reply rates, meeting booking effectiveness, and activity consistency
+    with specific metrics and benchmark comparisons.
+  agent: sdr_activity_analyst
+
+analyze_sdr_lead_pipeline:
+  description: >
+    Analyze the SDR's lead qualification patterns and pipeline health.
+
+    ASSESS:
+    1. Pipeline Health:
+       - Total leads in pipeline
+       - Lead status distribution (working, qualified, converted)
+       - Stale leads (7+ days without activity) - identify risk areas
+       - Average days since last activity
+
+    2. Qualification Quality:
+       - Leads contacted vs. leads qualified ratio
+       - Qualification rate compared to team/industry benchmarks
+       - Lead-to-opportunity conversion rate
+       - False positive rate (qualified leads that don't convert)
+
+    3. Lead Source Performance:
+       - Performance by lead source
+       - Which sources yield best conversion rates
+       - Outbound vs. inbound lead performance
+
+    4. Prioritization:
+       - Are high-value leads being prioritized?
+       - Lead aging and follow-up patterns
+       - Recommendations for lead prioritization improvements
+
+    Provide detailed analysis of lead qualification patterns with actionable insights.
+  expected_output: >
+    Detailed analysis of lead qualification patterns, pipeline health metrics,
+    source performance, and specific recommendations for improving qualification
+    rates and prioritization.
+  agent: sdr_lead_analyst
+
+analyze_sdr_pipeline_generation:
+  description: >
+    Analyze the SDR's pipeline generation and opportunity creation performance.
+
+    ASSESS:
+    1. Opportunity Creation:
+       - Total opportunities created in period
+       - Opportunity creation velocity (opps per week/month)
+       - Comparison to quota or targets if available
+
+    2. Pipeline Value:
+       - Total pipeline generated ($)
+       - Average deal size
+       - Deal size distribution
+       - Comparison to team/company averages
+
+    3. Opportunity Quality:
+       - Stage distribution of created opportunities
+       - Opportunities by source
+       - Early-stage vs. advanced opportunities
+
+    4. Conversion Efficiency:
+       - Activity to opportunity ratio
+       - Lead to opportunity conversion rate
+       - Time from lead to opportunity creation
+
+    Provide detailed analysis of pipeline generation with specific metrics and recommendations.
+  expected_output: >
+    Detailed analysis of pipeline generation including opportunity creation rates,
+    pipeline value, deal sizes, conversion efficiency, and specific recommendations
+    for improving results.
+  agent: sdr_pipeline_analyst
+
+synthesize_sdr_coaching:
+  description: >
+    Synthesize all analysis into comprehensive SDR coaching recommendations.
+
+    PROVIDE:
+    1. Performance Score (1-10) based on:
+       - Activity volume and consistency (25%)
+       - Activity effectiveness - connect rates, reply rates, show rates (25%)
+       - Lead qualification quality (25%)
+       - Pipeline generation results (25%)
+
+    2. Executive Summary (150 words max):
+       - Overall score and key takeaway
+       - Top 2-3 strengths to celebrate
+       - Top 2-3 areas needing improvement
+       - Single most impactful recommendation
+       - Suitable for sales leadership review
+
+    3. Comprehensive Analysis (500-800 words):
+       - Detailed breakdown of all performance areas
+       - Specific metrics with benchmark comparisons
+       - Activity pattern insights and recommendations
+       - Lead qualification assessment and suggestions
+       - Pipeline generation analysis and targets
+       - Prioritized list of coaching recommendations
+       - Suggested focus areas for next 30 days
+       - Specific tactics or techniques to try
+       - Recognition of strengths and wins
+
+    Be SPECIFIC and ACTIONABLE. Reference actual metrics from the analysis.
+
+    Return your analysis in this JSON format:
+    {{
+      "score": 1-10,
+      "summary": "Executive summary (150 words max)",
+      "comprehensiveAnalysis": "Detailed analysis (500-800 words)"
+    }}
+  expected_output: >
+    JSON object with score (1-10), summary (150 words max), and comprehensiveAnalysis
+    (500-800 words) fields providing actionable SDR coaching recommendations.
+  agent: sdr_coach

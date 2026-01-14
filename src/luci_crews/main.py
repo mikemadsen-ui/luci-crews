@@ -298,6 +298,20 @@ class SCCoachingRequest(BaseModel):
     daysBack: Optional[int] = 180
 
 
+class SDRCoachingRequest(BaseModel):
+    """Request model for SDR (Sales Development Representative) coaching analysis."""
+    sdrName: str
+    sdrEmail: str
+    salesforceUserId: Optional[str] = None
+    userId: Optional[str] = None  # For management-level AI settings
+    performanceMetrics: Dict[str, Any]
+    leadPipelineAnalysis: Dict[str, Any]
+    opportunityAnalysis: Dict[str, Any]
+    sequenceData: Optional[List[Dict[str, Any]]] = None
+    teamView: Optional[bool] = False
+    daysBack: Optional[int] = 30
+
+
 class SupportResolutionRequest(BaseModel):
     caseSubject: str
     caseDescription: Optional[str] = None
@@ -1390,6 +1404,102 @@ async def run_sc_coaching_crew(request: Request):
 
     except Exception as e:
         logger.error(f"SC coaching crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/crew/sdr-coaching")
+async def run_sdr_coaching_crew(request: Request):
+    """Run the SDR (Sales Development Representative) coaching analysis crew with optional streaming."""
+    import json
+    start_time = datetime.utcnow()
+
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = SDRCoachingRequest(**body)
+
+        logger.info(f"Running SDR coaching crew for: {req.sdrName} ({req.sdrEmail})")
+
+        from .crews.sdr_coaching_crew import SDRCoachingCrew
+        crew = SDRCoachingCrew(user_id=req.userId)
+
+        if stream:
+            async def generate():
+                progress_messages = []
+
+                def step_callback(message: str):
+                    progress_messages.append(message)
+
+                try:
+                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting coaching analysis...'})}\n\n"
+
+                    result = crew.run(
+                        sdr_name=req.sdrName,
+                        sdr_email=req.sdrEmail,
+                        performance_metrics=req.performanceMetrics,
+                        lead_pipeline_analysis=req.leadPipelineAnalysis,
+                        opportunity_analysis=req.opportunityAnalysis,
+                        sequence_data=req.sequenceData,
+                        days_back=req.daysBack or 30,
+                        step_callback=step_callback,
+                    )
+
+                    for msg in progress_messages:
+                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
+
+                    execution_time = (datetime.utcnow() - start_time).total_seconds()
+                    logger.info(f"SDR coaching crew completed in {execution_time:.2f}s")
+
+                    # Check if crew returned an error (success: False)
+                    if result and result.get('success') == False:
+                        error_msg = result.get('error', 'Analysis failed - no result returned')
+                        logger.error(f"SDR coaching crew returned error: {error_msg}")
+                        yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
+                    elif result and result.get('result'):
+                        yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'sdr_name': result.get('sdr_name'), 'sdr_email': result.get('sdr_email'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
+                    else:
+                        logger.error(f"SDR coaching crew returned empty result: {result}")
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Analysis completed but no result was returned'})}\n\n"
+
+                except Exception as e:
+                    logger.error(f"SDR coaching crew failed: {str(e)}")
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                }
+            )
+        else:
+            result = crew.run(
+                sdr_name=req.sdrName,
+                sdr_email=req.sdrEmail,
+                performance_metrics=req.performanceMetrics,
+                lead_pipeline_analysis=req.leadPipelineAnalysis,
+                opportunity_analysis=req.opportunityAnalysis,
+                sequence_data=req.sequenceData,
+                days_back=req.daysBack or 30,
+            )
+
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"SDR coaching crew completed in {execution_time:.2f}s")
+
+            return {
+                "success": True,
+                "result": result.get("result"),
+                "sdr_name": result.get("sdr_name"),
+                "sdr_email": result.get("sdr_email"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"SDR coaching crew failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
