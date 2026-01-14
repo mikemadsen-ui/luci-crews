@@ -177,6 +177,7 @@ class OpportunityDataModel(BaseModel):
     stage_name: Optional[str] = None
     probability: Optional[int] = None
     close_date: Optional[str] = None
+    created_date: Optional[str] = None  # When the opportunity was created
     type: Optional[str] = None
     lead_source: Optional[str] = None
     next_step: Optional[str] = None
@@ -191,6 +192,7 @@ class OpportunityDataModel(BaseModel):
     account_name: Optional[str] = None
     account_industry: Optional[str] = None
     account_tier: Optional[str] = None
+    customer_start_date: Optional[str] = None  # When the account became a customer
 
 
 class TranscriptionDataModel(BaseModel):
@@ -199,6 +201,15 @@ class TranscriptionDataModel(BaseModel):
     subject: Optional[str] = None
     date: Optional[str] = None
     text: Optional[str] = None
+    is_presales: Optional[bool] = None  # True if this call was before the customer start date
+
+
+class PresalesContextModel(BaseModel):
+    """Context about the presales nature of the opportunity."""
+    presalesCount: Optional[int] = 0  # Number of presales calls found
+    postsaleCount: Optional[int] = 0  # Number of post-sale calls found
+    customerStartDate: Optional[str] = None  # When the account became a customer
+    isExistingCustomer: Optional[bool] = False  # Whether the account is already a customer
 
 
 class OpportunityStrategyRequest(BaseModel):
@@ -210,6 +221,7 @@ class OpportunityStrategyRequest(BaseModel):
     transcriptionIds: Optional[List[str]] = None
     transcriptionData: Optional[List[TranscriptionDataModel]] = None
     salesforceAccountId: Optional[str] = None
+    presalesContext: Optional[PresalesContextModel] = None  # Context about presales calls
 
 
 class CaseDataModel(BaseModel):
@@ -781,6 +793,7 @@ async def run_opportunity_strategy_crew(request: Request):
                         opportunity_data=req.opportunityData.model_dump() if req.opportunityData else None,
                         transcription_data=[t.model_dump() for t in req.transcriptionData] if req.transcriptionData else None,
                         salesforce_account_id=req.salesforceAccountId,
+                        presales_context=req.presalesContext.model_dump() if req.presalesContext else None,
                     )
 
                     for msg in progress_messages:
@@ -811,6 +824,7 @@ async def run_opportunity_strategy_crew(request: Request):
                 opportunity_data=req.opportunityData.model_dump() if req.opportunityData else None,
                 transcription_data=[t.model_dump() for t in req.transcriptionData] if req.transcriptionData else None,
                 salesforce_account_id=req.salesforceAccountId,
+                presales_context=req.presalesContext.model_dump() if req.presalesContext else None,
             )
 
             execution_time = (datetime.utcnow() - start_time).total_seconds()

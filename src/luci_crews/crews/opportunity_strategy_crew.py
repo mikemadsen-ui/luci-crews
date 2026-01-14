@@ -424,16 +424,30 @@ class OpportunityStrategyCrew:
             return "No meeting transcripts provided."
 
         formatted = []
+        presales_calls = []
+        postsale_calls = []
+
         for t in transcription_data:
             subject = t.get("subject", "Untitled Meeting")
             date = t.get("date", "Unknown date")
             text = t.get("text", "")
+            is_presales = t.get("is_presales")
+
             if text:
                 # Truncate long transcripts
                 text = text[:4000] if len(text) > 4000 else text
-                formatted.append(f"=== {subject} ({date}) ===\n{text}\n")
+                # Label the call type if we know it
+                if is_presales is True:
+                    presales_calls.append(f"=== [PRESALES] {subject} ({date}) ===\n{text}\n")
+                elif is_presales is False:
+                    postsale_calls.append(f"=== [POST-SALE] {subject} ({date}) ===\n{text}\n")
+                else:
+                    formatted.append(f"=== {subject} ({date}) ===\n{text}\n")
 
-        return "\n".join(formatted) if formatted else "No meeting transcripts available."
+        # Combine with presales calls first for priority
+        all_formatted = presales_calls + postsale_calls + formatted
+
+        return "\n".join(all_formatted) if all_formatted else "No meeting transcripts available."
 
     def run(
         self,
@@ -444,6 +458,7 @@ class OpportunityStrategyCrew:
         opportunity_data: Optional[Dict[str, Any]] = None,
         transcription_data: Optional[List[Dict[str, Any]]] = None,
         salesforce_account_id: Optional[str] = None,
+        presales_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Run the opportunity strategy analysis.
@@ -456,6 +471,7 @@ class OpportunityStrategyCrew:
             opportunity_data: Optional pre-fetched opportunity data from Next.js
             transcription_data: Optional pre-fetched transcription data from Next.js
             salesforce_account_id: Optional Salesforce account ID for fetching context
+            presales_context: Optional context about presales vs post-sale calls
 
         Returns:
             Dict with analysis result and metadata
@@ -476,6 +492,7 @@ class OpportunityStrategyCrew:
                 "stage_name": opportunity_data.get("stage_name"),
                 "probability": opportunity_data.get("probability"),
                 "close_date": opportunity_data.get("close_date"),
+                "created_date": opportunity_data.get("created_date"),
                 "type": opportunity_data.get("type"),
                 "lead_source": opportunity_data.get("lead_source"),
                 "next_step": opportunity_data.get("next_step"),
@@ -487,6 +504,7 @@ class OpportunityStrategyCrew:
                 "fiscal_quarter": opportunity_data.get("fiscal_quarter"),
                 "fiscal_year": opportunity_data.get("fiscal_year"),
                 "salesforce_account_id": opportunity_data.get("salesforce_account_id") or salesforce_account_id,
+                "customer_start_date": opportunity_data.get("customer_start_date"),
                 "accounts": {
                     "name": opportunity_data.get("account_name"),
                     "industry": opportunity_data.get("account_industry"),
