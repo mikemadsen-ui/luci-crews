@@ -70,35 +70,31 @@ class ImplementationCrew:
         lines = []
         metrics = call_activity.get("metrics", {})
 
-        # Check calendar connection status
+        # Check calendar connection status - this is the IC's (Implementation Consultant's) calendar
         calendar_connected = metrics.get('calendarConnected', False)
-        if not calendar_connected:
-            lines.append("*** WARNING: CALENDAR NOT CONNECTED ***")
-            lines.append("The user has not connected their Google Calendar.")
-            lines.append("Upcoming meetings data is UNAVAILABLE - this may negatively affect")
-            lines.append("the accuracy of customer engagement assessment.")
-            lines.append("Recommend: Connect calendar in Settings for complete project visibility.")
-            lines.append("")
 
         # Summary metrics
         lines.append("=== CALL ACTIVITY SUMMARY ===")
+        lines.append(f"IC Calendar Status: {'CONNECTED' if calendar_connected else 'NOT CONNECTED'}")
         lines.append(f"- Total recent calls: {metrics.get('totalRecentCalls', 0)}")
         lines.append(f"- Calls in last 30 days: {metrics.get('callsLast30Days', 0)}")
         lines.append(f"- Calls in last 60 days: {metrics.get('callsLast60Days', 0)}")
         days_since = metrics.get('daysSinceLastCall')
         if days_since is not None:
             lines.append(f"- Days since last call: {days_since}")
+
         if calendar_connected:
             lines.append(f"- Upcoming calls scheduled: {metrics.get('upcomingCallsCount', 0)}")
             if metrics.get('nextCallDate'):
                 lines.append(f"- Next scheduled call: {metrics.get('nextCallDate')}")
         else:
-            lines.append("- Upcoming calls scheduled: UNKNOWN (calendar not connected)")
+            lines.append("- Upcoming calls scheduled: DATA UNAVAILABLE")
+            lines.append("  (IC has not connected their Google Calendar - upcoming meeting data cannot be retrieved)")
 
         # Recent calls (from Avoma transcriptions - always available)
         recent_calls = call_activity.get("recentCalls", [])
         if recent_calls:
-            lines.append("\n=== RECENT CALLS ===")
+            lines.append("\n=== RECENT CALLS (from Avoma) ===")
             for call in recent_calls[:5]:
                 duration = f" ({call.get('duration_minutes', '?')} min)" if call.get('duration_minutes') else ""
                 lines.append(f"- {call.get('date', 'Unknown date')}: {call.get('subject', 'Untitled')}{duration}")
@@ -106,13 +102,23 @@ class ImplementationCrew:
         # Upcoming calls (requires calendar connection)
         if calendar_connected:
             upcoming_calls = call_activity.get("upcomingCalls", [])
+            lines.append("\n=== UPCOMING CALLS (from IC's Google Calendar) ===")
             if upcoming_calls:
-                lines.append("\n=== UPCOMING CALLS ===")
                 for call in upcoming_calls:
                     lines.append(f"- {call.get('date', 'Unknown date')}: {call.get('subject', 'Untitled')}")
             else:
-                lines.append("\n=== UPCOMING CALLS ===")
-                lines.append("- No upcoming calls scheduled in the next 30 days")
+                lines.append("- No upcoming calls scheduled with this customer in the next 30 days")
+                lines.append("  (This is normal if the project is stable or awaiting customer action)")
+
+        # Important note for the AI
+        lines.append("\n=== IMPORTANT CONTEXT ===")
+        if calendar_connected:
+            lines.append("The IC's calendar IS connected. If no upcoming calls are shown, it means")
+            lines.append("there genuinely are no meetings scheduled - do NOT recommend connecting calendar.")
+        else:
+            lines.append("The IC's calendar is NOT connected. This is an internal tool limitation.")
+            lines.append("Do NOT recommend the customer connect their calendar - this is about the IC's calendar.")
+            lines.append("If recommending calendar connection, specify it's for the IC (internal action).")
 
         return "\n".join(lines)
 
