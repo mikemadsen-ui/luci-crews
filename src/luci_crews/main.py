@@ -308,6 +308,7 @@ class SDRCoachingRequest(BaseModel):
     leadPipelineAnalysis: Dict[str, Any]
     opportunityAnalysis: Dict[str, Any]
     sequenceData: Optional[List[Dict[str, Any]]] = None
+    intentMetrics: Optional[Dict[str, Any]] = None  # 6Sense, UserGems, campaign data
     teamView: Optional[bool] = False
     daysBack: Optional[int] = 30
 
@@ -1441,6 +1442,7 @@ async def run_sdr_coaching_crew(request: Request):
                         lead_pipeline_analysis=req.leadPipelineAnalysis,
                         opportunity_analysis=req.opportunityAnalysis,
                         sequence_data=req.sequenceData,
+                        intent_metrics=req.intentMetrics,
                         days_back=req.daysBack or 30,
                         step_callback=step_callback,
                     )
@@ -1482,6 +1484,7 @@ async def run_sdr_coaching_crew(request: Request):
                 lead_pipeline_analysis=req.leadPipelineAnalysis,
                 opportunity_analysis=req.opportunityAnalysis,
                 sequence_data=req.sequenceData,
+                intent_metrics=req.intentMetrics,
                 days_back=req.daysBack or 30,
             )
 

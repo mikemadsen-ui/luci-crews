@@ -131,6 +131,64 @@ Average Days Since Activity: {avg_days}
 
         return context
 
+    def _build_intent_context(
+        self,
+        intent_metrics: Dict[str, Any],
+    ) -> str:
+        """Build context string from 6Sense, UserGems, and campaign data."""
+        if not intent_metrics:
+            return ""
+
+        hot_accounts = intent_metrics.get("hotAccounts", 0)
+        decision_stage = intent_metrics.get("decisionStage", 0)
+        purchase_stage = intent_metrics.get("purchaseStage", 0)
+        high_intent = intent_metrics.get("highIntent", 0)
+        user_gems = intent_metrics.get("userGems", 0)
+        user_gems_from_customer = intent_metrics.get("userGemsFromCustomer", 0)
+        champions = intent_metrics.get("champions", 0)
+        campaign_responders = intent_metrics.get("campaignResponders", 0)
+
+        # Only build context if there's data
+        if not any([hot_accounts, user_gems, champions, campaign_responders]):
+            return ""
+
+        context = """=== INTENT & ENGAGEMENT SIGNALS ===
+
+HOT ACCOUNTS (6Sense Decision/Purchase Stage):
+"""
+        if hot_accounts > 0 or decision_stage > 0 or purchase_stage > 0:
+            context += f"""  Accounts in Decision Stage: {decision_stage}
+  Accounts in Purchase Stage: {purchase_stage}
+  High Intent Score (70+): {high_intent}
+  Total Hot Accounts: {hot_accounts}
+
+  NOTE: These accounts are showing strong buying signals. They should be TOP PRIORITY.
+"""
+        else:
+            context += "  No accounts currently in Decision/Purchase stage.\n"
+
+        context += "\nJOB CHANGE SIGNALS (UserGems):\n"
+        if user_gems > 0:
+            context += f"""  Total Job Changers: {user_gems}
+  From Previous Customers: {user_gems_from_customer} (warm referral opportunity)
+  Champions Moving Companies: {champions}
+
+  NOTE: Job changers who came from customer companies are HIGH VALUE targets.
+"""
+        else:
+            context += "  No recent job changers detected.\n"
+
+        context += "\nCAMPAIGN ENGAGEMENT:\n"
+        if campaign_responders > 0:
+            context += f"""  Campaign Responders: {campaign_responders}
+
+  NOTE: Contacts who responded to campaigns have shown interest. Follow up promptly.
+"""
+        else:
+            context += "  No campaign responses tracked.\n"
+
+        return context
+
     def _build_opportunity_context(
         self,
         opportunity_analysis: Dict[str, Any],
@@ -176,6 +234,7 @@ Average Deal Size: ${float(avg_deal_size):,.0f}
         lead_pipeline_analysis: Dict[str, Any],
         opportunity_analysis: Dict[str, Any],
         sequence_data: Optional[List[Dict[str, Any]]] = None,
+        intent_metrics: Optional[Dict[str, Any]] = None,
         days_back: int = 30,
         step_callback: Optional[callable] = None,
     ) -> Dict[str, Any]:
@@ -189,6 +248,7 @@ Average Deal Size: ${float(avg_deal_size):,.0f}
             lead_pipeline_analysis: Lead pipeline health analysis
             opportunity_analysis: Opportunity creation analysis
             sequence_data: Optional sequence/cadence performance data
+            intent_metrics: Optional 6Sense, UserGems, campaign engagement metrics
             days_back: Number of days to analyze
             step_callback: Optional callback for progress updates
 
@@ -199,6 +259,7 @@ Average Deal Size: ${float(avg_deal_size):,.0f}
         activity_context = self._build_activity_context(performance_metrics, sequence_data)
         lead_context = self._build_lead_context(lead_pipeline_analysis)
         opportunity_context = self._build_opportunity_context(opportunity_analysis, performance_metrics)
+        intent_context = self._build_intent_context(intent_metrics or {})
 
         full_context = f"""=== SDR COACHING ANALYSIS ===
 SDR: {sdr_name}
@@ -210,6 +271,8 @@ Analysis Period: Last {days_back} days
 {lead_context}
 
 {opportunity_context}
+
+{intent_context}
 """
 
         if step_callback:
@@ -351,16 +414,37 @@ Provide specific observations about pipeline contribution.""",
         if step_callback:
             step_callback("Generating coaching recommendations...")
 
+        # Check if intent data is available
+        has_intent_data = intent_metrics and any([
+            intent_metrics.get("hotAccounts", 0),
+            intent_metrics.get("userGems", 0),
+            intent_metrics.get("champions", 0),
+            intent_metrics.get("campaignResponders", 0),
+        ])
+
+        intent_coaching_section = ""
+        if has_intent_data:
+            intent_coaching_section = """
+5. **Intent Signal Utilization** (CRITICAL):
+   - Are hot accounts (Decision/Purchase stage) being prioritized?
+   - Are UserGems (job changers) being contacted quickly?
+   - Is the SDR following up with champions from customer companies?
+   - Are campaign responders getting timely outreach?
+   - Specific recommendations for leveraging intent signals
+
+"""
+
         coaching_task = Task(
             description=f"""Based on all analysis, provide targeted coaching recommendations for {sdr_name}.
 
 PROVIDE COACHING ON:
 
 1. **Performance Score (1-10)** based on:
-   - Activity volume and consistency (25%)
-   - Activity effectiveness - connect rates, reply rates, show rates (25%)
-   - Lead qualification quality (25%)
-   - Pipeline generation results (25%)
+   - Activity volume and consistency (20%)
+   - Activity effectiveness - connect rates, reply rates, show rates (20%)
+   - Lead qualification quality (20%)
+   - Pipeline generation results (20%)
+   - Intent signal utilization - prioritizing hot accounts, job changers (20%)
 
 2. **Executive Summary** (150 words max):
    - Overall score and key takeaway
@@ -376,13 +460,21 @@ PROVIDE COACHING ON:
    - Specific tactics to try
    - Recognition of wins
 
+4. **Priority Actions** (if hot accounts or job changers exist):
+   - Specific accounts/contacts to prioritize TODAY
+   - Why these are high-value targets
+   - Suggested outreach approach
+{intent_coaching_section}
 Be SPECIFIC and ACTIONABLE. Reference actual metrics.
+
+IMPORTANT: If there are accounts in Decision or Purchase stage, or contacts who recently changed jobs from customer companies, these should be the TOP PRIORITY and must be called out prominently.
 
 Return your analysis in this JSON format:
 {{
     "score": 1-10,
     "summary": "Executive summary (150 words max)",
-    "comprehensiveAnalysis": "Detailed analysis (500-800 words)"
+    "comprehensiveAnalysis": "Detailed analysis (500-800 words)",
+    "priorityActions": ["Action 1", "Action 2", "Action 3"]
 }}""",
             expected_output="JSON coaching analysis with score, summary, and comprehensive analysis",
             agent=coach,
