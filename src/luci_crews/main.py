@@ -31,6 +31,7 @@ from .crews.csm_coaching_crew import CSMCoachingCrew
 from .crews.sc_coaching_crew import SCCoachingCrew
 from .crews.competitive_crew import CompetitiveCrew
 from .crews.feature_extraction_crew import FeatureExtractionCrew
+from .crews.project_analysis_crew import ProjectAnalysisCrew
 from . import config_store
 from .batch_router import router as batch_router
 
@@ -166,6 +167,21 @@ class ProjectSentimentRequest(BaseModel):
     transcriptionIds: Optional[List[str]] = None
     forceRefresh: Optional[bool] = False
     userEmail: Optional[str] = None
+
+
+class ProjectAnalysisRequest(BaseModel):
+    """Request model for unified project analysis crew."""
+    salesforceProjectId: str
+    userId: Optional[str] = None
+    userEmail: Optional[str] = None
+    forceRefresh: Optional[bool] = False
+    # All data is passed from Next.js to avoid refetching
+    project: Optional[Dict[str, Any]] = None
+    projectOwner: Optional[Dict[str, Any]] = None
+    mavenlinkTasks: Optional[List[Dict[str, Any]]] = None
+    mavenlinkTimeEntries: Optional[List[Dict[str, Any]]] = None
+    transcripts: Optional[List[Dict[str, Any]]] = None
+    callActivity: Optional[Dict[str, Any]] = None
 
 
 class OpportunityDataModel(BaseModel):
@@ -770,6 +786,98 @@ async def run_project_sentiment_crew(request: Request):
 
     except Exception as e:
         logger.error(f"Project sentiment crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/crew/project-analysis")
+async def run_project_analysis_crew(request: Request):
+    """Run the unified project analysis crew.
+
+    This crew consolidates implementation and sentiment analysis into a single
+    comprehensive project health assessment.
+    """
+    import json
+    start_time = datetime.utcnow()
+
+    # Check for streaming parameter
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = ProjectAnalysisRequest(**body)
+
+        project_name = req.project.get("project_name", "Unknown") if req.project else "Unknown"
+        logger.info(f"Running project analysis crew for: {project_name}")
+
+        crew = ProjectAnalysisCrew()
+
+        if stream:
+            # Streaming response
+            async def generate():
+                progress_messages = []
+
+                def send_progress(stage: str, message: str):
+                    progress_messages.append({"stage": stage, "message": message})
+
+                try:
+                    # Send initial progress
+                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting project analysis...'})}\n\n"
+
+                    # Run the crew
+                    result = crew.run(
+                        project=req.project or {},
+                        project_owner=req.projectOwner or {"type": "unknown"},
+                        mavenlink_tasks=req.mavenlinkTasks or [],
+                        mavenlink_time_entries=req.mavenlinkTimeEntries or [],
+                        transcripts=req.transcripts or [],
+                        call_activity=req.callActivity or {},
+                        send_progress=send_progress,
+                    )
+
+                    # Send any progress messages
+                    for msg in progress_messages:
+                        yield f"data: {json.dumps({'type': 'progress', 'stage': msg['stage'], 'message': msg['message']})}\n\n"
+
+                    execution_time = (datetime.utcnow() - start_time).total_seconds()
+                    logger.info(f"Project analysis crew completed in {execution_time:.2f}s")
+
+                    # Send the final result
+                    yield f"data: {json.dumps({'type': 'result', 'result': result})}\n\n"
+
+                except Exception as e:
+                    logger.error(f"Project analysis crew failed: {str(e)}")
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                }
+            )
+        else:
+            # Non-streaming response
+            result = crew.run(
+                project=req.project or {},
+                project_owner=req.projectOwner or {"type": "unknown"},
+                mavenlink_tasks=req.mavenlinkTasks or [],
+                mavenlink_time_entries=req.mavenlinkTimeEntries or [],
+                transcripts=req.transcripts or [],
+                call_activity=req.callActivity or {},
+            )
+
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"Project analysis crew completed in {execution_time:.2f}s")
+
+            return {
+                "success": True,
+                "result": result,
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"Project analysis crew failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
