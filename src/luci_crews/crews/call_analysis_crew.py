@@ -107,7 +107,7 @@ class CallAnalysisCrew:
             attendees: Optional list of meeting attendees with emails
 
         Returns:
-            Dict mapping speaker_id to 'vendor' or 'customer'
+            Dict mapping speaker_id/name to 'vendor' or 'customer'
         """
         classification = {}
         attendee_map = {}
@@ -121,27 +121,53 @@ class CallAnalysisCrew:
                     attendee_map[name] = email
 
         for speaker in speakers:
-            speaker_id = str(speaker.get("id", speaker.get("speaker_id", "")))
-            speaker_name = (speaker.get("name") or "").lower()
+            # Use ID if available, otherwise fall back to name as key
+            speaker_id = speaker.get("id") or speaker.get("speaker_id")
+            speaker_name = speaker.get("name") or ""
+            speaker_email = speaker.get("email") or ""
 
-            # Try to match speaker to attendee
+            # Use name as the key if no ID (common in simpler formats)
+            key = str(speaker_id) if speaker_id else speaker_name
+            if not key:
+                continue
+
+            speaker_name_lower = speaker_name.lower()
+
+            # First check if speaker has email directly
+            if speaker_email:
+                domain = speaker_email.split("@")[-1].lower()
+                speaker_type = "vendor" if domain in VENDOR_DOMAINS else "customer"
+                classification[key] = speaker_type
+                # Also store by name for fallback lookups
+                if speaker_name:
+                    classification[speaker_name] = speaker_type
+                continue
+
+            # Try to match speaker to attendee by name
             matched_email = None
             for att_name, att_email in attendee_map.items():
                 # Check if speaker name contains attendee name or vice versa
-                if att_name in speaker_name or speaker_name in att_name:
+                if att_name in speaker_name_lower or speaker_name_lower in att_name:
                     matched_email = att_email
                     break
 
             if matched_email:
                 domain = matched_email.split("@")[-1].lower()
-                classification[speaker_id] = "vendor" if domain in VENDOR_DOMAINS else "customer"
+                speaker_type = "vendor" if domain in VENDOR_DOMAINS else "customer"
+                classification[key] = speaker_type
+                if speaker_name:
+                    classification[speaker_name] = speaker_type
             else:
                 # Default: assume customer if can't match (safer assumption)
                 # Unless name contains obvious vendor indicators
-                if any(x in speaker_name for x in ["leandata", "ld ", "consultant"]):
-                    classification[speaker_id] = "vendor"
+                if any(x in speaker_name_lower for x in ["leandata", "ld ", "consultant"]):
+                    classification[key] = "vendor"
+                    if speaker_name:
+                        classification[speaker_name] = "vendor"
                 else:
-                    classification[speaker_id] = "customer"
+                    classification[key] = "customer"
+                    if speaker_name:
+                        classification[speaker_name] = "customer"
 
         return classification
 
