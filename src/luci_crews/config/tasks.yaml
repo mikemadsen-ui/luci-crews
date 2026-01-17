@@ -1169,3 +1169,58 @@ synthesize_sdr_coaching:
     JSON object with score (1-10), summary (150 words max), and comprehensiveAnalysis
     (500-800 words) fields providing actionable SDR coaching recommendations.
   agent: sdr_coach
+
+# =============================================================================
+# CALL ANALYSIS TASKS (Per-Call Sentiment & Engagement)
+# =============================================================================
+
+analyze_call_sentiment:
+  description: >
+    Analyze customer sentiment in this call transcript across three dimensions.
+
+    {context}
+
+    {transcript}
+
+    Evaluate sentiment across THREE dimensions:
+    1. PRODUCT SENTIMENT: How does the customer feel about the LeanData product?
+    2. COMPANY SENTIMENT: How does the customer feel about LeanData as a company?
+    3. IC SENTIMENT: How does the customer feel about the Implementation Consultant?
+
+    For each, provide a score from -1.0 (very negative) to 1.0 (very positive).
+    Support each assessment with specific quotes from the transcript.
+  expected_output: >
+    JSON with product_sentiment, company_sentiment, ic_sentiment (each with score,
+    signals, key_quotes), overall_sentiment score, and sentiment_summary.
+  agent: call_sentiment_analyzer
+
+analyze_call_engagement:
+  description: >
+    Analyze engagement dynamics and participation patterns in this call.
+
+    Review the calculated metrics and transcript to assess engagement level.
+  expected_output: >
+    JSON with engagement_level (low/medium/high), engagement_signals,
+    participation_assessment, conversation_quality, and notable_patterns.
+  agent: call_engagement_analyzer
+
+extract_call_actions:
+  description: >
+    Extract all actionable items from the call transcript.
+
+    Identify: commitments made, blockers surfaced, decisions made,
+    key concerns raised, and positive signals.
+  expected_output: >
+    JSON with arrays for commitments_made, blockers_surfaced, decision_points,
+    key_concerns, and positive_signals with appropriate metadata for each.
+  agent: call_action_extractor
+
+assess_call_risk:
+  description: >
+    Synthesize previous analyses into risk assessment and IC coaching.
+
+    Determine risk level, implementation stage, and provide actionable coaching.
+  expected_output: >
+    JSON with risk_level (low/medium/high/critical), risk_factors array,
+    implementation_stage, coaching_notes, and follow_up_actions array.
+  agent: call_risk_assessor

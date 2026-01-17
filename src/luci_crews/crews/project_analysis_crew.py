@@ -14,10 +14,11 @@ Key improvement: Sentiment analyst receives Mavenlink task data, preventing fals
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable
 
-from crewai import Agent, Crew, Task
-from langchain_openai import ChatOpenAI
+from crewai import Agent, Crew, Task, LLM
+
+from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +26,21 @@ logger = logging.getLogger(__name__)
 class ProjectAnalysisCrew:
     """Unified project analysis crew combining strategic health and sentiment."""
 
-    def __init__(self):
-        """Initialize the project analysis crew."""
-        self.llm = ChatOpenAI(
-            model=os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"),
-            temperature=0.7,
-            openai_api_key=os.getenv("OPENAI_API_KEY"),
-        )
+    def __init__(self, user_id: Optional[str] = None):
+        """Initialize the project analysis crew.
+
+        Args:
+            user_id: Optional user ID to fetch management-level AI settings.
+                    If not provided, uses default settings.
+        """
+        self.user_id = user_id
+        if user_id:
+            self.llm = create_llm_for_user(user_id)
+        else:
+            self.llm = LLM(
+                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
+                api_key=os.environ.get("OPENAI_API_KEY"),
+            )
 
     def _create_strategic_analyst(self) -> Agent:
         """Create the strategic health analyst agent."""
@@ -157,7 +166,7 @@ TASK DETAILS:
         mavenlink_tasks: List[Dict[str, Any]],
         mavenlink_time_entries: List[Dict[str, Any]],
         call_activity: Optional[Dict[str, Any]] = None,
-        stream_callback: Optional[callable] = None,
+        send_progress: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
         Run the project analysis.
@@ -169,7 +178,7 @@ TASK DETAILS:
             mavenlink_tasks: List of Mavenlink task data with assignees
             mavenlink_time_entries: List of time entry data
             call_activity: Optional call activity metrics
-            stream_callback: Optional callback for streaming progress
+            send_progress: Optional callback for streaming progress
 
         Returns:
             Dict with scores, summaries, and coaching recommendations
@@ -178,9 +187,9 @@ TASK DETAILS:
         logger.info(f"Project owner: {project_owner.get('type', 'unknown').upper()} - {project_owner.get('name', 'Unknown')}")
         logger.info(f"Data: {len(transcripts)} transcripts, {len(mavenlink_tasks)} tasks")
 
-        def send_progress(step: str, message: str):
-            if stream_callback:
-                stream_callback({"type": "progress", "step": step, "message": message})
+        def _emit_progress(step: str, message: str):
+            if send_progress:
+                send_progress(step, message)
             logger.info(f"[{step}] {message}")
 
         # Format context for tasks
@@ -194,7 +203,7 @@ TASK DETAILS:
         project_coach = self._create_project_coach()
 
         # Task 1: Strategic Health Analysis
-        send_progress("Step 1", "Analyzing strategic project health...")
+        _emit_progress("Step 1", "Analyzing strategic project health...")
         strategic_task = Task(
             description=f"""Analyze the strategic health of this implementation project.
 
@@ -224,7 +233,7 @@ Provide a structured assessment with specific observations.""",
         )
 
         # Task 2: Customer Sentiment Analysis
-        send_progress("Step 2", "Analyzing customer sentiment...")
+        _emit_progress("Step 2", "Analyzing customer sentiment...")
         sentiment_task = Task(
             description=f"""Analyze customer sentiment from recent conversations.
 
@@ -263,7 +272,7 @@ Analyze:
         owner_type = project_owner.get("type", "unknown")
         owner_context = "Project Manager (PM)" if owner_type == "pm" else "Implementation Consultant (IC)"
 
-        send_progress("Step 3", "Synthesizing analysis and generating coaching...")
+        _emit_progress("Step 3", "Synthesizing analysis and generating coaching...")
         coaching_task = Task(
             description=f"""Synthesize all analysis into actionable coaching for the project owner.
 
@@ -307,10 +316,10 @@ Be specific and actionable. Reference specific tasks, quotes, or data points."""
             verbose=True,
         )
 
-        send_progress("Step 4", "Running analysis...")
+        _emit_progress("Step 4", "Running analysis...")
         result = crew.kickoff()
 
-        send_progress("Complete", "Analysis complete!")
+        _emit_progress("Complete", "Analysis complete!")
 
         # Parse result
         try:

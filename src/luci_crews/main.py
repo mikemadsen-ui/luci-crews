@@ -34,6 +34,7 @@ from .crews.feature_extraction_crew import FeatureExtractionCrew
 from .crews.project_analysis_crew import ProjectAnalysisCrew
 from .crews.agenda_generation_crew import AgendaGenerationCrew
 from .crews.call_verification_crew import CallVerificationCrew
+from .crews.call_analysis_crew import CallAnalysisCrew
 from . import config_store
 from .batch_router import router as batch_router
 
@@ -413,6 +414,26 @@ class CallVerificationRequest(BaseModel):
     agendaItems: List[Dict[str, Any]]  # Items to verify
     transcript: str  # Full transcript text
     speakers: Optional[List[Dict[str, Any]]] = None  # Speaker info
+
+
+class CallAnalysisRequest(BaseModel):
+    """Request model for per-call sentiment and engagement analysis."""
+    userId: Optional[str] = None
+    transcriptionId: Optional[str] = None  # Supabase transcription ID
+    avomaMeetingUuid: Optional[str] = None  # Avoma meeting UUID
+    projectName: str
+    accountName: str
+    meetingSubject: str
+    meetingDate: str  # ISO datetime string
+    # Transcript segments with speaker attribution
+    transcriptSegments: List[Dict[str, Any]]  # [{speaker_id, transcript/text}]
+    speakers: List[Dict[str, Any]]  # [{id, name}]
+    attendees: Optional[List[Dict[str, Any]]] = None  # [{name, email}] for speaker classification
+    implementationStage: Optional[str] = None  # discovery, configuration, testing, etc.
+    projectContext: Optional[Dict[str, Any]] = None  # {target_go_live, completion_pct, etc.}
+    # For linking results
+    salesforceAccountId: Optional[str] = None
+    salesforceProjectId: Optional[str] = None
 
 
 class CrewResponse(BaseModel):
@@ -2218,6 +2239,105 @@ async def run_call_verification_crew(request: CallVerificationRequest):
             "success": False,
             "error": str(e),
             "verified_items": [],
+        }
+
+
+@app.post("/api/crew/call-analysis")
+async def run_call_analysis_crew(request: CallAnalysisRequest):
+    """
+    Run per-call sentiment and engagement analysis on a meeting transcript.
+
+    Analyzes:
+    - Customer sentiment (product, company, IC)
+    - Engagement metrics (talk time, questions)
+    - Action items, blockers, concerns
+    - Risk level and coaching recommendations
+    """
+    start_time = datetime.utcnow()
+
+    try:
+        logger.info(f"Running call analysis crew for: {request.meetingSubject}")
+        logger.info(f"Project: {request.projectName}, Account: {request.accountName}")
+        logger.info(f"Transcript segments: {len(request.transcriptSegments)}, Speakers: {len(request.speakers)}")
+
+        if not request.transcriptSegments:
+            return {
+                "success": False,
+                "error": "No transcript segments provided",
+            }
+
+        if not request.speakers:
+            return {
+                "success": False,
+                "error": "No speaker data provided",
+            }
+
+        crew = CallAnalysisCrew(user_id=request.userId)
+        result = crew.run(
+            transcript_segments=request.transcriptSegments,
+            speakers=request.speakers,
+            project_name=request.projectName,
+            account_name=request.accountName,
+            meeting_subject=request.meetingSubject,
+            meeting_date=request.meetingDate,
+            attendees=request.attendees,
+            implementation_stage=request.implementationStage,
+            project_context=request.projectContext,
+        )
+
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        logger.info(f"Call analysis crew completed in {execution_time:.2f}s")
+        logger.info(f"Risk level: {result.get('risk_level')}, Overall sentiment: {result.get('overall_sentiment')}")
+
+        return {
+            "success": True,
+            # Sentiment scores
+            "product_sentiment": result.get("product_sentiment"),
+            "company_sentiment": result.get("company_sentiment"),
+            "ic_sentiment": result.get("ic_sentiment"),
+            "overall_sentiment": result.get("overall_sentiment"),
+            "sentiment_summary": result.get("sentiment_summary"),
+            # Engagement
+            "customer_talk_time_pct": result.get("customer_talk_time_pct"),
+            "vendor_talk_time_pct": result.get("vendor_talk_time_pct"),
+            "customer_questions_count": result.get("customer_questions_count"),
+            "vendor_questions_count": result.get("vendor_questions_count"),
+            "engagement_level": result.get("engagement_level"),
+            # Speakers with classification
+            "speakers": result.get("speakers"),
+            # Extracted insights
+            "key_concerns": result.get("key_concerns"),
+            "positive_signals": result.get("positive_signals"),
+            "commitments_made": result.get("commitments_made"),
+            "blockers_surfaced": result.get("blockers_surfaced"),
+            "decision_points": result.get("decision_points"),
+            # Risk and coaching
+            "implementation_stage": result.get("implementation_stage"),
+            "risk_level": result.get("risk_level"),
+            "risk_factors": result.get("risk_factors"),
+            "coaching_notes": result.get("coaching_notes"),
+            "follow_up_actions": result.get("follow_up_actions"),
+            # Metadata
+            "analyzed_at": result.get("analyzed_at"),
+            "analysis_duration_ms": result.get("analysis_duration_ms"),
+            "model_version": result.get("model_version"),
+            "execution_time": execution_time,
+            # For storage - pass through IDs
+            "transcription_id": request.transcriptionId,
+            "avoma_meeting_uuid": request.avomaMeetingUuid,
+            "salesforce_account_id": request.salesforceAccountId,
+            "salesforce_project_id": request.salesforceProjectId,
+            "meeting_date": request.meetingDate,
+            "meeting_subject": request.meetingSubject,
+        }
+
+    except Exception as e:
+        logger.error(f"Call analysis crew failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "error": str(e),
         }
 
 
