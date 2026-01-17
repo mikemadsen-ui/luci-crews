@@ -272,6 +272,137 @@ analyze_implementation:
   agent: implementation_analyst
 
 # =============================================================================
+# CALL AGENDA TASKS
+# =============================================================================
+
+generate_call_agenda:
+  description: >
+    Generate a comprehensive agenda for an upcoming implementation call.
+
+    {context}
+
+    Based on the context above, generate a prioritized agenda with items to discuss.
+
+    CRITICAL RULES:
+    1. CARRY-FORWARD ITEMS: All incomplete items from previous calls MUST be included.
+       - Items marked [LATE] should have priority "critical"
+       - Items marked [RESCHEDULED] should have priority "high"
+       - Preserve the original assignee and type
+
+    2. MAVENLINK TASKS: Include relevant tasks as agenda items:
+       - Overdue tasks become "critical" priority
+       - Tasks due within 7 days become "high" priority
+       - Tasks that need status updates become agenda items
+
+    3. PROJECT STATUS: Include items related to:
+       - Go-live date discussions if approaching (within 30 days)
+       - Milestone status updates
+       - Risk items that need discussion
+
+    4. PRIORITY DISTRIBUTION:
+       - Limit "critical" items to 2-3 max
+       - Balance with "high", "normal", and "low" priorities
+       - Put the most important items first
+  expected_output: >
+    You must return a valid JSON object with this exact structure:
+    {{
+      "agenda_items": [
+        {{
+          "title": "<clear, actionable title>",
+          "description": "<1-2 sentence context or details>",
+          "item_type": "<discussion|action_item|deliverable|followup>",
+          "priority": "<critical|high|normal|low>",
+          "source_type": "<mavenlink_task|previous_call|manual|extracted_deliverable>",
+          "source_id": "<ID if from Mavenlink or previous item, null otherwise>",
+          "assigned_to_name": "<person's name or null>",
+          "assigned_to_type": "<customer|internal|null>",
+          "due_date": "<YYYY-MM-DD or null>",
+          "is_late": <true|false>,
+          "carry_forward_count": <0 or count from previous>
+        }}
+      ],
+      "suggested_duration_minutes": <30|45|60>,
+      "call_objectives": [
+        "<objective 1>",
+        "<objective 2>"
+      ],
+      "preparation_notes": "<any special preparation needed for this call>"
+    }}
+
+    ORDER items by priority (critical first), then by item_type (action_items before discussions).
+    Include 5-15 agenda items, balancing comprehensiveness with realistic call duration.
+    For carry-forward items, preserve the original source_id to maintain lineage.
+  agent: call_agenda_planner
+
+verify_call_completion:
+  description: >
+    Analyze the call transcript to verify which agenda items were completed.
+
+    {context}
+
+    AGENDA ITEMS TO VERIFY:
+    {agenda_items}
+
+    CALL TRANSCRIPT:
+    {transcript}
+
+    For each agenda item, determine:
+    1. Was it discussed during the call?
+    2. If discussed, was it completed/resolved?
+    3. Are there new owners or updated timelines?
+    4. Did any new action items emerge from the discussion?
+
+    VERIFICATION CRITERIA:
+    - "verified_complete": The item was clearly addressed and resolved, OR a clear
+      commitment was made with a deadline
+    - "verified_incomplete": The item was discussed but NOT resolved, needs more work
+    - "not_discussed": The item was not mentioned in the transcript
+    - For action items/deliverables: Look for explicit confirmation of completion
+
+    EXTRACTING NEW ITEMS:
+    - Listen for phrases like "we need to...", "can you...", "let's schedule...",
+      "action item:", "follow up on..."
+    - Identify the owner (customer name vs internal team)
+    - Extract any mentioned deadlines
+  expected_output: >
+    You must return a valid JSON object with this exact structure:
+    {{
+      "verified_items": [
+        {{
+          "item_id": "<ID of the agenda item>",
+          "item_title": "<title for reference>",
+          "verification_status": "<verified_complete|verified_incomplete|not_discussed>",
+          "confidence": <0.0-1.0>,
+          "evidence": "<quote or summary from transcript supporting the verdict>",
+          "notes": "<any additional context>",
+          "new_owner": "<if ownership changed, new owner name, else null>",
+          "new_due_date": "<if deadline discussed, YYYY-MM-DD, else null>"
+        }}
+      ],
+      "new_action_items": [
+        {{
+          "title": "<action item title>",
+          "description": "<context from call>",
+          "item_type": "<action_item|deliverable|followup>",
+          "assigned_to_name": "<person name>",
+          "assigned_to_type": "<customer|internal>",
+          "due_date": "<YYYY-MM-DD if mentioned, else null>",
+          "priority": "<high|normal|low>",
+          "source_quote": "<relevant quote from transcript>"
+        }}
+      ],
+      "call_summary": "<2-3 sentence summary of what was accomplished>",
+      "follow_up_needed": <true|false>,
+      "next_call_suggested_topics": [
+        "<topic that needs follow-up>"
+      ]
+    }}
+
+    Be thorough but avoid false positives. If unsure whether something was completed,
+    mark as "verified_incomplete" with lower confidence.
+  agent: call_verification_analyst
+
+# =============================================================================
 # SENTIMENT ANALYSIS TASKS
 # =============================================================================
 

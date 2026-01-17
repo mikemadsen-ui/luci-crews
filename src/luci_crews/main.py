@@ -32,6 +32,7 @@ from .crews.sc_coaching_crew import SCCoachingCrew
 from .crews.competitive_crew import CompetitiveCrew
 from .crews.feature_extraction_crew import FeatureExtractionCrew
 from .crews.project_analysis_crew import ProjectAnalysisCrew
+from .crews.agenda_generation_crew import AgendaGenerationCrew
 from . import config_store
 from .batch_router import router as batch_router
 
@@ -383,6 +384,22 @@ class FeatureExtractionRequest(BaseModel):
     """Request model for feature request extraction from transcripts."""
     userId: Optional[str] = None
     transcriptChunks: List[TranscriptChunkModel]
+
+
+class AgendaGenerationRequest(BaseModel):
+    """Request model for call agenda generation."""
+    userId: Optional[str] = None
+    projectName: str
+    accountName: str
+    projectStatus: str
+    callSubject: str
+    callScheduledAt: str  # ISO datetime string
+    targetGoLive: Optional[str] = None  # YYYY-MM-DD
+    completionPct: Optional[float] = None
+    mavenlinkTasks: Optional[List[Dict[str, Any]]] = None
+    incompleteItems: Optional[List[Dict[str, Any]]] = None  # Previous agenda items
+    recentCalls: Optional[List[Dict[str, Any]]] = None  # Call summaries
+    attendees: Optional[List[str]] = None
 
 
 class CrewResponse(BaseModel):
@@ -2067,6 +2084,67 @@ async def run_feature_extraction_crew(request: FeatureExtractionRequest):
             "error": str(e),
             "feature_requests": [],
             "count": 0,
+        }
+
+
+# =============================================================================
+# Agenda Generation Crew
+# =============================================================================
+
+@app.post("/api/crew/agenda-generation")
+async def run_agenda_generation_crew(request: AgendaGenerationRequest):
+    """Generate a call agenda for an upcoming implementation call."""
+    start_time = datetime.utcnow()
+
+    try:
+        logger.info(f"Running agenda generation crew for project: {request.projectName}")
+        logger.info(f"Call subject: {request.callSubject}, scheduled: {request.callScheduledAt}")
+
+        if request.mavenlinkTasks:
+            logger.info(f"Mavenlink tasks provided: {len(request.mavenlinkTasks)}")
+        if request.incompleteItems:
+            logger.info(f"Incomplete items to carry forward: {len(request.incompleteItems)}")
+
+        crew = AgendaGenerationCrew(user_id=request.userId)
+        result = crew.run(
+            project_name=request.projectName,
+            account_name=request.accountName,
+            project_status=request.projectStatus,
+            call_subject=request.callSubject,
+            call_scheduled_at=request.callScheduledAt,
+            target_go_live=request.targetGoLive,
+            completion_pct=request.completionPct,
+            mavenlink_tasks=request.mavenlinkTasks,
+            incomplete_items=request.incompleteItems,
+            recent_calls=request.recentCalls,
+            attendees=request.attendees,
+        )
+
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        logger.info(f"Agenda generation crew completed in {execution_time:.2f}s")
+
+        # Extract agenda items from result
+        parsed_result = result.get("result", {})
+        agenda_items = parsed_result.get("agenda_items", [])
+
+        return {
+            "success": True,
+            "agenda_items": agenda_items,
+            "suggested_duration": parsed_result.get("suggested_duration_minutes"),
+            "call_objectives": parsed_result.get("call_objectives", []),
+            "preparation_notes": parsed_result.get("preparation_notes"),
+            "raw_output": result.get("raw_output"),
+            "execution_time": execution_time,
+        }
+
+    except Exception as e:
+        logger.error(f"Agenda generation crew failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "error": str(e),
+            "agenda_items": [],
         }
 
 
