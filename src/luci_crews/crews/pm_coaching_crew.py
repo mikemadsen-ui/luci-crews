@@ -54,6 +54,7 @@ class PMCoachingCrew:
         sentiment_data: List[Dict[str, Any]] = None,
         transcription_samples: List[Dict[str, Any]] = None,
         escalation_data: List[Dict[str, Any]] = None,
+        agenda_metrics: Dict[str, Any] = None,
     ) -> str:
         """Build context string from Implementation Consultant portfolio data."""
 
@@ -224,6 +225,57 @@ Projects with Escalations:
             context += "No meeting transcription data available for these projects.\n"
             context += "NOTE: Transcriptions sync when users visit project detail pages in LUCI.\n"
 
+        # Agenda completion metrics
+        context += "\n=== CALL AGENDA & FOLLOW-UP PATTERNS ===\n"
+        if agenda_metrics and agenda_metrics.get("total_agendas", 0) > 0:
+            total_agendas = agenda_metrics.get("total_agendas", 0)
+            agendas_with_items = agenda_metrics.get("agendas_with_items", 0)
+            total_items = agenda_metrics.get("total_items", 0)
+            completed_items = agenda_metrics.get("completed_items", 0)
+            incomplete_items = agenda_metrics.get("incomplete_items", 0)
+            late_items = agenda_metrics.get("late_items", 0)
+            completion_rate = agenda_metrics.get("completion_rate", 0)
+            avg_items = agenda_metrics.get("avg_items_per_agenda", 0)
+            projects_with_agendas = agenda_metrics.get("projects_with_agendas", 0)
+
+            context += f"""
+Call Agendas Created: {total_agendas}
+Agendas with Action Items: {agendas_with_items}
+Projects Using Call Planner: {projects_with_agendas}
+
+=== AGENDA ITEM COMPLETION ===
+Total Action Items Tracked: {total_items}
+Completed: {completed_items}
+Incomplete/Pending: {incomplete_items}
+Late (Carried Forward): {late_items}
+Completion Rate: {completion_rate:.1f}%
+Average Items per Agenda: {avg_items:.1f}
+
+INTERPRETATION GUIDE:
+- Completion Rate above 75%: Good follow-through on commitments
+- Completion Rate 50-75%: Room for improvement in closing action items
+- Completion Rate below 50%: Significant follow-up gap - needs coaching
+- Late Items > 3: Pattern of carrying forward incomplete work
+- Avg Items > 8: May be overloading agendas, consider prioritization
+"""
+            # Add assessment based on metrics
+            if completion_rate >= 75:
+                context += "\nASSESSMENT: Strong agenda discipline - completing commitments consistently.\n"
+            elif completion_rate >= 50:
+                context += "\nASSESSMENT: Moderate follow-through - some action items slipping through.\n"
+            else:
+                context += "\nASSESSMENT: Follow-up patterns need attention - many items not completed.\n"
+
+            if late_items > 3:
+                context += f"WARNING: {late_items} late items suggest pattern of deferred commitments.\n"
+        else:
+            context += """
+NO CALL AGENDA DATA AVAILABLE
+NOTE: This IC has not used the Call Planner feature yet or has no tracked agendas.
+The Call Planner helps track commitments made during customer calls.
+Consider recommending adoption of the Call Planner for better follow-up tracking.
+"""
+
         return context
 
     def run(
@@ -236,6 +288,7 @@ Projects with Escalations:
         sentiment_data: Optional[List[Dict[str, Any]]] = None,
         transcription_samples: Optional[List[Dict[str, Any]]] = None,
         escalation_data: Optional[List[Dict[str, Any]]] = None,
+        agenda_metrics: Optional[Dict[str, Any]] = None,
         days_back: int = 365,
         step_callback: Optional[callable] = None,
     ) -> Dict[str, Any]:
@@ -272,6 +325,7 @@ Projects with Escalations:
             sentiment_data,
             transcription_samples,
             escalation_data,
+            agenda_metrics,
         )
 
         full_context = f"""=== IC COACHING ANALYSIS ===

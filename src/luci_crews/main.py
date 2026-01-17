@@ -275,6 +275,7 @@ class PMCoachingRequest(BaseModel):
     sentimentData: Optional[List[Dict[str, Any]]] = None
     transcriptionSamples: Optional[List[Dict[str, Any]]] = None
     escalationData: Optional[List[Dict[str, Any]]] = None
+    agendaMetrics: Optional[Dict[str, Any]] = None  # Call agenda completion patterns
     daysBack: Optional[int] = 365
 
 
@@ -1152,6 +1153,7 @@ async def run_pm_coaching_crew(request: Request):
                             sentiment_data=req.sentimentData,
                             transcription_samples=req.transcriptionSamples,
                             escalation_data=req.escalationData,
+                            agenda_metrics=req.agendaMetrics,
                             days_back=req.daysBack or 365,
                             step_callback=step_callback,
                         )
@@ -1237,6 +1239,7 @@ async def run_pm_coaching_crew(request: Request):
                 sentiment_data=req.sentimentData,
                 transcription_samples=req.transcriptionSamples,
                 escalation_data=req.escalationData,
+                agenda_metrics=req.agendaMetrics,
                 days_back=req.daysBack or 365,
             )
 
