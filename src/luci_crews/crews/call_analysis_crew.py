@@ -663,8 +663,16 @@ Return as JSON:
                 {
                     "id": str(s.get("id", s.get("speaker_id", ""))),
                     "name": s.get("name", "Unknown"),
-                    "type": speaker_classification.get(str(s.get("id", s.get("speaker_id", ""))), "customer"),
-                    **talk_time["speaker_breakdown"].get(str(s.get("id", s.get("speaker_id", ""))), {})
+                    "type": (
+                        speaker_classification.get(str(s.get("id") or s.get("speaker_id") or ""))
+                        or speaker_classification.get(s.get("name", ""))
+                        or "customer"
+                    ),
+                    **(
+                        talk_time["speaker_breakdown"].get(str(s.get("id") or s.get("speaker_id") or ""))
+                        or talk_time["speaker_breakdown"].get(s.get("name", ""))
+                        or {}
+                    )
                 }
                 for s in speakers
             ],
