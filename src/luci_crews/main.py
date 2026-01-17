@@ -33,6 +33,7 @@ from .crews.competitive_crew import CompetitiveCrew
 from .crews.feature_extraction_crew import FeatureExtractionCrew
 from .crews.project_analysis_crew import ProjectAnalysisCrew
 from .crews.agenda_generation_crew import AgendaGenerationCrew
+from .crews.call_verification_crew import CallVerificationCrew
 from . import config_store
 from .batch_router import router as batch_router
 
@@ -400,6 +401,17 @@ class AgendaGenerationRequest(BaseModel):
     incompleteItems: Optional[List[Dict[str, Any]]] = None  # Previous agenda items
     recentCalls: Optional[List[Dict[str, Any]]] = None  # Call summaries
     attendees: Optional[List[str]] = None
+
+
+class CallVerificationRequest(BaseModel):
+    """Request model for call transcript verification."""
+    userId: Optional[str] = None
+    projectName: str
+    accountName: str
+    callDate: str  # ISO datetime string
+    agendaItems: List[Dict[str, Any]]  # Items to verify
+    transcript: str  # Full transcript text
+    speakers: Optional[List[Dict[str, Any]]] = None  # Speaker info
 
 
 class CrewResponse(BaseModel):
@@ -2145,6 +2157,64 @@ async def run_agenda_generation_crew(request: AgendaGenerationRequest):
             "success": False,
             "error": str(e),
             "agenda_items": [],
+        }
+
+
+# =============================================================================
+# Call Verification Crew
+# =============================================================================
+
+@app.post("/api/crew/call-verification")
+async def run_call_verification_crew(request: CallVerificationRequest):
+    """Verify agenda item completion from a call transcript."""
+    start_time = datetime.utcnow()
+
+    try:
+        logger.info(f"Running call verification crew for project: {request.projectName}")
+        logger.info(f"Verifying {len(request.agendaItems)} agenda items")
+
+        if not request.transcript:
+            return {
+                "success": False,
+                "error": "No transcript provided",
+                "verified_items": [],
+            }
+
+        crew = CallVerificationCrew(user_id=request.userId)
+        result = crew.run(
+            project_name=request.projectName,
+            account_name=request.accountName,
+            call_date=request.callDate,
+            agenda_items=request.agendaItems,
+            transcript=request.transcript,
+            speakers=request.speakers,
+        )
+
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        logger.info(f"Call verification crew completed in {execution_time:.2f}s")
+
+        # Extract verification results
+        parsed_result = result.get("result", {})
+
+        return {
+            "success": True,
+            "verified_items": parsed_result.get("verified_items", []),
+            "new_action_items": parsed_result.get("new_action_items", []),
+            "call_summary": parsed_result.get("call_summary"),
+            "follow_up_needed": parsed_result.get("follow_up_needed", False),
+            "next_call_topics": parsed_result.get("next_call_suggested_topics", []),
+            "raw_output": result.get("raw_output"),
+            "execution_time": execution_time,
+        }
+
+    except Exception as e:
+        logger.error(f"Call verification crew failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "error": str(e),
+            "verified_items": [],
         }
 
 
