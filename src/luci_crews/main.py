@@ -35,6 +35,7 @@ from .crews.project_analysis_crew import ProjectAnalysisCrew
 from .crews.agenda_generation_crew import AgendaGenerationCrew
 from .crews.call_verification_crew import CallVerificationCrew
 from .crews.call_analysis_crew import CallAnalysisCrew
+from .crews.account_analysis_crew import AccountAnalysisCrew
 from . import config_store
 from .batch_router import router as batch_router
 
@@ -111,6 +112,20 @@ class AccountHealthRequest(BaseModel):
     activity_data: Optional[str] = None
     support_data: Optional[str] = None
     engagement_data: Optional[str] = None
+
+
+class AccountAnalysisRequest(BaseModel):
+    """Request model for unified account analysis (sentiment + health)."""
+    accountId: Optional[str] = None
+    salesforceAccountId: Optional[str] = None
+    userId: Optional[str] = None
+    userEmail: Optional[str] = None
+    accountName: Optional[str] = None
+    accountTier: Optional[str] = None
+    arr: Optional[float] = None
+    transcription: Optional[str] = None
+    salesforceContext: Optional[Dict[str, Any]] = None
+    engagementData: Optional[Dict[str, Any]] = None
 
 
 class MavenlinkTaskModel(BaseModel):
@@ -649,6 +664,89 @@ async def run_account_health_crew(request: AccountHealthRequest):
             success=False,
             error=str(e),
         )
+
+
+@app.post("/api/crew/account-analysis")
+async def run_account_analysis_crew(request: AccountAnalysisRequest):
+    """
+    Run the unified account analysis crew (combines sentiment + health).
+
+    Returns a single score with breakdown details for both sentiment and health.
+    """
+    start_time = datetime.utcnow()
+
+    try:
+        # Get account name - from request or fetch from Supabase
+        account_name = request.accountName
+
+        if not account_name and (request.accountId or request.salesforceAccountId):
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+
+            if supabase_url and supabase_key:
+                from supabase import create_client
+                supabase = create_client(supabase_url, supabase_key)
+
+                query = supabase.table("accounts").select("name, account_tier, contract_value")
+                if request.accountId:
+                    query = query.eq("id", request.accountId)
+                elif request.salesforceAccountId:
+                    query = query.eq("salesforce_id", request.salesforceAccountId)
+
+                result = query.limit(1).execute()
+                if result.data and len(result.data) > 0:
+                    account_data = result.data[0]
+                    account_name = account_data.get("name")
+                    if not request.accountTier:
+                        request.accountTier = account_data.get("account_tier")
+                    if not request.arr:
+                        request.arr = account_data.get("contract_value")
+                    logger.info(f"Fetched account from Supabase: {account_name}")
+
+        if not account_name:
+            return {
+                "success": False,
+                "error": "Account name is required. Please provide accountName or a valid accountId/salesforceAccountId.",
+            }
+
+        logger.info(f"Running unified account analysis for: {account_name}")
+
+        # Extract support data from salesforceContext
+        support_data = None
+        if request.salesforceContext:
+            support_data = {
+                "total_cases_count": request.salesforceContext.get("total_cases_count", 0),
+                "recent_tickets": request.salesforceContext.get("recent_tickets", []),
+            }
+
+        crew = AccountAnalysisCrew(user_id=request.userId)
+        result = crew.run(
+            account_name=account_name,
+            account_tier=request.accountTier,
+            arr=request.arr,
+            transcription=request.transcription,
+            support_data=support_data,
+            engagement_data=request.engagementData,
+        )
+
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        logger.info(f"Unified account analysis completed in {execution_time:.2f}s")
+        logger.info(f"Score: {result.get('score')}, Status: {result.get('status')}")
+
+        return {
+            "success": True,
+            "result": result,
+            "execution_time": execution_time,
+        }
+
+    except Exception as e:
+        logger.error(f"Unified account analysis failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "error": str(e),
+        }
 
 
 @app.post("/api/crew/implementation", response_model=CrewResponse)
