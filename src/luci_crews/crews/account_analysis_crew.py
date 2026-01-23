@@ -114,16 +114,27 @@ ARR: {arr_str}
         lines = ["=== SUPPORT ACTIVITY ==="]
 
         total_cases = support_data.get("total_cases_count", 0)
+        recent_tickets = support_data.get("recent_tickets", [])
+
+        # Calculate current status summary
+        open_count = sum(1 for t in recent_tickets if t.get("status", "").lower() not in ["closed", "resolved"])
+        closed_count = sum(1 for t in recent_tickets if t.get("status", "").lower() in ["closed", "resolved"])
+
         lines.append(f"Total Support Cases: {total_cases}")
 
-        recent_tickets = support_data.get("recent_tickets", [])
+        # Add clear current status summary
+        if open_count == 0 and closed_count > 0:
+            lines.append(f"⚠️ CURRENT STATUS: All {closed_count} cases are CLOSED/RESOLVED - no open issues")
+        elif open_count > 0:
+            lines.append(f"⚠️ CURRENT STATUS: {open_count} OPEN case(s), {closed_count} closed")
+
         if recent_tickets:
-            lines.append(f"\nRecent Tickets ({len(recent_tickets)}):")
+            lines.append(f"\nCase History ({len(recent_tickets)} cases):")
             for ticket in recent_tickets[:10]:
                 subject = ticket.get("subject", "No subject")
                 status = ticket.get("status", "Unknown")
                 priority = ticket.get("priority", "Normal")
-                lines.append(f"  - [{priority}] {subject} ({status})")
+                lines.append(f"  - [{priority}] {subject} (Status: {status})")
 
         return "\n".join(lines)
 
@@ -219,6 +230,11 @@ Evaluate TWO key dimensions:
    - Relationship strength
    - Churn risk indicators
    - Expansion opportunity signals
+
+IMPORTANT: Pay close attention to the CURRENT STATUS of support cases:
+- If all cases are CLOSED/RESOLVED, this is POSITIVE - do NOT describe them as "unresolved" or "open"
+- Distinguish between CURRENT state (are there open issues NOW?) and HISTORICAL patterns (past issues)
+- If all cases are closed, focus your support assessment on historical patterns and resolution quality
 
 For each dimension, provide:
 - A component score from 1-10
