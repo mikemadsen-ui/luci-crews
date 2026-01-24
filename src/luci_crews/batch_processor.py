@@ -245,8 +245,10 @@ class OvernightBatchProcessor:
         """
         self._ensure_supabase()
 
+        logger.info(f"Creating batch record: batch_id={batch_id}, accounts_total={accounts_total}, triggered_by={triggered_by}")
+
         try:
-            self.supabase.table("batch_processing_runs").insert({
+            result = self.supabase.table("batch_processing_runs").insert({
                 "batch_id": batch_id,
                 "batch_type": "overnight_sync",
                 "status": "running",
@@ -254,9 +256,13 @@ class OvernightBatchProcessor:
                 "triggered_by": triggered_by,
                 "started_at": datetime.utcnow().isoformat(),
             }).execute()
-            logger.info(f"Created batch record: {batch_id}")
+
+            if result.data:
+                logger.info(f"Created batch record successfully: {batch_id}")
+            else:
+                logger.warning(f"Batch record insert returned no data: {batch_id}")
         except Exception as e:
-            logger.error(f"Error creating batch record: {e}")
+            logger.error(f"Error creating batch record {batch_id}: {e}", exc_info=True)
 
     async def update_batch_progress(
         self,
@@ -270,8 +276,10 @@ class OvernightBatchProcessor:
         """Update batch progress in the database."""
         self._ensure_supabase()
 
+        logger.info(f"Updating progress for batch {batch_id}: {accounts_processed}/{accounts_total} accounts, {embeddings_generated} embeddings")
+
         try:
-            self.supabase.table("batch_processing_runs").update({
+            result = self.supabase.table("batch_processing_runs").update({
                 "users_processed": accounts_processed,  # Reusing field
                 "users_total": accounts_total,  # Reusing field
                 "accounts_synced": accounts_processed,
@@ -279,8 +287,14 @@ class OvernightBatchProcessor:
                 "embeddings_generated": embeddings_generated,
                 "embeddings_skipped": embeddings_skipped,
             }).eq("batch_id", batch_id).execute()
+
+            # Log result to diagnose update issues
+            if result.data:
+                logger.info(f"Batch progress updated: {len(result.data)} rows affected")
+            else:
+                logger.warning(f"Batch progress update returned no data - batch_id may not exist: {batch_id}")
         except Exception as e:
-            logger.error(f"Error updating batch progress: {e}")
+            logger.error(f"Error updating batch progress for {batch_id}: {e}", exc_info=True)
 
     async def complete_batch(self, batch_id: str, status: str, errors: List[str]):
         """Mark a batch as complete in the database."""
