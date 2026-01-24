@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: luci-crews
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      # Supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # OpenAI (primary LLM)
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL_NAME
+        sync: false
+      # Optional: Additional LLM providers
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      # Optional: Integrations
+      - key: AVOMA_API_KEY
+        sync: false
+      - key: AVOMA_MCP_URL
+        sync: false
+      - key: MAVENLINK_API_TOKEN
+        sync: false
+      # Batch processing
+      - key: CRON_SECRET
+        sync: false
+      - key: NEXTJS_APP_URL
+        sync: false
