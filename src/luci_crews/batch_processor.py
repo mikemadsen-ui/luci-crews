@@ -483,7 +483,20 @@ class OvernightBatchProcessor:
             "source_id, content_hash, created_at"
         ).eq("account_id", account_id).eq("data_type", "transcription").execute()
 
-        existing_map = {e["source_id"]: e for e in (existing_embeddings.data or [])}
+        # Build a map of meeting_uuid -> list of existing embeddings
+        # source_id can be "meeting_uuid" or "meeting_uuid_chunk_N"
+        existing_by_meeting = {}
+        for e in (existing_embeddings.data or []):
+            source_id = e["source_id"]
+            # Extract the base meeting UUID (before "_chunk_" if present)
+            if "_chunk_" in source_id:
+                base_uuid = source_id.rsplit("_chunk_", 1)[0]
+            else:
+                base_uuid = source_id
+
+            if base_uuid not in existing_by_meeting:
+                existing_by_meeting[base_uuid] = []
+            existing_by_meeting[base_uuid].append(e)
 
         for transcript in transcriptions.data:
             meeting_uuid = transcript.get("avoma_meeting_uuid")
@@ -493,11 +506,13 @@ class OvernightBatchProcessor:
                 continue
 
             # Check if embedding already exists and is up to date
-            existing = existing_map.get(meeting_uuid)
-            if existing:
+            existing_list = existing_by_meeting.get(meeting_uuid, [])
+            if existing_list:
                 try:
+                    # Use the most recent embedding's created_at for comparison
+                    most_recent = max(existing_list, key=lambda x: x["created_at"])
                     existing_created = datetime.fromisoformat(
-                        existing["created_at"].replace("Z", "+00:00")
+                        most_recent["created_at"].replace("Z", "+00:00")
                     )
                     transcript_updated = datetime.fromisoformat(
                         transcript["updated_at"].replace("Z", "+00:00")
@@ -514,6 +529,9 @@ class OvernightBatchProcessor:
 
             for i, chunk in enumerate(chunks[:30]):  # Max 30 chunks per transcript
                 content_hash = hashlib.sha256(chunk.encode()).hexdigest()
+                # Include chunk index in source_id to make each chunk unique
+                # The unique constraint is on (source_id, data_type)
+                chunk_source_id = f"{meeting_uuid}_chunk_{i}" if len(chunks) > 1 else meeting_uuid
 
                 # Check if this exact content already exists
                 hash_check = self.supabase.table("account_embeddings").select("id").eq(
@@ -528,12 +546,12 @@ class OvernightBatchProcessor:
                     # Generate embedding
                     embedding = await generate_openai_embedding(chunk, self.openai_key)
 
-                    # Store embedding
-                    self.supabase.table("account_embeddings").insert({
+                    # Store embedding - use upsert to handle any remaining duplicates gracefully
+                    self.supabase.table("account_embeddings").upsert({
                         "account_id": account_id,
                         "salesforce_account_id": salesforce_account_id,
                         "data_type": "transcription",
-                        "source_id": meeting_uuid,
+                        "source_id": chunk_source_id,
                         "content": chunk,
                         "content_hash": content_hash,
                         "embedding": embedding,
@@ -542,8 +560,9 @@ class OvernightBatchProcessor:
                             "meetingDate": transcript.get("meeting_date"),
                             "chunkIndex": i,
                             "totalChunks": len(chunks),
+                            "originalMeetingUuid": meeting_uuid,
                         },
-                    }).execute()
+                    }, on_conflict="source_id,data_type").execute()
 
                     result["generated"] += 1
 
