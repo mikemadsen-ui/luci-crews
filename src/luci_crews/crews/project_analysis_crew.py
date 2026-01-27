@@ -288,7 +288,8 @@ Based on the strategic health and sentiment analyses, provide:
 5. Risk mitigation actions
 
 Be specific and actionable. Reference specific tasks, quotes, or data points.""",
-            expected_output="""JSON object with:
+            expected_output="""IMPORTANT: Return ONLY valid JSON. All strings must be properly quoted.
+
 {{
   "overall_health_score": <1-10>,
   "sentiment_score": <1-10>,
@@ -299,12 +300,12 @@ Be specific and actionable. Reference specific tasks, quotes, or data points."""
   "owner_coaching_summary": "<coaching specific to PM or IC>",
   "timeline_deliverables_summary": "<timeline assessment>",
   "risks_summary": "<risk summary>",
-  "deliverables": [<list of key deliverables from tasks with status>],
-  "timeline_dates": [<list of key dates: start, milestones, go-live>],
-  "identified_risks": [<list of specific risks>],
-  "coaching_recommendations": [<list of actionable recommendations>],
-  "key_quotes": [<important customer quotes>],
-  "participants_sentiment": {{}},
+  "deliverables": [{{"task": "<name>", "status": "<status>"}}],
+  "timeline_dates": [{{"event": "<name>", "date": "<date>"}}],
+  "identified_risks": ["<risk description as single string>"],
+  "coaching_recommendations": ["<recommendation as single string>"],
+  "key_quotes": [{{"speaker": "<name>", "quote": "<quote text>", "sentiment": "<positive/neutral/negative>"}}],
+  "participants_sentiment": {{"<name>": "<sentiment description>"}},
   "project_owner_type": "<pm or ic>"
 }}""",
             agent=project_coach,
@@ -334,12 +335,40 @@ Be specific and actionable. Reference specific tasks, quotes, or data points."""
 
             if json_start >= 0 and json_end > json_start:
                 json_str = result_str[json_start:json_end]
-                parsed_result = json.loads(json_str)
-                parsed_result["provider"] = "openai"
-                parsed_result["model"] = os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")
-                return parsed_result
+
+                # Try parsing as-is first
+                try:
+                    parsed_result = json.loads(json_str)
+                    parsed_result["provider"] = "openai"
+                    parsed_result["model"] = os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")
+                    return parsed_result
+                except json.JSONDecodeError:
+                    # Try to repair common LLM JSON errors
+                    import re
+                    repaired = json_str
+
+                    # Fix: "quote text" – Attribution (unquoted text after string)
+                    # Replace: "text" – Name  with  "text - Name"
+                    repaired = re.sub(r'"\s*[–—-]\s*([^",\}\]]+)', r' - \1"', repaired)
+
+                    # Fix trailing commas before ] or }
+                    repaired = re.sub(r',\s*\]', ']', repaired)
+                    repaired = re.sub(r',\s*\}', '}', repaired)
+
+                    # Fix missing commas between array elements or object properties
+                    repaired = re.sub(r'\}\s*\{', '},{', repaired)
+                    repaired = re.sub(r'\]\s*\[', '],[', repaired)
+
+                    logger.info(f"Attempting JSON repair...")
+                    parsed_result = json.loads(repaired)
+                    parsed_result["provider"] = "openai"
+                    parsed_result["model"] = os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")
+                    logger.info("JSON repair successful")
+                    return parsed_result
+
         except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse JSON from result: {e}")
+            logger.warning(f"Failed to parse JSON from result (even after repair): {e}")
+            logger.warning(f"Raw result excerpt: {result_str[:500] if result_str else 'empty'}...")
 
         # Fallback: return raw result with default structure
         return {
