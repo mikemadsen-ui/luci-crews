@@ -200,6 +200,7 @@ class ProjectAnalysisRequest(BaseModel):
     mavenlinkTimeEntries: Optional[List[Dict[str, Any]]] = None
     transcripts: Optional[List[Dict[str, Any]]] = None
     callActivity: Optional[Dict[str, Any]] = None
+    emailActivity: Optional[Dict[str, Any]] = None
 
 
 class OpportunityDataModel(BaseModel):
@@ -980,6 +981,7 @@ async def run_project_analysis_crew(request: Request):
                         mavenlink_time_entries=req.mavenlinkTimeEntries or [],
                         transcripts=req.transcripts or [],
                         call_activity=req.callActivity or {},
+                        email_activity=req.emailActivity,
                         send_progress=send_progress,
                     )
 
@@ -1014,6 +1016,7 @@ async def run_project_analysis_crew(request: Request):
                 mavenlink_time_entries=req.mavenlinkTimeEntries or [],
                 transcripts=req.transcripts or [],
                 call_activity=req.callActivity or {},
+                email_activity=req.emailActivity,
             )
 
             execution_time = (datetime.utcnow() - start_time).total_seconds()

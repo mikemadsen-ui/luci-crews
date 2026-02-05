@@ -63,11 +63,13 @@ class ProjectAnalysisCrew:
             role="Customer Sentiment Analyst",
             goal="Analyze customer sentiment and engagement from conversation transcripts",
             backstory="""You are an expert at understanding customer sentiment from
-            conversations. You identify tone, engagement levels, concerns, and satisfaction
-            indicators. IMPORTANT: You now have access to Mavenlink task data, so you can
-            accurately assess whether tasks are assigned and avoid false positives about
-            'missing assignments'. Consider the task context when analyzing discussions
-            about project progress and deliverables.""",
+            conversations and email engagement patterns. You identify tone, engagement
+            levels, concerns, and satisfaction indicators. IMPORTANT: You now have access
+            to Mavenlink task data, so you can accurately assess whether tasks are assigned
+            and avoid false positives about 'missing assignments'. Consider the task context
+            when analyzing discussions about project progress and deliverables.
+            You also analyze email engagement: inbound/outbound ratio, volume trends,
+            and days since last customer email as indicators of relationship health.""",
             llm=self.llm,
             verbose=True,
             allow_delegation=False,
@@ -158,6 +160,43 @@ TASK DETAILS:
 
         return context
 
+    def _format_email_context(self, email_activity: Optional[Dict[str, Any]]) -> str:
+        """Format email activity data for analysis context."""
+        if not email_activity:
+            return "NO EMAIL ACTIVITY DATA AVAILABLE"
+
+        metrics = email_activity.get("metrics", {})
+        recent_emails = email_activity.get("recentEmails", [])
+
+        if not metrics.get("totalCount"):
+            return "NO EMAIL ACTIVITY DATA AVAILABLE"
+
+        context = f"""
+EMAIL ENGAGEMENT METRICS:
+- Total Emails: {metrics.get('totalCount', 0)}
+- Inbound (from customer): {metrics.get('inboundCount', 0)}
+- Outbound (to customer): {metrics.get('outboundCount', 0)}
+- Last 30 Days: {metrics.get('recentCount', 0)}
+- Days Since Last Customer Email: {metrics.get('daysSinceLastCustomerEmail', 'N/A')}
+- Volume Trend: {metrics.get('trend', 'stable')}
+"""
+
+        if recent_emails:
+            context += "\nRECENT EMAIL ACTIVITY:\n"
+            for email in recent_emails[:10]:
+                direction = email.get("direction", "?")
+                direction_arrow = "←" if direction == "inbound" else "→" if direction == "outbound" else "?"
+                subject = email.get("subject", "No subject")
+                owner = email.get("ownerName", "Unknown")
+                contact = email.get("whoName", "Unknown")
+                date = email.get("activityDate", "N/A")
+                context += f"  {direction_arrow} [{date}] {subject} - {owner} ↔ {contact}\n"
+                if email.get("bodyPreview"):
+                    preview = email.get("bodyPreview", "")[:150]
+                    context += f"    Preview: {preview}...\n"
+
+        return context
+
     def run(
         self,
         project: Dict[str, Any],
@@ -166,6 +205,7 @@ TASK DETAILS:
         mavenlink_tasks: List[Dict[str, Any]],
         mavenlink_time_entries: List[Dict[str, Any]],
         call_activity: Optional[Dict[str, Any]] = None,
+        email_activity: Optional[Dict[str, Any]] = None,
         send_progress: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
@@ -178,6 +218,7 @@ TASK DETAILS:
             mavenlink_tasks: List of Mavenlink task data with assignees
             mavenlink_time_entries: List of time entry data
             call_activity: Optional call activity metrics
+            email_activity: Optional email engagement metrics and recent emails
             send_progress: Optional callback for streaming progress
 
         Returns:
@@ -196,6 +237,7 @@ TASK DETAILS:
         project_context = self._format_project_context(project, project_owner)
         tasks_context = self._format_tasks_context(mavenlink_tasks)
         transcripts_context = self._format_transcripts_context(transcripts)
+        email_context = self._format_email_context(email_activity)
 
         # Create agents
         strategic_analyst = self._create_strategic_analyst()
@@ -235,7 +277,7 @@ Provide a structured assessment with specific observations.""",
         # Task 2: Customer Sentiment Analysis
         _emit_progress("Step 2", "Analyzing customer sentiment...")
         sentiment_task = Task(
-            description=f"""Analyze customer sentiment from recent conversations.
+            description=f"""Analyze customer sentiment from recent conversations and email engagement.
 
 {project_context}
 
@@ -252,19 +294,30 @@ Use this task data to:
 CALL ACTIVITY:
 {json.dumps(call_activity.get('metrics', {}) if call_activity else {}, indent=2)}
 
+{email_context}
+
+EMAIL ENGAGEMENT ANALYSIS:
+- Evaluate in/out ratio: healthy relationships show balanced two-way communication
+- Check days since last customer email: >14 days may indicate disengagement
+- Assess volume trend: declining = potential disengagement, increasing = active engagement
+- Review recent email subjects for topics of concern or positive signals
+- Compare AM/IC outreach volume to customer responsiveness
+
 Analyze:
 1. Overall customer sentiment (positive/neutral/negative)
 2. Key themes and concerns raised
 3. Engagement level and communication quality
 4. Specific quotes that indicate sentiment
-5. Participant-level sentiment if identifiable""",
+5. Participant-level sentiment if identifiable
+6. Email engagement patterns: responsiveness, volume trend, communication balance""",
             expected_output="""Sentiment analysis including:
 - Sentiment score (1-10, where 10 is very positive)
 - Overall sentiment assessment
 - Key themes identified
 - Important quotes
 - Customer concerns (validated against task data)
-- Engagement assessment""",
+- Engagement assessment (calls + emails)
+- Email communication health""",
             agent=sentiment_analyst,
         )
 
@@ -280,14 +333,15 @@ The project owner is: {owner_context} - {project_owner.get('name', 'Unknown')}
 
 {"As the PM, they are ultimately responsible for project success and need leadership-focused guidance." if owner_type == "pm" else "As the IC (with no PM assigned), they own this project and need execution-focused guidance."}
 
-Based on the strategic health and sentiment analyses, provide:
+Based on the strategic health, sentiment, and email engagement analyses, provide:
 1. Overall health score (1-10)
 2. Executive summary (2-3 sentences)
 3. Coaching recommendations tailored to {owner_context}
 4. Immediate priorities (top 3)
 5. Risk mitigation actions
+6. Communication health assessment (call frequency + email engagement patterns)
 
-Be specific and actionable. Reference specific tasks, quotes, or data points.""",
+Be specific and actionable. Reference specific tasks, quotes, email patterns, or data points.""",
             expected_output="""IMPORTANT: Return ONLY valid JSON. All strings must be properly quoted.
 
 {{
