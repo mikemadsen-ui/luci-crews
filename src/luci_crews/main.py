@@ -49,6 +49,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Suppress verbose HTTP request logging from httpx (shows as errors in Railway)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 # Store running jobs
 running_jobs: Dict[str, Dict[str, Any]] = {}
 
