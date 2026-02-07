@@ -612,6 +612,7 @@ Return as JSON:
 
         # Run crew
         crew = Crew(
+            name="Call Analysis Crew",
             agents=[self.sentiment_analyzer, self.engagement_analyzer,
                     self.action_extractor, self.risk_assessor],
             tasks=tasks,

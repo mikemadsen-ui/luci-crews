@@ -324,6 +324,7 @@ class ProjectSentimentCrew:
 
         # Run the crew
         crew = Crew(
+            name="Project Sentiment Crew",
             agents=[self.coach],
             tasks=[self.analyze_task],
             process=Process.sequential,

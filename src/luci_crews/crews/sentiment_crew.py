@@ -117,6 +117,7 @@ class SentimentCrew:
         )
 
         crew = Crew(
+            name="Sentiment Analysis Crew",
             agents=[self.analyst],
             tasks=[self.analyze_task],
             process=Process.sequential,

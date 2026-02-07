@@ -408,6 +408,7 @@ class ImplementationCrew:
             step_callback("Running implementation health analysis...")
 
         crew = Crew(
+            name="Implementation Health Crew",
             agents=[self.analyst],
             tasks=[self.analyze_task],
             process=Process.sequential,

@@ -585,6 +585,7 @@ class OpportunityStrategyCrew:
 
         # Run the crew
         crew = Crew(
+            name="Opportunity Strategy Crew",
             agents=[self.strategist],
             tasks=[self.analyze_task],
             process=Process.sequential,

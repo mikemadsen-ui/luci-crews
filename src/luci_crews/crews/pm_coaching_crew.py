@@ -583,6 +583,7 @@ Return your analysis in this JSON format:
 
         # Create and run the crew
         crew = Crew(
+            name="PM Coaching Crew",
             agents=[delivery_analyst, customer_analyst, risk_analyst, coach],
             tasks=[delivery_task, customer_task, risk_task, coaching_task],
             process=Process.sequential,

@@ -338,6 +338,7 @@ Return as JSON:
 
         # Create and run crew
         crew = Crew(
+            name="Account Analysis Crew",
             agents=[account_analyst, synthesis_coach],
             tasks=[analysis_task, synthesis_task],
             verbose=True,
