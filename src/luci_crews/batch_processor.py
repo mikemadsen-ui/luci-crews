@@ -547,12 +547,12 @@ class OvernightBatchProcessor:
                 # The unique constraint is on (source_id, data_type)
                 chunk_source_id = f"{meeting_uuid}_chunk_{i}" if len(chunks) > 1 else meeting_uuid
 
-                # Check if this exact content already exists
-                hash_check = self.supabase.table("account_embeddings").select("id").eq(
-                    "account_id", account_id
-                ).eq("data_type", "transcription").eq("content_hash", content_hash).execute()
+                # Check if this chunk already exists by source_id (uses unique index, faster than content_hash)
+                existing_check = self.supabase.table("account_embeddings").select("id").eq(
+                    "source_id", chunk_source_id
+                ).eq("data_type", "transcription").limit(1).execute()
 
-                if hash_check.data:
+                if existing_check.data:
                     result["skipped"] += 1
                     continue
 
