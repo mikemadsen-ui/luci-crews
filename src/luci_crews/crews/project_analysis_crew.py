@@ -303,18 +303,23 @@ EMAIL ENGAGEMENT ANALYSIS:
 - Review recent email subjects for topics of concern or positive signals
 - Compare AM/IC outreach volume to customer responsiveness
 
+IMPORTANT - IDENTIFYING CUSTOMERS VS LEANDATA EMPLOYEES:
+- LeanData employees include: the PM, the IC, and anyone with @leandata.com email
+- CUSTOMERS are the people being implemented - they are NOT LeanData employees
+- When extracting quotes, ONLY include quotes from CUSTOMERS, never from LeanData staff
+
 Analyze:
 1. Overall customer sentiment (positive/neutral/negative)
-2. Key themes and concerns raised
+2. Key themes and concerns raised by CUSTOMERS
 3. Engagement level and communication quality
-4. Specific quotes that indicate sentiment
-5. Participant-level sentiment if identifiable
+4. Key quotes FROM CUSTOMERS ONLY that indicate their sentiment (exclude LeanData employee quotes)
+5. Customer-level sentiment for each customer participant
 6. Email engagement patterns: responsiveness, volume trend, communication balance""",
             expected_output="""Sentiment analysis including:
 - Sentiment score (1-10, where 10 is very positive)
 - Overall sentiment assessment
 - Key themes identified
-- Important quotes
+- Important quotes FROM CUSTOMERS ONLY (never quote LeanData PM/IC/employees)
 - Customer concerns (validated against task data)
 - Engagement assessment (calls + emails)
 - Email communication health""",
@@ -358,7 +363,7 @@ Be specific and actionable. Reference specific tasks, quotes, email patterns, or
   "timeline_dates": [{{"event": "<name>", "date": "<date>"}}],
   "identified_risks": ["<risk description as single string>"],
   "coaching_recommendations": ["<recommendation as single string>"],
-  "key_quotes": [{{"speaker": "<name>", "quote": "<quote text>", "sentiment": "<positive/neutral/negative>"}}],
+  "key_quotes": [{{"speaker": "<CUSTOMER name only - never LeanData employees>", "quote": "<quote text>", "sentiment": "<positive/neutral/negative>"}}],
   "participants_sentiment": {{"<name>": "<sentiment description>"}},
   "project_owner_type": "<pm or ic>"
 }}""",
