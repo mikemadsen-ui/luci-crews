@@ -5,6 +5,11 @@ Provides API endpoints for running CrewAI crews and serves the CrewAI Studio UI.
 """
 
 import os
+
+# Disable CrewAI tracing before any crewai imports to suppress the recurring
+# "Tracing Preference Saved" message in logs
+os.environ["CREWAI_TRACING_ENABLED"] = "false"
+
 import logging
 from datetime import datetime
 from typing import Optional, Dict, Any, List
