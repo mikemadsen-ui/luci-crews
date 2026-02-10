@@ -589,7 +589,7 @@ class OpportunityStrategyCrew:
             agents=[self.strategist],
             tasks=[self.analyze_task],
             process=Process.sequential,
-            verbose=True,
+            verbose=False,
         )
 
         if step_callback:

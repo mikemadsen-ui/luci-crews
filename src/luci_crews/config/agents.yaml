@@ -17,7 +17,7 @@ sales_pipeline_analyst:
     of complex sales cycles, multi-stakeholder buying committees, and competitive
     positioning. You're known for your ability to spot early warning signs in deals
     and provide practical, actionable advice.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 sales_strategist:
@@ -30,7 +30,7 @@ sales_strategist:
     companies. You specialize in complex enterprise deals and understand how to
     navigate procurement processes, build champion relationships, and differentiate
     against competitors. You think strategically but always provide concrete next steps.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 # =============================================================================
@@ -47,7 +47,7 @@ account_health_analyst:
     millions in ARR. You understand the signals that indicate healthy vs. at-risk
     accounts, from product usage patterns to stakeholder engagement. You focus on
     proactive interventions that prevent churn and identify expansion opportunities.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 relationship_advisor:
@@ -60,7 +60,7 @@ relationship_advisor:
     building executive-level relationships. You understand organizational dynamics,
     can identify key decision-makers and influencers, and know how to navigate
     complex stakeholder environments.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 # =============================================================================
@@ -77,7 +77,7 @@ implementation_analyst:
     software implementations. You understand the common pitfalls, can spot early
     warning signs of project delays, and know how to get derailed projects back
     on track. You balance customer needs with realistic timelines.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 call_agenda_planner:
@@ -92,7 +92,7 @@ call_agenda_planner:
     ensure carry-forward items are addressed, and balance project status updates
     with action item follow-ups. You're meticulous about tracking commitments
     and never let important items slip through the cracks.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 call_verification_analyst:
@@ -106,7 +106,7 @@ call_verification_analyst:
     were made, and who owns follow-up actions. You're thorough but practical,
     understanding that not everything discussed in a call needs formal tracking.
     You focus on deliverables, deadlines, and clear ownership.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 # =============================================================================
@@ -123,7 +123,7 @@ sentiment_analyst:
     linguistics and customer psychology. You can detect subtle shifts in tone,
     identify underlying concerns even when not explicitly stated, and provide
     early warning of potential relationship issues.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 # =============================================================================
@@ -141,7 +141,7 @@ competitive_analyst:
     position against different competitor types, when to engage vs. avoid
     competitive discussions, and how to turn competitive weaknesses into
     advantages.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 # =============================================================================
@@ -161,7 +161,7 @@ pm_effectiveness_analyst:
     look for specific behaviors: timeline setting, owner assignment, scope
     management, meeting flow, and handling customer pushback. You apply recency
     weighting - the last 30 days are PRIMARY indicators.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 customer_reception_analyst:
@@ -175,7 +175,7 @@ customer_reception_analyst:
     vs combative, confident vs anxious, engaged vs disengaged. You identify
     signals of frustration, skepticism, or misalignment. You focus on most
     recent calls for trend detection.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 timeline_deliverables_analyst:
@@ -189,7 +189,7 @@ timeline_deliverables_analyst:
     statements. You track contradictions and ambiguity in timeline and
     deliverable discussions. You associate each extracted item with its source
     call and date.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 implementation_coach:
@@ -202,7 +202,7 @@ implementation_coach:
     You use quotes as evidence and avoid generic recommendations. You understand
     this is a training opportunity to improve PM effectiveness. You score both
     PM effectiveness and overall project sentiment on a 1-10 scale.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 # =============================================================================
@@ -221,7 +221,7 @@ deal_qualification_analyst:
     (who controls budget), Decision Criteria, Decision Process, Identify Pain, and
     Champion strength. You're brutally honest - you'd rather disqualify early than
     waste resources on unwinnable deals. You look for evidence, not hope.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 stakeholder_power_analyst:
@@ -236,7 +236,7 @@ stakeholder_power_analyst:
     You identify: Decision Makers, Economic Buyers, Technical Evaluators, Champions,
     Blockers, and Coaches. You map reporting relationships and political alliances.
     You know that a weak champion or hidden blocker can kill any deal.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 value_engineer:
@@ -251,7 +251,7 @@ value_engineer:
     productivity gains, risk reduction, and revenue impact. You also quantify the
     "do nothing" cost - what it costs the customer to maintain status quo. Your
     business cases have justified multi-million dollar investments.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 competitive_battle_strategist:
@@ -266,7 +266,7 @@ competitive_battle_strategist:
     develop: Differentiation narratives, FUD counters, Proof points, Trap questions
     for competitors, and "Why us" stories. You don't trash competitors - you
     strategically position to highlight your unique value.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 deal_risk_analyst:
@@ -281,7 +281,7 @@ deal_risk_analyst:
     Technical (integration concerns, security requirements), Competitive (last-minute
     alternatives), and Procurement (legal, security reviews, budget freezes). You
     assign probability and impact scores and recommend specific mitigations.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 deal_strategist:
@@ -297,7 +297,7 @@ deal_strategist:
     requirements, and specific next actions with owners and dates. You score deal
     health on a 1-10 scale and provide a frank assessment of win probability.
     You think like a CEO reviewing the most important deal of the quarter.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 # =============================================================================
@@ -315,7 +315,7 @@ case_pattern_analyst:
     have specific strengths - some excel at technical troubleshooting, others at
     customer communication, others at complex escalations. You identify patterns in
     case types, resolution methods, and outcomes to understand this agent's profile.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 response_quality_analyst:
@@ -329,7 +329,7 @@ response_quality_analyst:
     clarity of explanation, thoroughness of troubleshooting, appropriate tone,
     proper escalation decisions, and follow-through on commitments. You've developed
     training programs that have significantly improved support team CSAT scores.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 metrics_benchmarking_analyst:
@@ -343,7 +343,7 @@ metrics_benchmarking_analyst:
     case complexity, customer tier, and issue type all affect resolution time.
     You normalize metrics for fair comparison and identify where this agent truly
     stands relative to peers. You focus on actionable metrics, not vanity numbers.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 support_coach:
@@ -358,7 +358,7 @@ support_coach:
     concrete examples from the agent's own cases, identify 2-3 focus areas (not 10),
     and suggest specific techniques or training resources. You balance constructive
     feedback with recognition of strengths.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 # =============================================================================
@@ -389,7 +389,7 @@ sc_prep_specialist:
     business, technical environment, and decision criteria will outperform a
     technically superior competitor who shows up unprepared. Your prep materials
     are specific, actionable, and focused on winning.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 discovery_synthesizer:
@@ -403,7 +403,7 @@ discovery_synthesizer:
     stated vs. hidden objections, decision criteria, buying signals, and red flags.
     You understand that customers don't always say what they mean - you read between
     the lines to understand true motivations and concerns.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 competitive_battle_strategist_sc:
@@ -418,7 +418,7 @@ competitive_battle_strategist_sc:
     on implementation complexity. You develop responses that are technically
     accurate, defensible, and strategically positioned to highlight your advantages
     while acknowledging limitations honestly.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 # =============================================================================
@@ -459,7 +459,7 @@ feature_request_extractor:
     You capture the EXACT customer words as verbatim quotes - never paraphrase
     or clean up the language. Product teams need to hear the real voice of the
     customer. You also note who said it (customer name/role if identifiable).
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 # =============================================================================
@@ -487,7 +487,7 @@ sdr_activity_analyst:
     - Meeting show rate: Target 80%+
 
     You identify specific, actionable patterns rather than making generic observations.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 sdr_lead_analyst:
@@ -505,7 +505,7 @@ sdr_lead_analyst:
     - High-intent leads require immediate follow-up
 
     You identify leads at risk of going cold and prioritization opportunities.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 sdr_pipeline_analyst:
@@ -523,7 +523,7 @@ sdr_pipeline_analyst:
     - Time from lead creation to opportunity conversion reveals efficiency
 
     You focus on outcomes over activity - pipeline generated matters more than calls made.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 sdr_coach:
@@ -545,7 +545,7 @@ sdr_coach:
 
     You provide balanced feedback - always highlight wins while being direct about
     improvement opportunities. You give specific tactics, not generic advice.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 # =============================================================================
@@ -573,7 +573,7 @@ call_sentiment_analyzer:
     These can differ! A customer might love the product but be frustrated with
     the IC's communication, or trust the IC but have concerns about the company.
     You capture nuance and support every assessment with direct quotes.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 call_engagement_analyzer:
@@ -594,7 +594,7 @@ call_engagement_analyzer:
     Low engagement is a warning sign - disengaged customers often become churned
     customers. High engagement suggests investment in the relationship and project.
     You provide specific, actionable observations about engagement patterns.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 call_action_extractor:
@@ -613,7 +613,7 @@ call_action_extractor:
     You distinguish between vendor (LeanData) and customer commitments. You note
     severity levels and capture exact quotes when relevant. You never invent
     action items - only extract what was actually discussed.
-  verbose: true
+  verbose: false
   allow_delegation: false
 
 call_risk_assessor:
@@ -638,5 +638,5 @@ call_risk_assessor:
 
     You provide specific, actionable coaching - not generic advice. You tell
     the IC exactly what to do next to improve the situation.
-  verbose: true
+  verbose: false
   allow_delegation: false

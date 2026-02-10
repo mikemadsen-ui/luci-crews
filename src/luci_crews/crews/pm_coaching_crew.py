@@ -587,7 +587,7 @@ Return your analysis in this JSON format:
             agents=[delivery_analyst, customer_analyst, risk_analyst, coach],
             tasks=[delivery_task, customer_task, risk_task, coaching_task],
             process=Process.sequential,
-            verbose=True,
+            verbose=False,
         )
 
         result = crew.kickoff()

@@ -216,7 +216,7 @@ class FeatureExtractionCrew:
             agents=[self.extractor],
             tasks=[self.extract_task],
             process=Process.sequential,
-            verbose=True,
+            verbose=False,
         )
 
         result = crew.kickoff()

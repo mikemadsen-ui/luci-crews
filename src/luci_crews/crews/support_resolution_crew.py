@@ -70,7 +70,7 @@ class SupportResolutionCrew:
             suggesting appropriate responses, identifying the right questions to ask,
             and providing step-by-step resolution guidance. You focus on being helpful,
             empathetic, and thorough.""",
-            verbose=True,
+            verbose=False,
             allow_delegation=False,
             llm=self.llm,
         )
@@ -133,7 +133,7 @@ Be specific and actionable. The suggested opening should be ready to copy-paste.
             agents=[support_analyst],
             tasks=[analysis_task],
             process=Process.sequential,
-            verbose=True
+            verbose=False
         )
 
         result = crew.kickoff()

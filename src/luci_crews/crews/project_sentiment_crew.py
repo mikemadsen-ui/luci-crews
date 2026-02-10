@@ -328,7 +328,7 @@ class ProjectSentimentCrew:
             agents=[self.coach],
             tasks=[self.analyze_task],
             process=Process.sequential,
-            verbose=True,
+            verbose=False,
         )
 
         if step_callback:

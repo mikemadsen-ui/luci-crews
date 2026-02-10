@@ -39,7 +39,7 @@ def create_meeting_analyst_crew():
         backstory="""You are an expert at analyzing sales and customer success meetings.
         You have access to Avoma to search for meetings, read transcripts, and review notes.
         You provide actionable insights based on meeting content.""",
-        verbose=True,
+        verbose=False,
         allow_delegation=False,
         llm=llm,
         tools=avoma_tools,  # Give agent access to Avoma MCP tools
@@ -70,7 +70,7 @@ def create_meeting_analyst_crew():
         agents=[meeting_analyst],
         tasks=[analysis_task],
         process=Process.sequential,
-        verbose=True,
+        verbose=False,
     )
 
     return crew

@@ -231,7 +231,7 @@ Case #{case.get('case_number', 'N/A')}
             agents=[support_coach],
             tasks=[analysis_task],
             process=Process.sequential,
-            verbose=True
+            verbose=False
         )
 
         result = crew.kickoff()

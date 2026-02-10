@@ -283,7 +283,7 @@ class AgendaGenerationCrew:
             agents=[self.planner],
             tasks=[task],
             process=Process.sequential,
-            verbose=True,
+            verbose=False,
         )
 
         result = crew.kickoff()

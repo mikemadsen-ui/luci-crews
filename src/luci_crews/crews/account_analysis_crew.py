@@ -51,7 +51,7 @@ class AccountAnalysisCrew:
             accounts worth millions in ARR and can detect subtle shifts in customer satisfaction.
             You understand that true account health comes from combining what customers say
             (sentiment) with what the data shows (health metrics).""",
-            verbose=True,
+            verbose=False,
             allow_delegation=False,
             llm=self.llm,
         )
@@ -66,7 +66,7 @@ class AccountAnalysisCrew:
             understanding that customer sentiment and account health metrics together tell
             a complete story. You provide practical recommendations that account managers
             can act on immediately.""",
-            verbose=True,
+            verbose=False,
             allow_delegation=False,
             llm=self.llm,
         )
@@ -341,7 +341,7 @@ Return as JSON:
             name="Account Analysis Crew",
             agents=[account_analyst, synthesis_coach],
             tasks=[analysis_task, synthesis_task],
-            verbose=True,
+            verbose=False,
         )
 
         _emit_progress("Step 3", "Running analysis...")

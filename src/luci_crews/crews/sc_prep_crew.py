@@ -440,7 +440,7 @@ class SCPrepCrew:
             agents=[self.specialist],
             tasks=[self.prep_task],
             process=Process.sequential,
-            verbose=True,
+            verbose=False,
         )
 
         if step_callback:

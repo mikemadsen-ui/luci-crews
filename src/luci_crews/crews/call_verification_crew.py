@@ -180,7 +180,7 @@ Call Date: {call_date}
             agents=[self.analyst],
             tasks=[task],
             process=Process.sequential,
-            verbose=True,
+            verbose=False,
         )
 
         result = crew.kickoff()

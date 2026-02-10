@@ -617,7 +617,7 @@ Return as JSON:
                     self.action_extractor, self.risk_assessor],
             tasks=tasks,
             process=Process.sequential,
-            verbose=True,
+            verbose=False,
         )
 
         result = crew.kickoff()

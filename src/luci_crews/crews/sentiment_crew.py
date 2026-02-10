@@ -121,7 +121,7 @@ class SentimentCrew:
             agents=[self.analyst],
             tasks=[self.analyze_task],
             process=Process.sequential,
-            verbose=True,
+            verbose=False,
         )
 
         result = crew.kickoff()

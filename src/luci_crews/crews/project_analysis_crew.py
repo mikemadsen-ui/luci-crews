@@ -53,7 +53,7 @@ class ProjectAnalysisCrew:
             You analyze Mavenlink task data, time entries, and project metrics to provide
             actionable insights.""",
             llm=self.llm,
-            verbose=True,
+            verbose=False,
             allow_delegation=False,
         )
 
@@ -71,7 +71,7 @@ class ProjectAnalysisCrew:
             You also analyze email engagement: inbound/outbound ratio, volume trends,
             and days since last customer email as indicators of relationship health.""",
             llm=self.llm,
-            verbose=True,
+            verbose=False,
             allow_delegation=False,
         )
 
@@ -87,7 +87,7 @@ class ProjectAnalysisCrew:
             When PM exists, they own the project and need leadership-focused coaching.
             When only IC exists, they need execution-focused coaching.""",
             llm=self.llm,
-            verbose=True,
+            verbose=False,
             allow_delegation=False,
         )
 
@@ -375,7 +375,7 @@ Be specific and actionable. Reference specific tasks, quotes, email patterns, or
         crew = Crew(
             agents=[strategic_analyst, sentiment_analyst, project_coach],
             tasks=[strategic_task, sentiment_task, coaching_task],
-            verbose=True,
+            verbose=False,
         )
 
         _emit_progress("Step 4", "Running analysis...")

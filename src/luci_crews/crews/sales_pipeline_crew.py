@@ -123,7 +123,7 @@ class SalesPipelineCrew:
             agents=[self.analyst, self.strategist],
             tasks=[self.analyze_task, self.strategy_task],
             process=Process.sequential,
-            verbose=True,
+            verbose=False,
         )
 
         result = crew.kickoff()
