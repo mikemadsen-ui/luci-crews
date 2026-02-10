@@ -5,10 +5,18 @@ Provides API endpoints for running CrewAI crews and serves the CrewAI Studio UI.
 """
 
 import os
+import sys
+from io import StringIO
 
-# Disable CrewAI tracing before any crewai imports to suppress the recurring
-# "Tracing Preference Saved" message in logs
+# Disable CrewAI tracing/telemetry before any crewai imports
 os.environ["CREWAI_TRACING_ENABLED"] = "false"
+os.environ["CREWAI_TELEMETRY_OPT_OUT"] = "true"
+os.environ["OTEL_SDK_DISABLED"] = "true"
+
+# Suppress the "Tracing Preference Saved" banner by temporarily redirecting stdout
+# during crewai module imports
+_original_stdout = sys.stdout
+sys.stdout = StringIO()
 
 import logging
 from datetime import datetime
@@ -43,6 +51,9 @@ from .crews.call_analysis_crew import CallAnalysisCrew
 from .crews.account_analysis_crew import AccountAnalysisCrew
 from . import config_store
 from .batch_router import router as batch_router
+
+# Restore stdout after crewai imports (suppresses "Tracing Preference Saved" banner)
+sys.stdout = _original_stdout
 
 # Load environment variables
 load_dotenv()
