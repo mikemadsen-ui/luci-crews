@@ -7,16 +7,23 @@ Provides API endpoints for running CrewAI crews and serves the CrewAI Studio UI.
 import os
 import sys
 from io import StringIO
+from unittest.mock import patch
 
 # Disable CrewAI tracing/telemetry before any crewai imports
 os.environ["CREWAI_TRACING_ENABLED"] = "false"
 os.environ["CREWAI_TELEMETRY_OPT_OUT"] = "true"
 os.environ["OTEL_SDK_DISABLED"] = "true"
+os.environ["CREWAI_DISABLE_TELEMETRY"] = "true"
 
 # Suppress the "Tracing Preference Saved" banner by temporarily redirecting stdout
-# during crewai module imports
+# during crewai module imports AND execution
 _original_stdout = sys.stdout
-sys.stdout = StringIO()
+_null_stdout = StringIO()
+sys.stdout = _null_stdout
+
+# Also suppress rich console output (CrewAI uses rich for banners)
+os.environ["TERM"] = "dumb"
+os.environ["NO_COLOR"] = "1"
 
 import logging
 from datetime import datetime
@@ -54,6 +61,27 @@ from .batch_router import router as batch_router
 
 # Restore stdout after crewai imports (suppresses "Tracing Preference Saved" banner)
 sys.stdout = _original_stdout
+
+# Attempt to disable CrewAI telemetry/tracing at runtime
+# This patches the telemetry module to prevent banners during crew execution
+try:
+    from crewai.telemetry import Telemetry
+    # Patch the Telemetry class to be a no-op
+    Telemetry.trace_execution = lambda *args, **kwargs: None
+    Telemetry.crew_creation = lambda *args, **kwargs: None
+    Telemetry.task_execution = lambda *args, **kwargs: None
+    Telemetry.tool_usage = lambda *args, **kwargs: None
+except (ImportError, AttributeError):
+    pass
+
+# Try to disable the tracing prompt
+try:
+    import crewai.utilities.printer as printer_module
+    # Patch print functions to suppress banners
+    if hasattr(printer_module, 'Printer'):
+        printer_module.Printer.print = lambda *args, **kwargs: None
+except (ImportError, AttributeError):
+    pass
 
 # Load environment variables
 load_dotenv()
