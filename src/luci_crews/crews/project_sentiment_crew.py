@@ -133,10 +133,11 @@ class ProjectSentimentCrew:
             return None
 
         try:
+            # Use limit(1) instead of maybe_single to avoid 204 errors when no rows found
             result = supabase.table("implementation_projects").select(
                 "project_name, salesforce_account_id, mavenlink_workspace_id, account"
-            ).eq("salesforce_project_id", salesforce_project_id).maybe_single().execute()
-            return result.data
+            ).eq("salesforce_project_id", salesforce_project_id).limit(1).execute()
+            return result.data[0] if result.data else None
         except Exception as e:
             logger.error(f"Error fetching project: {e}")
             return None

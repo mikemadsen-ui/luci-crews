@@ -62,17 +62,18 @@ class SCPrepCrew:
 
         try:
             # Try fetching by UUID first, then by Salesforce ID
+            # Use limit(1) instead of maybe_single to avoid 204 errors when no rows found
             result = supabase.table("opportunities").select(
                 "*, accounts(id, name, industry, account_tier, salesforce_id, website, employee_count)"
-            ).eq("id", opportunity_id).maybe_single().execute()
+            ).eq("id", opportunity_id).limit(1).execute()
 
             if not result.data:
                 # Try by Salesforce ID
                 result = supabase.table("opportunities").select(
                     "*, accounts(id, name, industry, account_tier, salesforce_id, website, employee_count)"
-                ).eq("salesforce_id", opportunity_id).maybe_single().execute()
+                ).eq("salesforce_id", opportunity_id).limit(1).execute()
 
-            return result.data
+            return result.data[0] if result.data else None
         except Exception as e:
             logger.error(f"Error fetching opportunity: {e}")
             return None
@@ -91,11 +92,11 @@ class SCPrepCrew:
         }
 
         try:
-            # Fetch account details
+            # Fetch account details (use limit(1) instead of maybe_single to avoid 204 errors)
             account_result = supabase.table("accounts").select(
                 "name, industry, account_tier, arr, employee_count, website"
-            ).eq("salesforce_id", salesforce_account_id).maybe_single().execute()
-            context["account_details"] = account_result.data
+            ).eq("salesforce_id", salesforce_account_id).limit(1).execute()
+            context["account_details"] = account_result.data[0] if account_result.data else None
 
             # Fetch contacts - focus on decision makers and technical folks
             contacts_result = supabase.table("contacts").select(
