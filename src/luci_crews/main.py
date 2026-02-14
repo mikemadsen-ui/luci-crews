@@ -2348,6 +2348,13 @@ async def run_sandbox_test(request: SandboxTestRequest):
                     break
             except queue.Empty:
                 if not thread.is_alive():
+                    # Thread finished - drain any remaining messages from queue
+                    while not progress_queue.empty():
+                        try:
+                            msg = progress_queue.get_nowait()
+                            yield f"data: {json.dumps(msg)}\n\n"
+                        except queue.Empty:
+                            break
                     break
                 # Send keepalive
                 yield f": keepalive\n\n"
