@@ -135,7 +135,7 @@ class ProjectSentimentCrew:
         try:
             result = supabase.table("implementation_projects").select(
                 "project_name, salesforce_account_id, mavenlink_workspace_id, account"
-            ).eq("salesforce_project_id", salesforce_project_id).maybeSingle().execute()
+            ).eq("salesforce_project_id", salesforce_project_id).maybe_single().execute()
             return result.data
         except Exception as e:
             logger.error(f"Error fetching project: {e}")

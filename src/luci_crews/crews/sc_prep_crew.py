@@ -64,13 +64,13 @@ class SCPrepCrew:
             # Try fetching by UUID first, then by Salesforce ID
             result = supabase.table("opportunities").select(
                 "*, accounts(id, name, industry, account_tier, salesforce_id, website, employee_count)"
-            ).eq("id", opportunity_id).maybeSingle().execute()
+            ).eq("id", opportunity_id).maybe_single().execute()
 
             if not result.data:
                 # Try by Salesforce ID
                 result = supabase.table("opportunities").select(
                     "*, accounts(id, name, industry, account_tier, salesforce_id, website, employee_count)"
-                ).eq("salesforce_id", opportunity_id).maybeSingle().execute()
+                ).eq("salesforce_id", opportunity_id).maybe_single().execute()
 
             return result.data
         except Exception as e:
@@ -94,7 +94,7 @@ class SCPrepCrew:
             # Fetch account details
             account_result = supabase.table("accounts").select(
                 "name, industry, account_tier, arr, employee_count, website"
-            ).eq("salesforce_id", salesforce_account_id).maybeSingle().execute()
+            ).eq("salesforce_id", salesforce_account_id).maybe_single().execute()
             context["account_details"] = account_result.data
 
             # Fetch contacts - focus on decision makers and technical folks
