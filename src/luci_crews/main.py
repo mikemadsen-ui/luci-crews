@@ -33,6 +33,7 @@ Console.print = _silent_print
 _original_stdout = sys.stdout
 sys.stdout = StringIO()
 
+import json
 import logging
 from datetime import datetime
 from typing import Optional, Dict, Any, List
@@ -2224,6 +2225,142 @@ async def reset_task_config(task_name: str):
     except Exception as e:
         logger.error(f"Error resetting task '{task_name}': {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Sandbox Test Runner (Crew Studio)
+# =============================================================================
+
+class SandboxTestRequest(BaseModel):
+    """Request to run a sandbox test with custom agent/task configurations."""
+    agent: Dict[str, Any]  # Agent configuration
+    task: Dict[str, Any]   # Task configuration
+    sampleData: Optional[Dict[str, Any]] = {}  # Sample data for testing
+    userId: Optional[str] = None
+
+
+@app.post("/api/crew/sandbox-test")
+async def run_sandbox_test(request: SandboxTestRequest):
+    """
+    Run a sandbox test with custom agent/task configurations.
+    This is completely separate from production crews.
+    """
+    import asyncio
+    import queue
+    import threading
+    from crewai import Agent, Task, Crew, Process, LLM
+
+    start_time = datetime.utcnow()
+
+    async def event_generator():
+        progress_queue = queue.Queue()
+
+        def send_progress(message: str, agent: str = "Sandbox Test"):
+            progress_queue.put({
+                "type": "progress",
+                "message": message,
+                "agent": agent,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
+        def run_crew():
+            try:
+                send_progress("Initializing sandbox test...")
+
+                # Create LLM
+                llm = LLM(
+                    model=os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini"),
+                    api_key=os.environ.get("OPENAI_API_KEY"),
+                )
+
+                # Create agent from config
+                agent_config = request.agent
+                agent_role = agent_config.get("role", "Test Agent")
+                send_progress(f"Creating agent: {agent_role}", agent_role)
+
+                test_agent = Agent(
+                    role=agent_role,
+                    goal=agent_config.get("goal", "Complete the assigned task"),
+                    backstory=agent_config.get("backstory", "An expert assistant."),
+                    verbose=agent_config.get("verbose", True),
+                    allow_delegation=agent_config.get("allow_delegation", False),
+                    llm=llm,
+                )
+
+                # Create task from config
+                task_config = request.task
+                task_description = task_config.get("description", "Analyze the provided data.")
+
+                # Interpolate sample data into task description
+                sample_data = request.sampleData or {}
+                for key, value in sample_data.items():
+                    task_description = task_description.replace(f"{{{key}}}", str(value))
+
+                send_progress("Creating task...", agent_role)
+
+                test_task = Task(
+                    description=task_description,
+                    expected_output=task_config.get("expected_output", "A comprehensive analysis."),
+                    agent=test_agent,
+                )
+
+                # Create and run crew
+                send_progress("Running analysis...", agent_role)
+
+                crew = Crew(
+                    agents=[test_agent],
+                    tasks=[test_task],
+                    process=Process.sequential,
+                    verbose=True,
+                )
+
+                result = crew.kickoff()
+
+                # Extract result text
+                result_text = str(result) if result else "No result"
+
+                duration = (datetime.utcnow() - start_time).total_seconds()
+                send_progress(f"Completed in {duration:.1f}s", agent_role)
+
+                progress_queue.put({
+                    "type": "result",
+                    "result": result_text,
+                    "duration": duration,
+                })
+
+            except Exception as e:
+                logger.error(f"Sandbox test error: {e}")
+                progress_queue.put({
+                    "type": "error",
+                    "message": str(e),
+                })
+
+        # Run crew in thread
+        thread = threading.Thread(target=run_crew)
+        thread.start()
+
+        # Stream progress updates
+        while True:
+            try:
+                msg = progress_queue.get(timeout=1.0)
+                yield f"data: {json.dumps(msg)}\n\n"
+                if msg.get("type") in ["result", "error"]:
+                    break
+            except queue.Empty:
+                if not thread.is_alive():
+                    break
+                # Send keepalive
+                yield f": keepalive\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 # =============================================================================
