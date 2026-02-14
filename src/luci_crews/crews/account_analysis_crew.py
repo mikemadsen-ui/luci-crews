@@ -142,17 +142,116 @@ ARR: {arr_str}
         self,
         engagement_data: Optional[Dict[str, Any]],
     ) -> str:
-        """Format engagement metrics context."""
+        """Format engagement metrics context from Snowflake product usage data."""
         if not engagement_data:
-            return "=== ENGAGEMENT METRICS ===\nNo engagement data available."
+            return "=== PRODUCT USAGE & ENGAGEMENT ===\nNo product usage data available."
 
-        lines = ["=== ENGAGEMENT METRICS ==="]
+        lines = ["=== PRODUCT USAGE & ENGAGEMENT ==="]
 
+        # Utilization metrics
+        util_pct = engagement_data.get("utilizationPct")
+        contracted = engagement_data.get("contractedSeats")
+        active_30d = engagement_data.get("activeUsers30d")
+        active_90d = engagement_data.get("activeUsers90d")
+
+        if util_pct is not None or contracted is not None:
+            lines.append("\n--- Seat Utilization ---")
+            if contracted is not None:
+                lines.append(f"Contracted Seats: {contracted}")
+            if active_30d is not None:
+                lines.append(f"Active Users (30d): {active_30d}")
+            if active_90d is not None:
+                lines.append(f"Active Users (90d): {active_90d}")
+            if util_pct is not None:
+                pct_val = round(util_pct) if isinstance(util_pct, (int, float)) else util_pct
+                lines.append(f"Utilization: {pct_val}%")
+                if isinstance(util_pct, (int, float)):
+                    if util_pct < 30:
+                        lines.append("⚠️ LOW UTILIZATION - significant underuse of contracted seats")
+                    elif util_pct < 60:
+                        lines.append("⚠️ MODERATE UTILIZATION - room for adoption improvement")
+                    elif util_pct >= 90:
+                        lines.append("✅ HIGH UTILIZATION - strong seat adoption")
+
+        # Feature adoption
+        features = engagement_data.get("features", [])
+        feature_count = engagement_data.get("featureCount", 0)
+        total_features = engagement_data.get("totalFeatures", 7)
+
+        if features or feature_count:
+            lines.append("\n--- Feature Adoption ---")
+            lines.append(f"Features Enabled: {feature_count}/{total_features}")
+            if features:
+                lines.append(f"Active Features: {', '.join(features)}")
+            all_features = {"Lead Routing", "Contact Routing", "Account Routing",
+                            "Opportunity Routing", "Matching", "Attribution", "Engagement"}
+            missing = all_features - set(features)
+            if missing:
+                lines.append(f"Not Enabled: {', '.join(sorted(missing))}")
+
+        # Adoption score
+        adoption_score = engagement_data.get("adoptionScore")
+        health_grade = engagement_data.get("healthGrade")
+
+        if adoption_score is not None or health_grade is not None:
+            lines.append("\n--- Adoption Score ---")
+            if adoption_score is not None:
+                lines.append(f"Adoption Score: {adoption_score}")
+            if health_grade is not None:
+                lines.append(f"Health Grade: {health_grade}")
+            routing_objs = engagement_data.get("routingObjects")
+            if routing_objs is not None:
+                lines.append(f"Routing Objects: {routing_objs}")
+            unique_nodes = engagement_data.get("uniqueNodes")
+            if unique_nodes is not None:
+                lines.append(f"Unique Nodes: {unique_nodes}")
+            total_node = engagement_data.get("totalNodeUsage")
+            if total_node is not None:
+                lines.append(f"Total Node Usage: {total_node}")
+            contractual = engagement_data.get("contractualUsage")
+            if contractual is not None:
+                lines.append(f"Contractual Usage: {contractual}")
+            integrations = engagement_data.get("integrationCount")
+            if integrations is not None:
+                lines.append(f"Integrations: {integrations}")
+            extra = engagement_data.get("extraProducts")
+            if extra is not None:
+                lines.append(f"Extra Products: {extra}")
+
+        # Help text (detailed improvement recommendations from Snowflake)
+        help_text = engagement_data.get("helpText")
+        if help_text:
+            lines.append("\n--- Improvement Recommendations (from adoption model) ---")
+            lines.append(help_text)
+
+        # Renewal context
+        days_to_renewal = engagement_data.get("daysToRenewal")
+        arr = engagement_data.get("arr")
+        tier = engagement_data.get("tier")
+        health_status = engagement_data.get("healthStatus")
+        risk_reason = engagement_data.get("riskReason")
+
+        if days_to_renewal is not None or health_status is not None:
+            lines.append("\n--- Renewal Context ---")
+            if days_to_renewal is not None:
+                lines.append(f"Days to Renewal: {days_to_renewal}")
+                if isinstance(days_to_renewal, (int, float)) and days_to_renewal <= 90:
+                    lines.append("⚠️ RENEWAL APPROACHING - within 90 days")
+            if arr is not None:
+                lines.append(f"ARR: ${arr:,.0f}" if isinstance(arr, (int, float)) else f"ARR: {arr}")
+            if tier:
+                lines.append(f"Customer Tier: {tier}")
+            if health_status:
+                lines.append(f"Account Status: {health_status}")
+            if risk_reason:
+                lines.append(f"Risk Reason: {risk_reason}")
+
+        # Legacy fields (backwards compatibility)
         if "last_login" in engagement_data:
-            lines.append(f"Last Login: {engagement_data['last_login']}")
+            lines.append(f"\nLast Login: {engagement_data['last_login']}")
         if "active_users" in engagement_data:
             lines.append(f"Active Users: {engagement_data['active_users']}")
-        if "feature_adoption" in engagement_data:
+        if "feature_adoption" in engagement_data and not features:
             lines.append(f"Feature Adoption: {engagement_data['feature_adoption']}%")
 
         return "\n".join(lines)
