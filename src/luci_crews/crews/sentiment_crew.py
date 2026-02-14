@@ -145,7 +145,7 @@ class SentimentCrew:
             "warning_signs": parsed_result.get("warning_signs", []),
             "key_themes": parsed_result.get("key_themes", []),
             "key_quotes": parsed_result.get("key_quotes", []),
-            "recommended_actions": parsed_result.get("recommended_actions", []),
+            "actions": parsed_result.get("actions", []),
             "talking_points": parsed_result.get("talking_points", []),
             "comprehensiveAnalysis": parsed_result.get("comprehensiveAnalysis"),
         }

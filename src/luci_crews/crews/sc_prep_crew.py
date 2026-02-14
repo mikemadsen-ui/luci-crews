@@ -267,6 +267,7 @@ class SCPrepCrew:
             "preparation_checklist": [],
             "questions_to_ask": [],
             "risks_and_concerns": [],
+            "actions": [],
         }
 
     def _create_agent(self):

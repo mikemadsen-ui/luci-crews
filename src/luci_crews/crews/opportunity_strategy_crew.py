@@ -364,6 +364,7 @@ class OpportunityStrategyCrew:
             "competitive_position": {},
             "risks": [],
             "critical_path": {},
+            "actions": [],
             "winning_theme": "",
             "red_flags": [],
             "coaching_for_rep": "",

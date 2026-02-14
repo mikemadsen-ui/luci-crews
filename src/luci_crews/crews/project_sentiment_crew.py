@@ -203,7 +203,8 @@ class ProjectSentimentCrew:
             "deliverables": [],
             "timeline_dates": [],
             "participants_sentiment": {"customer": [], "pm": [], "notes": ""},
-            "key_quotes": [],  # Each quote has: speaker, quote, sentiment (positive/negative/neutral), call, call_date
+            "key_quotes": [],
+            "actions": [],
         }
 
     def _create_agents(self):

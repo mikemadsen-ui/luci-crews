@@ -112,8 +112,15 @@ assess_account_health:
         "gaps": ["<relationship gap>"]
       }},
 
-      "recommended_actions": [
-        {{"action": "<what to do>", "priority": "<critical|high|medium|low>", "owner": "<CSM|AE|Exec|Support>", "timeline": "<immediate|this_week|this_month|this_quarter>"}}
+      "actions": [
+        {{
+          "action": "<what to do>",
+          "priority": "<critical|high|medium|low>",
+          "owner": "<CSM|AE|Exec|Support>",
+          "due_date": "<YYYY-MM-DD or null>",
+          "category": "<call|email|task|meeting|internal>",
+          "context": "<why this action matters for this account>"
+        }}
       ],
 
       "talking_points": ["<point for next customer meeting>"],
@@ -236,10 +243,11 @@ analyze_implementation:
       "actions": [
         {{
           "action": "<what needs to be done>",
-          "owner": "<who should do it - IC, Customer, Manager, etc.>",
           "priority": "<critical|high|medium|low>",
-          "due_date": "<suggested date in YYYY-MM-DD format or null>",
-          "category": "<customer|internal|task|escalation>"
+          "owner": "<IC|Customer|Manager|Support>",
+          "due_date": "<YYYY-MM-DD or null>",
+          "category": "<call|email|task|meeting|internal>",
+          "context": "<why this action is needed for this project>"
         }}
       ],
 
@@ -434,7 +442,16 @@ analyze_sentiment:
         {{"quote": "<exact quote>", "context": "<why this matters>"}},
         ...
       ],
-      "recommended_actions": ["<action 1>", "<action 2>", ...],
+      "actions": [
+        {{
+          "action": "<what to do>",
+          "priority": "<critical|high|medium|low>",
+          "owner": "<CSM|AE|Support>",
+          "due_date": "<YYYY-MM-DD or null>",
+          "category": "<call|email|task|meeting|internal>",
+          "context": "<why this action addresses sentiment concerns>"
+        }}
+      ],
       "talking_points": ["<point 1>", "<point 2>", ...]
     }}
 
@@ -581,6 +598,16 @@ analyze_project_sentiment:
       }},
       "key_quotes": [
         {{"speaker": "", "quote": "", "sentiment": "positive|negative|neutral", "call": "", "call_date": ""}}
+      ],
+      "actions": [
+        {{
+          "action": "<recommended action based on sentiment analysis>",
+          "priority": "<critical|high|medium|low>",
+          "owner": "<IC|Manager|Customer>",
+          "due_date": "<YYYY-MM-DD or null>",
+          "category": "<call|email|task|meeting|internal>",
+          "context": "<why this action addresses sentiment/risk observed>"
+        }}
       ]
     }}
 
@@ -700,10 +727,20 @@ analyze_opportunity_strategy:
 
       "critical_path": {{
         "must_win_battles": ["<key milestones we must achieve>"],
-        "next_30_days": ["<specific actions for next 30 days>"],
         "resources_needed": ["<people, content, exec involvement needed>"],
         "key_meetings_to_schedule": ["<meetings that need to happen>"]
       }},
+
+      "actions": [
+        {{
+          "action": "<specific action to advance this deal>",
+          "priority": "<critical|high|medium|low>",
+          "owner": "<AE|SE|CSM|Exec>",
+          "due_date": "<YYYY-MM-DD or null>",
+          "category": "<call|email|task|meeting|internal>",
+          "context": "<why this action is critical for winning>"
+        }}
+      ],
 
       "winning_theme": "<1 sentence: the core reason we will win this deal>",
 
@@ -804,6 +841,17 @@ analyze_support_agent_performance:
           "case_number": "<case number>",
           "subject": "<subject>",
           "note": "<what's notable - good or needs attention>"
+        }}
+      ],
+
+      "actions": [
+        {{
+          "action": "<specific coaching or process improvement action>",
+          "priority": "<critical|high|medium|low>",
+          "owner": "<Agent|Manager|Team>",
+          "due_date": "<YYYY-MM-DD or null>",
+          "category": "<task|meeting|internal>",
+          "context": "<why this action will improve agent performance>"
         }}
       ]
     }}
@@ -933,6 +981,17 @@ prepare_sc_materials:
 
       "risks_and_concerns": [
         {{"risk": "<concern>", "severity": "high|medium|low", "mitigation": "<how to address>"}}
+      ],
+
+      "actions": [
+        {{
+          "action": "<specific action for SC prep>",
+          "priority": "<critical|high|medium|low>",
+          "owner": "<SC|AE|SE>",
+          "due_date": "<YYYY-MM-DD or null>",
+          "category": "<call|email|task|meeting|internal>",
+          "context": "<why this action is needed before the meeting>"
+        }}
       ],
 
       "coaching_for_sc": "<5-8 sentences of specific advice for this particular opportunity>"
