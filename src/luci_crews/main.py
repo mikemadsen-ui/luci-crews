@@ -2643,6 +2643,242 @@ async def run_call_analysis_crew(request: CallAnalysisRequest):
         }
 
 
+# =============================================================================
+# Custom Analysis Crew (User-created analyses)
+# =============================================================================
+
+class CustomAnalysisContext(BaseModel):
+    """Context data for custom analysis."""
+    target: Optional[Dict[str, Any]] = None
+    accounts: Optional[List[Dict[str, Any]]] = None
+    opportunities: Optional[List[Dict[str, Any]]] = None
+    meetings: Optional[List[Dict[str, Any]]] = None
+    cases: Optional[List[Dict[str, Any]]] = None
+    contacts: Optional[List[Dict[str, Any]]] = None
+
+
+class CustomAnalysisRequest(BaseModel):
+    """Request to run a custom user-created analysis."""
+    analysisId: str
+    analysisName: str
+    expertise: str  # AI persona/backstory
+    questions: str  # What questions to answer
+    outputFormat: Optional[str] = None
+    targetType: str  # account, opportunity, project
+    targetId: str
+    context: CustomAnalysisContext
+
+
+@app.post("/api/crew/custom-analysis")
+async def run_custom_analysis(request: CustomAnalysisRequest):
+    """
+    Run a custom user-created analysis.
+    Takes an analysis configuration (expertise + questions) and context data,
+    dynamically creates an agent to answer the questions.
+    """
+    import asyncio
+    import queue
+    import threading
+    from crewai import Agent, Task, Crew, Process, LLM
+
+    start_time = datetime.utcnow()
+
+    async def event_generator():
+        progress_queue = queue.Queue()
+
+        def send_progress(message: str, agent: str = "Custom Analysis"):
+            progress_queue.put({
+                "type": "progress",
+                "message": message,
+                "agent": agent,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
+        def run_crew():
+            try:
+                send_progress(f"Starting analysis: {request.analysisName}")
+
+                # Format context data for the task
+                context_text = _format_custom_context(request.context, request.targetType)
+
+                # Create LLM
+                llm = LLM(
+                    model=os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini"),
+                    api_key=os.environ.get("OPENAI_API_KEY"),
+                )
+
+                # Create the analyst agent using the user's expertise/backstory
+                send_progress("Creating analyst agent...")
+                analyst = Agent(
+                    role="Custom Analyst",
+                    goal=f"Answer the user's analysis questions thoroughly and actionably",
+                    backstory=request.expertise,
+                    verbose=True,
+                    allow_delegation=False,
+                    llm=llm,
+                )
+
+                # Build the task description with questions and context
+                output_guidance = ""
+                if request.outputFormat:
+                    output_guidance = f"\n\nOutput format guidance:\n{request.outputFormat}"
+
+                task_description = f"""Analyze the following {request.targetType} data and answer these questions:
+
+{request.questions}
+
+=== CONTEXT DATA ===
+{context_text}
+{output_guidance}"""
+
+                send_progress("Running analysis...")
+
+                analysis_task = Task(
+                    description=task_description,
+                    expected_output="A comprehensive analysis answering all the questions with specific, actionable insights based on the provided data.",
+                    agent=analyst,
+                )
+
+                # Run the crew
+                crew = Crew(
+                    agents=[analyst],
+                    tasks=[analysis_task],
+                    process=Process.sequential,
+                    verbose=True,
+                )
+
+                result = crew.kickoff()
+                result_text = str(result) if result else "No result"
+
+                duration = (datetime.utcnow() - start_time).total_seconds()
+                send_progress(f"Completed in {duration:.1f}s")
+
+                progress_queue.put({
+                    "type": "result",
+                    "result": result_text,
+                    "analysisId": request.analysisId,
+                    "analysisName": request.analysisName,
+                    "targetType": request.targetType,
+                    "targetId": request.targetId,
+                    "duration": duration,
+                })
+
+            except Exception as e:
+                logger.error(f"Custom analysis error: {e}")
+                import traceback
+                traceback.print_exc()
+                progress_queue.put({
+                    "type": "error",
+                    "message": str(e),
+                })
+
+        # Run crew in thread
+        thread = threading.Thread(target=run_crew)
+        thread.start()
+
+        # Stream progress updates
+        while True:
+            try:
+                msg = progress_queue.get(timeout=1.0)
+                yield f"data: {json.dumps(msg)}\n\n"
+                if msg.get("type") in ["result", "error"]:
+                    break
+            except queue.Empty:
+                if not thread.is_alive():
+                    # Thread finished - drain any remaining messages
+                    while not progress_queue.empty():
+                        try:
+                            msg = progress_queue.get_nowait()
+                            yield f"data: {json.dumps(msg)}\n\n"
+                        except queue.Empty:
+                            break
+                    break
+                # Send keepalive
+                yield f": keepalive\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+def _format_custom_context(context: CustomAnalysisContext, target_type: str) -> str:
+    """Format context data into a readable string for the LLM."""
+    sections = []
+
+    # Target entity
+    if context.target:
+        sections.append(f"=== TARGET {target_type.upper()} ===")
+        sections.append(_format_dict(context.target))
+
+    # Account info
+    if context.accounts:
+        sections.append("\n=== ACCOUNT INFO ===")
+        for acc in context.accounts:
+            sections.append(_format_dict(acc))
+
+    # Opportunities
+    if context.opportunities:
+        sections.append(f"\n=== OPPORTUNITIES ({len(context.opportunities)}) ===")
+        for opp in context.opportunities:
+            sections.append(f"\n--- {opp.get('name', 'Unnamed')} ---")
+            sections.append(_format_dict(opp))
+
+    # Meetings/Transcripts
+    if context.meetings:
+        sections.append(f"\n=== MEETING TRANSCRIPTS ({len(context.meetings)}) ===")
+        for meeting in context.meetings:
+            sections.append(f"\n--- {meeting.get('subject', 'Meeting')} ({meeting.get('date', 'Unknown date')}) ---")
+            transcript = meeting.get('transcript', meeting.get('text', ''))
+            # Truncate very long transcripts
+            if len(transcript) > 15000:
+                transcript = transcript[:15000] + "\n... [truncated]"
+            sections.append(transcript)
+
+    # Support cases
+    if context.cases:
+        sections.append(f"\n=== SUPPORT CASES ({len(context.cases)}) ===")
+        for case in context.cases:
+            sections.append(f"\n--- Case: {case.get('subject', 'No subject')} ---")
+            sections.append(_format_dict(case))
+
+    # Contacts
+    if context.contacts:
+        sections.append(f"\n=== CONTACTS ({len(context.contacts)}) ===")
+        for contact in context.contacts:
+            name = f"{contact.get('first_name', '')} {contact.get('last_name', '')}".strip()
+            title = contact.get('title', 'No title')
+            email = contact.get('email', '')
+            sections.append(f"- {name} ({title}) - {email}")
+
+    return "\n".join(sections) if sections else "No context data available."
+
+
+def _format_dict(d: Dict[str, Any], indent: int = 0) -> str:
+    """Format a dictionary for readable display, excluding null values."""
+    lines = []
+    prefix = "  " * indent
+    for key, value in d.items():
+        if value is None or value == "" or value == []:
+            continue
+        if isinstance(value, dict):
+            lines.append(f"{prefix}{key}:")
+            lines.append(_format_dict(value, indent + 1))
+        elif isinstance(value, list) and len(value) > 0:
+            if isinstance(value[0], dict):
+                lines.append(f"{prefix}{key}: [{len(value)} items]")
+            else:
+                lines.append(f"{prefix}{key}: {value}")
+        else:
+            lines.append(f"{prefix}{key}: {value}")
+    return "\n".join(lines)
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
