@@ -3,11 +3,13 @@ AI Settings Helper
 
 Fetches AI model settings from Supabase based on user's management level.
 This allows different management levels to use different AI models.
+
+Includes fallback logic for when a provider hits quota/rate limits.
 """
 
 import os
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Callable
 from dataclasses import dataclass
 from supabase import create_client, Client
 
@@ -29,6 +31,26 @@ PROVIDER_MODEL_PREFIXES = {
     "anthropic": "anthropic/",
     "google": "gemini/",
 }
+
+# Fallback provider chain - ordered by preference
+# Each entry: (provider, model_id, env_var_for_api_key)
+FALLBACK_PROVIDERS = [
+    ("openai", "gpt-4o-mini", "OPENAI_API_KEY"),
+    ("anthropic", "claude-3-5-sonnet-20241022", "ANTHROPIC_API_KEY"),
+    ("google", "gemini-1.5-flash", "GOOGLE_API_KEY"),
+]
+
+# Error patterns that indicate quota/rate limit issues
+QUOTA_ERROR_PATTERNS = [
+    "insufficient_quota",
+    "rate_limit",
+    "429",
+    "quota exceeded",
+    "billing",
+    "exceeded your current quota",
+    "resource_exhausted",
+    "too many requests",
+]
 
 
 @dataclass
@@ -146,4 +168,141 @@ def create_llm_for_user(user_id: str):
         api_key=api_key,
         temperature=settings.temperature,
         max_tokens=settings.max_tokens,
+    )
+
+
+def is_quota_error(error: Exception) -> bool:
+    """
+    Check if an error is a quota/rate limit error that should trigger fallback.
+
+    Args:
+        error: The exception to check
+
+    Returns:
+        True if this is a quota/rate limit error
+    """
+    error_str = str(error).lower()
+    return any(pattern in error_str for pattern in QUOTA_ERROR_PATTERNS)
+
+
+def get_available_providers() -> List[tuple]:
+    """
+    Get list of providers that have API keys configured.
+
+    Returns:
+        List of (provider, model_id, api_key) tuples for available providers
+    """
+    available = []
+    for provider, model_id, env_var in FALLBACK_PROVIDERS:
+        api_key = os.getenv(env_var)
+        if api_key:
+            available.append((provider, model_id, api_key))
+        else:
+            logger.debug(f"Provider {provider} not available: {env_var} not set")
+    return available
+
+
+def create_llm_for_provider(provider: str, model_id: str, api_key: str, temperature: float = 0.7, max_tokens: int = 4096):
+    """
+    Create a CrewAI LLM instance for a specific provider.
+
+    Args:
+        provider: Provider name (openai, anthropic, google)
+        model_id: Model ID for the provider
+        api_key: API key for the provider
+        temperature: LLM temperature
+        max_tokens: Max tokens for response
+
+    Returns:
+        CrewAI LLM instance
+    """
+    from crewai import LLM
+
+    prefix = PROVIDER_MODEL_PREFIXES.get(provider, "")
+    model_name = f"{prefix}{model_id}"
+
+    logger.info(f"Creating LLM for provider {provider}: model={model_name}")
+
+    return LLM(
+        model=model_name,
+        api_key=api_key,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+
+
+def run_with_fallback(
+    crew_factory: Callable,
+    run_args: Dict[str, Any],
+    user_id: Optional[str] = None,
+    max_retries: int = 3,
+) -> Dict[str, Any]:
+    """
+    Run a crew with automatic fallback to other providers on quota errors.
+
+    This function attempts to run a crew, and if it fails with a quota/rate limit
+    error, it automatically retries with the next available provider.
+
+    Args:
+        crew_factory: A callable that takes an LLM and returns a crew instance
+        run_args: Arguments to pass to crew.run()
+        user_id: Optional user ID for user-specific settings
+        max_retries: Maximum number of providers to try
+
+    Returns:
+        The crew result dict
+
+    Raises:
+        Exception: If all providers fail
+    """
+    available_providers = get_available_providers()
+
+    if not available_providers:
+        raise RuntimeError("No AI providers configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_API_KEY.")
+
+    last_error = None
+    providers_tried = []
+
+    for i, (provider, model_id, api_key) in enumerate(available_providers[:max_retries]):
+        providers_tried.append(provider)
+
+        try:
+            logger.info(f"Attempting with provider {provider} (attempt {i + 1}/{min(len(available_providers), max_retries)})")
+
+            # Create LLM for this provider
+            llm = create_llm_for_provider(provider, model_id, api_key)
+
+            # Create and run the crew
+            crew = crew_factory(llm)
+            result = crew.run(**run_args)
+
+            logger.info(f"Successfully completed with provider {provider}")
+
+            # Add metadata about which provider was used
+            if isinstance(result, dict):
+                result["_provider_used"] = provider
+                result["_providers_tried"] = providers_tried
+
+            return result
+
+        except Exception as e:
+            last_error = e
+            error_str = str(e)
+
+            if is_quota_error(e):
+                logger.warning(f"Provider {provider} quota/rate limit error: {error_str[:200]}")
+                if i + 1 < min(len(available_providers), max_retries):
+                    logger.info(f"Falling back to next provider...")
+                    continue
+                else:
+                    logger.error(f"All providers exhausted after quota errors")
+            else:
+                # Non-quota error - don't retry with other providers
+                logger.error(f"Provider {provider} failed with non-quota error: {error_str[:200]}")
+                raise
+
+    # All providers failed
+    raise RuntimeError(
+        f"All AI providers failed. Tried: {', '.join(providers_tried)}. "
+        f"Last error: {str(last_error)[:200]}"
     )

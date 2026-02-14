@@ -21,15 +21,20 @@ logger = logging.getLogger(__name__)
 class SentimentCrew:
     """Crew for analyzing customer sentiment."""
 
-    def __init__(self, user_id: Optional[str] = None):
+    def __init__(self, user_id: Optional[str] = None, llm=None):
         """Initialize the crew with optional user-specific AI settings.
 
         Args:
             user_id: Optional user ID to fetch management-level AI settings.
                     If not provided, uses default settings.
+            llm: Optional pre-configured LLM instance. If provided, user_id is ignored.
+                 This is used by the fallback mechanism to inject different providers.
         """
         self.user_id = user_id
-        if user_id:
+        if llm is not None:
+            # Use the provided LLM (for fallback scenarios)
+            self.llm = llm
+        elif user_id:
             self.llm = create_llm_for_user(user_id)
         else:
             self.llm = LLM(

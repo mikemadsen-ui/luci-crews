@@ -66,6 +66,11 @@ from .crews.call_analysis_crew import CallAnalysisCrew
 from .crews.account_analysis_crew import AccountAnalysisCrew
 from . import config_store
 from .batch_router import router as batch_router
+from .ai_settings_helper import (
+    run_with_fallback,
+    is_quota_error,
+    get_available_providers,
+)
 
 # Restore stdout after crewai imports
 sys.stdout = _original_stdout
@@ -835,7 +840,7 @@ async def run_implementation_crew(request: ImplementationRequest):
 
 @app.post("/api/crew/sentiment", response_model=CrewResponse)
 async def run_sentiment_crew(request: SentimentRequest):
-    """Run the sentiment analysis crew."""
+    """Run the sentiment analysis crew with automatic provider fallback."""
     start_time = datetime.utcnow()
 
     try:
@@ -860,16 +865,33 @@ async def run_sentiment_crew(request: SentimentRequest):
                     support_parts.append(f"  - {ticket.get('subject', 'No subject')} [{ticket.get('status', 'Unknown')}] Priority: {ticket.get('priority', 'Unknown')}")
             support_data = "\n".join(support_parts) if support_parts else None
 
-        crew = SentimentCrew(user_id=request.userId)
-        result = crew.run(
-            account_name=account_name or "Unknown Account",
-            communications_data=request.transcription,  # Use transcription as communications data
-            support_data=support_data,
-            meeting_notes=None,  # No separate meeting notes - transcription contains this
+        # Prepare run arguments
+        run_args = {
+            "account_name": account_name or "Unknown Account",
+            "communications_data": request.transcription,
+            "support_data": support_data,
+            "meeting_notes": None,
+        }
+
+        # Use fallback mechanism to handle quota/rate limit errors
+        # This will automatically try other providers if the primary fails
+        def crew_factory(llm):
+            return SentimentCrew(llm=llm)
+
+        result = run_with_fallback(
+            crew_factory=crew_factory,
+            run_args=run_args,
+            user_id=request.userId,
         )
 
         execution_time = (datetime.utcnow() - start_time).total_seconds()
-        logger.info(f"Sentiment crew completed in {execution_time:.2f}s")
+
+        # Log which provider was used
+        provider_used = result.get("_provider_used", "unknown") if isinstance(result, dict) else "unknown"
+        providers_tried = result.get("_providers_tried", []) if isinstance(result, dict) else []
+        logger.info(f"Sentiment crew completed in {execution_time:.2f}s using provider: {provider_used}")
+        if len(providers_tried) > 1:
+            logger.info(f"Providers tried before success: {providers_tried}")
 
         return CrewResponse(
             success=True,
