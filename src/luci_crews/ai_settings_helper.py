@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # Google's gemini-1.5-flash was deprecated in late 2025
 DEFAULT_AI_SETTINGS = {
     "provider": "openai",
-    "model_id": "gpt-4o-mini",
+    "model_id": os.getenv("FAST_LLM_MODEL", "gpt-4o-mini"),
     "temperature": 0.7,
     "max_tokens": 4096,
 }
@@ -35,9 +35,9 @@ PROVIDER_MODEL_PREFIXES = {
 # Fallback provider chain - ordered by preference
 # Each entry: (provider, model_id, env_var_for_api_key)
 FALLBACK_PROVIDERS = [
-    ("openai", "gpt-4o-mini", "OPENAI_API_KEY"),
-    ("anthropic", "claude-3-5-sonnet-20241022", "ANTHROPIC_API_KEY"),
-    ("google", "gemini-1.5-flash", "GOOGLE_API_KEY"),
+    ("openai", os.getenv("FAST_LLM_MODEL", "gpt-4o-mini"), "OPENAI_API_KEY"),
+    ("anthropic", os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"), "ANTHROPIC_API_KEY"),
+    ("google", os.getenv("GOOGLE_MODEL", "gemini-1.5-flash"), "GOOGLE_API_KEY"),
 ]
 
 # Error patterns that indicate quota/rate limit issues

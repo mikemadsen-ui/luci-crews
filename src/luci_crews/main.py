@@ -42,36 +42,53 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel
 from dotenv import load_dotenv
 
+from .models import (
+    CrewResponse,
+    SalesPipelineRequest,
+    AccountHealthRequest,
+    AccountAnalysisRequest,
+    MavenlinkTaskModel,
+    ImplementationRequest,
+    SentimentRequest,
+    SCPrepRequest,
+    TranscriptChunkModel,
+    FeatureExtractionRequest,
+    AgendaGenerationRequest,
+    CallVerificationRequest,
+    CallAnalysisRequest,
+    SandboxTestRequest,
+    CustomAnalysisContext,
+    CustomAnalysisRequest,
+)
 from .crews.sales_pipeline_crew import SalesPipelineCrew
 from .crews.account_health_crew import AccountHealthCrew
 from .crews.implementation_crew import ImplementationCrew
 from .crews.sentiment_crew import SentimentCrew
-from .crews.project_sentiment_crew import ProjectSentimentCrew
-from .crews.opportunity_strategy_crew import OpportunityStrategyCrew
-from .crews.support_coaching_crew import SupportCoachingCrew
-from .crews.support_resolution_crew import SupportResolutionCrew
 from .crews.sc_prep_crew import SCPrepCrew
-from .crews.pm_coaching_crew import PMCoachingCrew
-from .crews.ae_coaching_crew import AECoachingCrew
-from .crews.csm_coaching_crew import CSMCoachingCrew
-from .crews.sc_coaching_crew import SCCoachingCrew
-from .crews.competitive_crew import CompetitiveCrew
 from .crews.feature_extraction_crew import FeatureExtractionCrew
-from .crews.project_analysis_crew import ProjectAnalysisCrew
 from .crews.agenda_generation_crew import AgendaGenerationCrew
 from .crews.call_verification_crew import CallVerificationCrew
 from .crews.call_analysis_crew import CallAnalysisCrew
 from .crews.account_analysis_crew import AccountAnalysisCrew
-from . import config_store
 from .batch_router import router as batch_router
+from .routes.analysis import router as analysis_router
+from .routes.coaching import router as coaching_router
+from .routes.config import router as config_router
+from .routes.health import router as health_router
 from .ai_settings_helper import (
     run_with_fallback,
     is_quota_error,
     get_available_providers,
 )
+from .utils.streaming import (
+    SimpleStreamingContext,
+    ThreadedStreamingContext,
+    create_streaming_response,
+    sse_progress,
+)
+from .utils.account_lookup import lookup_account
 
 # Restore stdout after crewai imports
 sys.stdout = _original_stdout
@@ -124,482 +141,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register batch processing router for overnight sync jobs
-app.include_router(batch_router)
-
-
-# =============================================================================
-# Request/Response Models
-# =============================================================================
-
-class SalesPipelineRequest(BaseModel):
-    user_id: str
-    user_email: str
-    opportunities: list = []
-    summary: Optional[dict] = None
-
-
-class AccountHealthRequest(BaseModel):
-    """Request model for account health analysis."""
-    accountId: Optional[str] = None
-    salesforceAccountId: Optional[str] = None
-    userId: Optional[str] = None
-    userEmail: Optional[str] = None
-    # Legacy fields for backwards compatibility
-    account_id: Optional[str] = None
-    account_name: Optional[str] = None
-    account_tier: Optional[str] = None
-    arr: Optional[float] = None
-    activity_data: Optional[str] = None
-    support_data: Optional[str] = None
-    engagement_data: Optional[str] = None
-
-
-class AccountAnalysisRequest(BaseModel):
-    """Request model for unified account analysis (sentiment + health)."""
-    accountId: Optional[str] = None
-    salesforceAccountId: Optional[str] = None
-    userId: Optional[str] = None
-    userEmail: Optional[str] = None
-    accountName: Optional[str] = None
-    accountTier: Optional[str] = None
-    arr: Optional[float] = None
-    transcription: Optional[str] = None
-    salesforceContext: Optional[Dict[str, Any]] = None
-    engagementData: Optional[Dict[str, Any]] = None
-
-
-class MavenlinkTaskModel(BaseModel):
-    """Model for Mavenlink story/task data."""
-    id: str
-    title: Optional[str] = None
-    description: Optional[str] = None
-    story_type: Optional[str] = None  # task, deliverable, milestone, or issue
-    status: Optional[str] = None
-    start_date: Optional[str] = None
-    due_date: Optional[str] = None
-    completed_at: Optional[str] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
-    position: Optional[int] = None
-    assignee_ids: Optional[List[str]] = []
-    assignee_names: Optional[List[str]] = []
-    has_assignee: Optional[bool] = False
-    is_client_task: Optional[bool] = False
-    tags: Optional[List[str]] = []
-
-
-class ImplementationRequest(BaseModel):
-    project_id: str
-    project_name: str
-    account_name: str
-    userId: Optional[str] = None  # For management-level AI settings
-    project_status: Optional[str] = None
-    start_date: Optional[str] = None
-    target_go_live: Optional[str] = None
-    completion_pct: Optional[float] = None
-    hours_used: Optional[float] = None
-    hours_budgeted: Optional[float] = None
-    budget_used: Optional[float] = None
-    budget_total: Optional[float] = None
-    milestones_data: Optional[str] = None
-    risks_data: Optional[str] = None
-    callActivity: Optional[dict] = None  # Past Avoma calls + upcoming calendar events
-    mavenlinkTasks: Optional[List[dict]] = None  # Mavenlink stories/tasks with assignee info
-
-
-class SentimentRequest(BaseModel):
-    """Request model for account sentiment analysis."""
-    userId: Optional[str] = None
-    accountId: Optional[str] = None
-    salesforceAccountId: Optional[str] = None
-    userEmail: Optional[str] = None
-    transcription: Optional[str] = None
-    salesforceContext: Optional[Dict[str, Any]] = None
-    customerIdentifier: Optional[str] = None
-
-
-class ProjectSentimentRequest(BaseModel):
-    userId: str
-    salesforceAccountId: str
-    salesforceProjectId: str
-    transcriptionIds: Optional[List[str]] = None
-    forceRefresh: Optional[bool] = False
-    userEmail: Optional[str] = None
-
-
-class ProjectAnalysisRequest(BaseModel):
-    """Request model for unified project analysis crew."""
-    salesforceProjectId: str
-    userId: Optional[str] = None
-    userEmail: Optional[str] = None
-    forceRefresh: Optional[bool] = False
-    # All data is passed from Next.js to avoid refetching
-    project: Optional[Dict[str, Any]] = None
-    projectOwner: Optional[Dict[str, Any]] = None
-    mavenlinkTasks: Optional[List[Dict[str, Any]]] = None
-    mavenlinkTimeEntries: Optional[List[Dict[str, Any]]] = None
-    transcripts: Optional[List[Dict[str, Any]]] = None
-    callActivity: Optional[Dict[str, Any]] = None
-    emailActivity: Optional[Dict[str, Any]] = None
-
-
-class OpportunityDataModel(BaseModel):
-    """Opportunity data passed from Next.js to avoid refetching."""
-    id: Optional[str] = None
-    salesforce_id: Optional[str] = None
-    name: Optional[str] = None
-    amount: Optional[float] = None
-    stage_name: Optional[str] = None
-    probability: Optional[int] = None
-    close_date: Optional[str] = None
-    created_date: Optional[str] = None  # When the opportunity was created
-    type: Optional[str] = None
-    lead_source: Optional[str] = None
-    next_step: Optional[str] = None
-    description: Optional[str] = None
-    is_won: Optional[bool] = None
-    is_closed: Optional[bool] = None
-    owner_name: Optional[str] = None
-    owner_email: Optional[str] = None
-    fiscal_quarter: Optional[int] = None
-    fiscal_year: Optional[int] = None
-    salesforce_account_id: Optional[str] = None
-    account_name: Optional[str] = None
-    account_industry: Optional[str] = None
-    account_tier: Optional[str] = None
-    customer_start_date: Optional[str] = None  # When the account became a customer
-
-
-class TranscriptionDataModel(BaseModel):
-    """Transcription data passed from Next.js."""
-    id: str
-    subject: Optional[str] = None
-    date: Optional[str] = None
-    text: Optional[str] = None
-    is_presales: Optional[bool] = None  # True if this call was before the customer start date
-
-
-class PresalesContextModel(BaseModel):
-    """Context about the presales nature of the opportunity."""
-    presalesCount: Optional[int] = 0  # Number of presales calls found
-    postsaleCount: Optional[int] = 0  # Number of post-sale calls found
-    customerStartDate: Optional[str] = None  # When the account became a customer
-    isExistingCustomer: Optional[bool] = False  # Whether the account is already a customer
-
-
-class OpportunityStrategyRequest(BaseModel):
-    opportunityId: str
-    userId: Optional[str] = None
-    userEmail: Optional[str] = None
-    forceRefresh: Optional[bool] = False
-    opportunityData: Optional[OpportunityDataModel] = None
-    transcriptionIds: Optional[List[str]] = None
-    transcriptionData: Optional[List[TranscriptionDataModel]] = None
-    salesforceAccountId: Optional[str] = None
-    presalesContext: Optional[PresalesContextModel] = None  # Context about presales calls
-
-
-class CaseDataModel(BaseModel):
-    """Case data passed from Next.js."""
-    case_number: Optional[str] = None
-    subject: Optional[str] = None
-    status: Optional[str] = None
-    priority: Optional[str] = None
-    type: Optional[str] = None
-    account_name: Optional[str] = None
-    created_date: Optional[str] = None
-    closed_date: Optional[str] = None
-    description: Optional[str] = None
-
-
-class SupportCoachingRequest(BaseModel):
-    agentName: str
-    agentEmail: str
-    ownerId: Optional[str] = None  # Optional - needed to fetch cases from DB, but not if casesData provided
-    userId: Optional[str] = None  # For management-level AI settings
-    casesData: Optional[List[CaseDataModel]] = None
-    daysBack: Optional[int] = 90
-
-
-class PMCoachingRequest(BaseModel):
-    """Request model for Implementation Consultant (PM) coaching analysis."""
-    pmName: str
-    pmEmail: str
-    salesforceOwnerId: Optional[str] = None
-    userId: Optional[str] = None  # For management-level AI settings
-    projectsData: Optional[List[Dict[str, Any]]] = None
-    deliveryMetrics: Optional[Dict[str, Any]] = None
-    sentimentData: Optional[List[Dict[str, Any]]] = None
-    transcriptionSamples: Optional[List[Dict[str, Any]]] = None
-    escalationData: Optional[List[Dict[str, Any]]] = None
-    agendaMetrics: Optional[Dict[str, Any]] = None  # Call agenda completion patterns
-    daysBack: Optional[int] = 365
-
-
-class AECoachingRequest(BaseModel):
-    """Request model for Account Executive coaching analysis."""
-    aeName: str
-    aeEmail: str
-    salesforceOwnerId: Optional[str] = None
-    userId: Optional[str] = None  # For management-level AI settings
-    opportunitiesData: Optional[List[Dict[str, Any]]] = None
-    transcriptionSamples: Optional[List[Dict[str, Any]]] = None
-    daysBack: Optional[int] = 180
-
-
-class CSMCoachingRequest(BaseModel):
-    """Request model for Customer Success Manager coaching analysis."""
-    csmName: str
-    csmEmail: str
-    salesforceOwnerId: Optional[str] = None
-    userId: Optional[str] = None  # For management-level AI settings
-    accountsData: Optional[List[Dict[str, Any]]] = None
-    accountEngagementData: Optional[List[Dict[str, Any]]] = None
-    transcriptionSamples: Optional[List[Dict[str, Any]]] = None
-    semanticInsights: Optional[Dict[str, List[Dict[str, Any]]]] = None  # NEW: Structured signals from vector search
-    daysBack: Optional[int] = 180
-    calendarConnected: Optional[bool] = False
-
-
-class SCCoachingRequest(BaseModel):
-    """Request model for Solutions Consultant coaching analysis."""
-    scName: str
-    scEmail: str
-    salesforceUserId: Optional[str] = None
-    userId: Optional[str] = None  # For management-level AI settings
-    opportunitiesData: Optional[List[Dict[str, Any]]] = None
-    demoTranscripts: Optional[List[Dict[str, Any]]] = None
-    discoveryTranscripts: Optional[List[Dict[str, Any]]] = None
-    dealOutcomes: Optional[Dict[str, Any]] = None
-    daysBack: Optional[int] = 180
-
-
-class SDRCoachingRequest(BaseModel):
-    """Request model for SDR (Sales Development Representative) coaching analysis."""
-    sdrName: str
-    sdrEmail: str
-    salesforceUserId: Optional[str] = None
-    userId: Optional[str] = None  # For management-level AI settings
-    performanceMetrics: Dict[str, Any]
-    leadPipelineAnalysis: Dict[str, Any]
-    opportunityAnalysis: Dict[str, Any]
-    sequenceData: Optional[List[Dict[str, Any]]] = None
-    intentMetrics: Optional[Dict[str, Any]] = None  # 6Sense, UserGems, campaign data
-    teamView: Optional[bool] = False
-    daysBack: Optional[int] = 30
-
-
-class SupportResolutionRequest(BaseModel):
-    caseSubject: str
-    caseDescription: Optional[str] = None
-    caseType: Optional[str] = None
-    casePriority: Optional[str] = None
-    accountName: Optional[str] = None
-    contactName: Optional[str] = None
-    userId: Optional[str] = None
-    salesforceUserId: Optional[str] = None
-    caseNumber: Optional[str] = None
-
-
-class SCPrepRequest(BaseModel):
-    opportunityId: str
-    prepType: Optional[str] = "full"  # "discovery", "demo", "competitive", "full"
-    userId: Optional[str] = None
-    userEmail: Optional[str] = None
-    forceRefresh: Optional[bool] = False
-    opportunityData: Optional[OpportunityDataModel] = None
-    transcriptionData: Optional[List[TranscriptionDataModel]] = None
-
-
-class CompetitiveCompanyModel(BaseModel):
-    """Model for company data in competitive analysis."""
-    id: Optional[str] = None
-    name: Optional[str] = None
-    domain: Optional[str] = None
-    properties: Optional[Dict[str, Any]] = None
-
-
-class CompetitiveRequest(BaseModel):
-    """Request model for competitive analysis."""
-    userId: Optional[str] = None
-    userEmail: Optional[str] = None
-    companies: List[CompetitiveCompanyModel]
-    analysisType: Optional[str] = "comparative"  # "single" or "comparative"
-    forceRefresh: Optional[bool] = False
-
-
-class TranscriptChunkModel(BaseModel):
-    """Model for transcript chunk in feature extraction."""
-    content: str
-    accountId: Optional[str] = None
-    accountName: Optional[str] = None
-    meetingSubject: Optional[str] = None
-    meetingDate: Optional[str] = None
-    meetingUrl: Optional[str] = None
-    transcriptionId: Optional[str] = None
-
-
-class FeatureExtractionRequest(BaseModel):
-    """Request model for feature request extraction from transcripts."""
-    userId: Optional[str] = None
-    transcriptChunks: List[TranscriptChunkModel]
-
-
-class AgendaGenerationRequest(BaseModel):
-    """Request model for call agenda generation."""
-    userId: Optional[str] = None
-    projectName: str
-    accountName: str
-    projectStatus: str
-    callSubject: str
-    callScheduledAt: str  # ISO datetime string
-    targetGoLive: Optional[str] = None  # YYYY-MM-DD
-    completionPct: Optional[float] = None
-    mavenlinkTasks: Optional[List[Dict[str, Any]]] = None
-    incompleteItems: Optional[List[Dict[str, Any]]] = None  # Previous agenda items
-    recentCalls: Optional[List[Dict[str, Any]]] = None  # Call summaries
-    attendees: Optional[List[str]] = None
-
-
-class CallVerificationRequest(BaseModel):
-    """Request model for call transcript verification."""
-    userId: Optional[str] = None
-    projectName: str
-    accountName: str
-    callDate: str  # ISO datetime string
-    agendaItems: List[Dict[str, Any]]  # Items to verify
-    transcript: str  # Full transcript text
-    speakers: Optional[List[Dict[str, Any]]] = None  # Speaker info
-
-
-class CallAnalysisRequest(BaseModel):
-    """Request model for per-call sentiment and engagement analysis."""
-    userId: Optional[str] = None
-    transcriptionId: Optional[str] = None  # Supabase transcription ID
-    avomaMeetingUuid: Optional[str] = None  # Avoma meeting UUID
-    projectName: str
-    accountName: str
-    meetingSubject: str
-    meetingDate: str  # ISO datetime string
-    # Transcript segments with speaker attribution
-    transcriptSegments: List[Dict[str, Any]]  # [{speaker_id, transcript/text}]
-    speakers: List[Dict[str, Any]]  # [{id, name}]
-    attendees: Optional[List[Dict[str, Any]]] = None  # [{name, email}] for speaker classification
-    implementationStage: Optional[str] = None  # discovery, configuration, testing, etc.
-    projectContext: Optional[Dict[str, Any]] = None  # {target_go_live, completion_pct, etc.}
-    # For linking results
-    salesforceAccountId: Optional[str] = None
-    salesforceProjectId: Optional[str] = None
-
-
-class CrewResponse(BaseModel):
-    success: bool
-    job_id: Optional[str] = None
-    result: Optional[Any] = None  # Changed from str to Any to support structured results
-    error: Optional[str] = None
-    execution_time: Optional[float] = None
-
-
-# =============================================================================
-# Health Check
-# =============================================================================
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for Railway."""
-    supabase_url = os.environ.get("SUPABASE_URL")
-    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "version": "0.1.0",
-        "supabase_configured": bool(supabase_url and supabase_key),
-        "supabase_url": supabase_url[:30] + "..." if supabase_url else None,
-    }
-
-
-@app.get("/api/capabilities")
-async def get_capabilities():
-    """
-    Report which AI providers and models are available.
-
-    Checks:
-    1. Whether the provider's optional dependency is installed
-    2. Whether the required API key environment variable is set
-
-    The frontend uses this to validate which models can be enabled.
-    """
-    capabilities = {
-        "providers": {},
-        "timestamp": datetime.utcnow().isoformat(),
-    }
-
-    # Check OpenAI - always available via litellm, just needs API key
-    openai_key = os.environ.get("OPENAI_API_KEY")
-    capabilities["providers"]["openai"] = {
-        "installed": True,  # OpenAI support included via litellm in crewai
-        "api_key_set": bool(openai_key),
-        "available": bool(openai_key),
-        "env_var": "OPENAI_API_KEY",
-    }
-
-    # Check Anthropic - available via litellm, just needs API key
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-    capabilities["providers"]["anthropic"] = {
-        "installed": True,  # Anthropic support included via litellm in crewai
-        "api_key_set": bool(anthropic_key),
-        "available": bool(anthropic_key),
-        "env_var": "ANTHROPIC_API_KEY",
-    }
-
-    # Check Google (Gemini) - requires optional crewai[google-genai] extra
-    google_installed = False
-    google_key = os.environ.get("GOOGLE_API_KEY")
-    try:
-        import google.genai
-        google_installed = True
-    except ImportError:
-        pass
-    capabilities["providers"]["google"] = {
-        "installed": google_installed,
-        "api_key_set": bool(google_key),
-        "available": google_installed and bool(google_key),
-        "env_var": "GOOGLE_API_KEY",
-        "install_hint": 'uv add "crewai[google-genai]"' if not google_installed else None,
-    }
-
-    return capabilities
-
-
-@app.get("/")
-async def root():
-    """Root endpoint with service info."""
-    return {
-        "service": "LUCI CrewAI Service",
-        "version": "0.1.0",
-        "endpoints": {
-            "health": "/health",
-            "capabilities": "/api/capabilities",
-            "config_agents": "/api/config/agents",
-            "config_tasks": "/api/config/tasks",
-            "sales_pipeline": "/api/crew/sales_pipeline",
-            "account_health": "/api/crew/account",
-            "implementation": "/api/crew/implementation",
-            "sentiment": "/api/crew/sentiment",
-            "project_sentiment": "/api/crew/project-sentiment",
-            "opportunity": "/api/crew/opportunity",
-            "support_coaching": "/api/crew/support-coaching",
-            "support_resolution": "/api/crew/support_resolution",
-            "support_training": "/api/crew/support_training",
-            "sc_prep": "/api/crew/sc-prep",
-            "pm_coaching": "/api/crew/pm-coaching",
-            "ae_coaching": "/api/crew/ae-coaching",
-            "csm_coaching": "/api/crew/csm-coaching",
-            "sc_coaching": "/api/crew/sc-coaching",
-        },
-        "docs": "/docs",
-    }
+# Register routers
+app.include_router(analysis_router)  # Analysis crew endpoints (project, opportunity, competitive, support)
+app.include_router(batch_router)  # Batch processing for overnight sync jobs
+app.include_router(coaching_router)  # Coaching crew endpoints
+app.include_router(config_router)  # Config management for Crew Studio
+app.include_router(health_router)  # Health check and capabilities endpoints
 
 
 # =============================================================================
@@ -651,27 +198,14 @@ async def run_account_health_crew(request: AccountHealthRequest):
 
         # If we have accountId or salesforceAccountId but no account_name, fetch from Supabase
         if not account_name and (request.accountId or request.salesforceAccountId):
-            supabase_url = os.getenv("SUPABASE_URL")
-            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
-
-            if supabase_url and supabase_key:
-                from supabase import create_client
-                supabase = create_client(supabase_url, supabase_key)
-
-                # Try to fetch account by ID or salesforce ID
-                query = supabase.table("accounts").select("name, account_tier, contract_value")
-                if request.accountId:
-                    query = query.eq("id", request.accountId)
-                elif request.salesforceAccountId:
-                    query = query.eq("salesforce_id", request.salesforceAccountId)
-
-                result = query.limit(1).execute()
-                if result.data and len(result.data) > 0:
-                    account_data = result.data[0]
-                    account_name = account_data.get("name")
-                    account_tier = account_tier or account_data.get("account_tier")
-                    arr = arr or account_data.get("contract_value")
-                    logger.info(f"Fetched account from Supabase: {account_name}")
+            account_data = lookup_account(
+                account_id=request.accountId,
+                salesforce_account_id=request.salesforceAccountId,
+            )
+            if account_data.found:
+                account_name = account_data.name
+                account_tier = account_tier or account_data.account_tier
+                arr = arr or account_data.contract_value
 
         if not account_name:
             return CrewResponse(
@@ -722,28 +256,16 @@ async def run_account_analysis_crew(request: AccountAnalysisRequest):
         account_name = request.accountName
 
         if not account_name and (request.accountId or request.salesforceAccountId):
-            supabase_url = os.getenv("SUPABASE_URL")
-            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
-
-            if supabase_url and supabase_key:
-                from supabase import create_client
-                supabase = create_client(supabase_url, supabase_key)
-
-                query = supabase.table("accounts").select("name, account_tier, contract_value")
-                if request.accountId:
-                    query = query.eq("id", request.accountId)
-                elif request.salesforceAccountId:
-                    query = query.eq("salesforce_id", request.salesforceAccountId)
-
-                result = query.limit(1).execute()
-                if result.data and len(result.data) > 0:
-                    account_data = result.data[0]
-                    account_name = account_data.get("name")
-                    if not request.accountTier:
-                        request.accountTier = account_data.get("account_tier")
-                    if not request.arr:
-                        request.arr = account_data.get("contract_value")
-                    logger.info(f"Fetched account from Supabase: {account_name}")
+            account_data = lookup_account(
+                account_id=request.accountId,
+                salesforce_account_id=request.salesforceAccountId,
+            )
+            if account_data.found:
+                account_name = account_data.name
+                if not request.accountTier:
+                    request.accountTier = account_data.account_tier
+                if not request.arr:
+                    request.arr = account_data.contract_value
 
         if not account_name:
             return {
@@ -908,1067 +430,56 @@ async def run_sentiment_crew(request: SentimentRequest):
         )
 
 
-@app.post("/api/crew/project-sentiment")
-async def run_project_sentiment_crew(request: Request):
-    """Run the project sentiment analysis crew with optional streaming."""
-    import json
-    start_time = datetime.utcnow()
-
-    # Check for streaming parameter
-    stream = request.query_params.get("stream", "false").lower() == "true"
-
-    try:
-        body = await request.json()
-        req = ProjectSentimentRequest(**body)
-
-        logger.info(f"Running project sentiment crew for project: {req.salesforceProjectId}")
-
-        crew = ProjectSentimentCrew(user_id=req.userId)
-
-        if stream:
-            # Streaming response
-            async def generate():
-                progress_messages = []
-
-                def step_callback(message: str):
-                    progress_messages.append(message)
-
-                try:
-                    # Send initial progress
-                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting analysis...'})}\n\n"
-
-                    # Run the crew (synchronous, but we'll send progress)
-                    result = crew.run(
-                        salesforce_project_id=req.salesforceProjectId,
-                        salesforce_account_id=req.salesforceAccountId,
-                        transcription_ids=req.transcriptionIds or [],
-                        force_refresh=req.forceRefresh or False,
-                        step_callback=step_callback,
-                    )
-
-                    # Send any progress messages
-                    for msg in progress_messages:
-                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
-
-                    execution_time = (datetime.utcnow() - start_time).total_seconds()
-                    logger.info(f"Project sentiment crew completed in {execution_time:.2f}s")
-
-                    # Send the final result
-                    yield f"data: {json.dumps({'type': 'result', 'result': result, 'input_hash': result.get('input_hash'), 'transcription_count': result.get('transcription_count'), 'transcription_length': result.get('transcription_length'), 'transcription_ids': result.get('transcription_ids'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
-
-                except Exception as e:
-                    logger.error(f"Project sentiment crew failed: {str(e)}")
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-            return StreamingResponse(
-                generate(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                }
-            )
-        else:
-            # Non-streaming response
-            result = crew.run(
-                salesforce_project_id=req.salesforceProjectId,
-                salesforce_account_id=req.salesforceAccountId,
-                transcription_ids=req.transcriptionIds or [],
-                force_refresh=req.forceRefresh or False,
-            )
-
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            logger.info(f"Project sentiment crew completed in {execution_time:.2f}s")
-
-            return {
-                "success": True,
-                "result": result.get("result"),
-                "input_hash": result.get("input_hash"),
-                "transcription_count": result.get("transcription_count"),
-                "transcription_length": result.get("transcription_length"),
-                "transcription_ids": result.get("transcription_ids"),
-                "provider": result.get("provider"),
-                "model": result.get("model"),
-                "execution_time": execution_time,
-            }
-
-    except Exception as e:
-        logger.error(f"Project sentiment crew failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/crew/project-analysis")
-async def run_project_analysis_crew(request: Request):
-    """Run the unified project analysis crew.
-
-    This crew consolidates implementation and sentiment analysis into a single
-    comprehensive project health assessment.
-    """
-    import json
-    start_time = datetime.utcnow()
-
-    # Check for streaming parameter
-    stream = request.query_params.get("stream", "false").lower() == "true"
-
-    try:
-        body = await request.json()
-        req = ProjectAnalysisRequest(**body)
-
-        project_name = req.project.get("project_name", "Unknown") if req.project else "Unknown"
-        logger.info(f"Running project analysis crew for: {project_name}")
-
-        crew = ProjectAnalysisCrew()
-
-        if stream:
-            # Streaming response
-            async def generate():
-                progress_messages = []
-
-                def send_progress(stage: str, message: str):
-                    progress_messages.append({"stage": stage, "message": message})
-
-                try:
-                    # Send initial progress
-                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting project analysis...'})}\n\n"
-
-                    # Run the crew
-                    result = crew.run(
-                        project=req.project or {},
-                        project_owner=req.projectOwner or {"type": "unknown"},
-                        mavenlink_tasks=req.mavenlinkTasks or [],
-                        mavenlink_time_entries=req.mavenlinkTimeEntries or [],
-                        transcripts=req.transcripts or [],
-                        call_activity=req.callActivity or {},
-                        email_activity=req.emailActivity,
-                        send_progress=send_progress,
-                    )
-
-                    # Send any progress messages
-                    for msg in progress_messages:
-                        yield f"data: {json.dumps({'type': 'progress', 'stage': msg['stage'], 'message': msg['message']})}\n\n"
-
-                    execution_time = (datetime.utcnow() - start_time).total_seconds()
-                    logger.info(f"Project analysis crew completed in {execution_time:.2f}s")
-
-                    # Send the final result
-                    yield f"data: {json.dumps({'type': 'result', 'result': result})}\n\n"
-
-                except Exception as e:
-                    logger.error(f"Project analysis crew failed: {str(e)}")
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-            return StreamingResponse(
-                generate(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                }
-            )
-        else:
-            # Non-streaming response
-            result = crew.run(
-                project=req.project or {},
-                project_owner=req.projectOwner or {"type": "unknown"},
-                mavenlink_tasks=req.mavenlinkTasks or [],
-                mavenlink_time_entries=req.mavenlinkTimeEntries or [],
-                transcripts=req.transcripts or [],
-                call_activity=req.callActivity or {},
-                email_activity=req.emailActivity,
-            )
-
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            logger.info(f"Project analysis crew completed in {execution_time:.2f}s")
-
-            return {
-                "success": True,
-                "result": result,
-                "execution_time": execution_time,
-            }
-
-    except Exception as e:
-        logger.error(f"Project analysis crew failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/crew/opportunity")
-async def run_opportunity_strategy_crew(request: Request):
-    """Run the opportunity strategy analysis crew with optional streaming."""
-    import json
-    start_time = datetime.utcnow()
-
-    # Check for streaming parameter
-    stream = request.query_params.get("stream", "false").lower() == "true"
-
-    try:
-        body = await request.json()
-        req = OpportunityStrategyRequest(**body)
-
-        logger.info(f"Running opportunity strategy crew for: {req.opportunityId}")
-
-        crew = OpportunityStrategyCrew(user_id=req.userId)
-
-        if stream:
-            async def generate():
-                progress_messages = []
-
-                def step_callback(message: str):
-                    progress_messages.append(message)
-
-                try:
-                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting strategic analysis...'})}\n\n"
-
-                    result = crew.run(
-                        opportunity_id=req.opportunityId,
-                        user_id=req.userId,
-                        force_refresh=req.forceRefresh or False,
-                        step_callback=step_callback,
-                        opportunity_data=req.opportunityData.model_dump() if req.opportunityData else None,
-                        transcription_data=[t.model_dump() for t in req.transcriptionData] if req.transcriptionData else None,
-                        salesforce_account_id=req.salesforceAccountId,
-                        presales_context=req.presalesContext.model_dump() if req.presalesContext else None,
-                    )
-
-                    for msg in progress_messages:
-                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
-
-                    execution_time = (datetime.utcnow() - start_time).total_seconds()
-                    logger.info(f"Opportunity strategy crew completed in {execution_time:.2f}s")
-
-                    yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'input_hash': result.get('input_hash'), 'opportunity_name': result.get('opportunity_name'), 'account_name': result.get('account_name'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
-
-                except Exception as e:
-                    logger.error(f"Opportunity strategy crew failed: {str(e)}")
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-            return StreamingResponse(
-                generate(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                }
-            )
-        else:
-            result = crew.run(
-                opportunity_id=req.opportunityId,
-                user_id=req.userId,
-                force_refresh=req.forceRefresh or False,
-                opportunity_data=req.opportunityData.model_dump() if req.opportunityData else None,
-                transcription_data=[t.model_dump() for t in req.transcriptionData] if req.transcriptionData else None,
-                salesforce_account_id=req.salesforceAccountId,
-                presales_context=req.presalesContext.model_dump() if req.presalesContext else None,
-            )
-
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            logger.info(f"Opportunity strategy crew completed in {execution_time:.2f}s")
-
-            return {
-                "success": True,
-                "result": result.get("result"),
-                "input_hash": result.get("input_hash"),
-                "opportunity_name": result.get("opportunity_name"),
-                "account_name": result.get("account_name"),
-                "provider": result.get("provider"),
-                "model": result.get("model"),
-                "execution_time": execution_time,
-            }
-
-    except Exception as e:
-        logger.error(f"Opportunity strategy crew failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/crew/support-coaching")
-async def run_support_coaching_crew(request: Request):
-    """Run the support agent coaching analysis crew with optional streaming."""
-    import json
-    start_time = datetime.utcnow()
-
-    # Check for streaming parameter
-    stream = request.query_params.get("stream", "false").lower() == "true"
-
-    try:
-        body = await request.json()
-        req = SupportCoachingRequest(**body)
-
-        logger.info(f"Running support coaching crew for agent: {req.agentName} ({req.agentEmail})")
-
-        crew = SupportCoachingCrew(user_id=req.userId)
-
-        # Convert cases data to dict format if provided
-        cases_data = None
-        if req.casesData:
-            cases_data = [c.model_dump() for c in req.casesData]
-
-        if stream:
-            async def generate():
-                progress_messages = []
-
-                def step_callback(message: str):
-                    progress_messages.append(message)
-
-                try:
-                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting coaching analysis...'})}\n\n"
-
-                    result = crew.run(
-                        agent_name=req.agentName,
-                        agent_email=req.agentEmail,
-                        owner_id=req.ownerId,
-                        cases_data=cases_data,
-                        days_back=req.daysBack or 90,
-                        step_callback=step_callback,
-                    )
-
-                    for msg in progress_messages:
-                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
-
-                    execution_time = (datetime.utcnow() - start_time).total_seconds()
-                    logger.info(f"Support coaching crew completed in {execution_time:.2f}s")
-
-                    # Extract the analysis part for the frontend - it expects the analysis object directly
-                    analysis_result = result.get("analysis") if isinstance(result, dict) else result
-                    yield f"data: {json.dumps({'type': 'result', 'result': analysis_result})}\n\n"
-
-                except Exception as e:
-                    logger.error(f"Support coaching crew failed: {str(e)}")
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-            return StreamingResponse(
-                generate(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                }
-            )
-        else:
-            result = crew.run(
-                agent_name=req.agentName,
-                agent_email=req.agentEmail,
-                owner_id=req.ownerId,
-                cases_data=cases_data,
-                days_back=req.daysBack or 90,
-            )
-
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            logger.info(f"Support coaching crew completed in {execution_time:.2f}s")
-
-            return {
-                "success": True,
-                "result": result.get("analysis"),
-                "agent_name": result.get("agent_name"),
-                "agent_email": result.get("agent_email"),
-                "cases_analyzed": result.get("cases_analyzed"),
-                "days_back": result.get("days_back"),
-                "execution_time": execution_time,
-            }
-
-    except Exception as e:
-        logger.error(f"Support coaching crew failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/crew/pm-coaching")
-async def run_pm_coaching_crew(request: Request):
-    """Run the Implementation Consultant (PM) coaching analysis crew with optional streaming."""
-    import json
-    start_time = datetime.utcnow()
-
-    stream = request.query_params.get("stream", "false").lower() == "true"
-
-    try:
-        body = await request.json()
-        req = PMCoachingRequest(**body)
-
-        logger.info(f"Running PM coaching crew for: {req.pmName} ({req.pmEmail})")
-
-        # Detailed logging for debugging data flow
-        logger.info(f"=== PM Coaching Request Data ===")
-        logger.info(f"Projects received: {len(req.projectsData) if req.projectsData else 0}")
-        logger.info(f"Delivery metrics: {req.deliveryMetrics}")
-        logger.info(f"Sentiment data items: {len(req.sentimentData) if req.sentimentData else 0}")
-        logger.info(f"Transcription samples: {len(req.transcriptionSamples) if req.transcriptionSamples else 0}")
-        logger.info(f"Escalation data items: {len(req.escalationData) if req.escalationData else 0}")
-        if req.projectsData and len(req.projectsData) > 0:
-            # Handle both camelCase and snake_case field names
-            def get_field(p, camel, snake):
-                return p.get(camel) if p.get(camel) is not None else p.get(snake)
-            statuses = [get_field(p, 'projectStatus', 'project_status') or 'None' for p in req.projectsData[:10]]
-            logger.info(f"Sample project statuses: {statuses}")
-            with_ps_forecasted = sum(1 for p in req.projectsData if get_field(p, 'psForecastedLiveDate', 'ps_forecasted_live_date'))
-            with_target = sum(1 for p in req.projectsData if get_field(p, 'targetGoLiveDate', 'target_go_live_date'))
-            with_actual = sum(1 for p in req.projectsData if get_field(p, 'actualGoLiveDate', 'actual_go_live_date'))
-            logger.info(f"Projects with ps_forecasted_live_date: {with_ps_forecasted}")
-            logger.info(f"Projects with target_go_live_date: {with_target}")
-            logger.info(f"Projects with actual_go_live_date: {with_actual}")
-            # Log first project keys to understand the data format
-            logger.info(f"First project keys: {list(req.projectsData[0].keys())}")
-        logger.info(f"================================")
-
-        crew = PMCoachingCrew(user_id=req.userId)
-
-        if stream:
-            import asyncio
-            import concurrent.futures
-            import queue
-
-            async def generate():
-                # Use a thread-safe queue instead of asyncio.Queue
-                progress_queue = queue.Queue()
-                result_holder = {"result": None, "error": None, "done": False}
-
-                def step_callback(message: str):
-                    # Thread-safe put to regular queue
-                    progress_queue.put({"type": "progress", "message": message})
-
-                def run_crew():
-                    try:
-                        result_holder["result"] = crew.run(
-                            pm_name=req.pmName,
-                            pm_email=req.pmEmail,
-                            salesforce_owner_id=req.salesforceOwnerId,
-                            projects_data=req.projectsData,
-                            delivery_metrics=req.deliveryMetrics,
-                            sentiment_data=req.sentimentData,
-                            transcription_samples=req.transcriptionSamples,
-                            escalation_data=req.escalationData,
-                            agenda_metrics=req.agendaMetrics,
-                            days_back=req.daysBack or 365,
-                            step_callback=step_callback,
-                        )
-                    except Exception as e:
-                        logger.error(f"Crew execution error: {str(e)}")
-                        result_holder["error"] = str(e)
-                    finally:
-                        result_holder["done"] = True
-
-                try:
-                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting coaching analysis...'})}\n\n"
-
-                    # Run crew in thread pool
-                    loop = asyncio.get_running_loop()
-                    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-                    crew_future = executor.submit(run_crew)
-
-                    # Stream progress messages as they arrive
-                    while not result_holder["done"]:
-                        try:
-                            msg = progress_queue.get(timeout=0.5)
-                            if msg["type"] == "progress":
-                                yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg['message']})}\n\n"
-                        except queue.Empty:
-                            # Send keepalive comment to prevent connection timeout
-                            yield f": keepalive\n\n"
-                            continue
-
-                    # Drain any remaining messages
-                    while not progress_queue.empty():
-                        try:
-                            msg = progress_queue.get_nowait()
-                            if msg["type"] == "progress":
-                                yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg['message']})}\n\n"
-                        except queue.Empty:
-                            break
-
-                    # Wait for thread to complete
-                    crew_future.result(timeout=5)
-                    executor.shutdown(wait=False)
-
-                    if result_holder["error"]:
-                        raise Exception(result_holder["error"])
-
-                    result = result_holder["result"]
-                    execution_time = (datetime.utcnow() - start_time).total_seconds()
-                    logger.info(f"PM coaching crew completed in {execution_time:.2f}s")
-
-                    # Check if crew returned an error (success: False)
-                    if result and result.get('success') == False:
-                        error_msg = result.get('error', 'Analysis failed - no result returned')
-                        logger.error(f"PM coaching crew returned error: {error_msg}")
-                        yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
-                    elif result and result.get('result'):
-                        yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'pm_name': result.get('pm_name'), 'pm_email': result.get('pm_email'), 'projects_analyzed': result.get('projects_analyzed'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
-                    else:
-                        # No result - this shouldn't happen but handle gracefully
-                        logger.error(f"PM coaching crew returned empty result: {result}")
-                        yield f"data: {json.dumps({'type': 'error', 'message': 'Analysis completed but no result was returned'})}\n\n"
-
-                except Exception as e:
-                    logger.error(f"PM coaching crew failed: {str(e)}")
-                    import traceback
-                    logger.error(traceback.format_exc())
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-            return StreamingResponse(
-                generate(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",
-                }
-            )
-        else:
-            result = crew.run(
-                pm_name=req.pmName,
-                pm_email=req.pmEmail,
-                salesforce_owner_id=req.salesforceOwnerId,
-                projects_data=req.projectsData,
-                delivery_metrics=req.deliveryMetrics,
-                sentiment_data=req.sentimentData,
-                transcription_samples=req.transcriptionSamples,
-                escalation_data=req.escalationData,
-                agenda_metrics=req.agendaMetrics,
-                days_back=req.daysBack or 365,
-            )
-
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            logger.info(f"PM coaching crew completed in {execution_time:.2f}s")
-
-            return {
-                "success": True,
-                "result": result.get("result"),
-                "pm_name": result.get("pm_name"),
-                "pm_email": result.get("pm_email"),
-                "projects_analyzed": result.get("projects_analyzed"),
-                "provider": result.get("provider"),
-                "model": result.get("model"),
-                "execution_time": execution_time,
-            }
-
-    except Exception as e:
-        logger.error(f"PM coaching crew failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/crew/ae-coaching")
-async def run_ae_coaching_crew(request: Request):
-    """Run the Account Executive coaching analysis crew with optional streaming."""
-    import json
-    start_time = datetime.utcnow()
-
-    stream = request.query_params.get("stream", "false").lower() == "true"
-
-    try:
-        body = await request.json()
-        req = AECoachingRequest(**body)
-
-        logger.info(f"Running AE coaching crew for: {req.aeName} ({req.aeEmail})")
-
-        crew = AECoachingCrew(user_id=req.userId)
-
-        if stream:
-            async def generate():
-                progress_messages = []
-
-                def step_callback(message: str):
-                    progress_messages.append(message)
-
-                try:
-                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting coaching analysis...'})}\n\n"
-
-                    result = crew.run(
-                        ae_name=req.aeName,
-                        ae_email=req.aeEmail,
-                        opportunities_data=req.opportunitiesData,
-                        transcription_samples=req.transcriptionSamples,
-                        days_back=req.daysBack or 180,
-                        step_callback=step_callback,
-                    )
-
-                    for msg in progress_messages:
-                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
-
-                    execution_time = (datetime.utcnow() - start_time).total_seconds()
-                    logger.info(f"AE coaching crew completed in {execution_time:.2f}s")
-
-                    # Check if crew returned an error (success: False)
-                    if result and result.get('success') == False:
-                        error_msg = result.get('error', 'Analysis failed - no result returned')
-                        logger.error(f"AE coaching crew returned error: {error_msg}")
-                        yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
-                    elif result and result.get('result'):
-                        yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'ae_name': result.get('ae_name'), 'ae_email': result.get('ae_email'), 'opportunities_analyzed': result.get('opportunities_analyzed'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
-                    else:
-                        logger.error(f"AE coaching crew returned empty result: {result}")
-                        yield f"data: {json.dumps({'type': 'error', 'message': 'Analysis completed but no result was returned'})}\n\n"
-
-                except Exception as e:
-                    logger.error(f"AE coaching crew failed: {str(e)}")
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-            return StreamingResponse(
-                generate(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                }
-            )
-        else:
-            result = crew.run(
-                ae_name=req.aeName,
-                ae_email=req.aeEmail,
-                opportunities_data=req.opportunitiesData,
-                transcription_samples=req.transcriptionSamples,
-                days_back=req.daysBack or 180,
-            )
-
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            logger.info(f"AE coaching crew completed in {execution_time:.2f}s")
-
-            return {
-                "success": True,
-                "result": result.get("result"),
-                "ae_name": result.get("ae_name"),
-                "ae_email": result.get("ae_email"),
-                "opportunities_analyzed": result.get("opportunities_analyzed"),
-                "provider": result.get("provider"),
-                "model": result.get("model"),
-                "execution_time": execution_time,
-            }
-
-    except Exception as e:
-        logger.error(f"AE coaching crew failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/crew/csm-coaching")
-async def run_csm_coaching_crew(request: Request):
-    """Run the Customer Success Manager coaching analysis crew with optional streaming."""
-    import json
-    start_time = datetime.utcnow()
-
-    stream = request.query_params.get("stream", "false").lower() == "true"
-
-    try:
-        body = await request.json()
-        req = CSMCoachingRequest(**body)
-
-        logger.info(f"Running CSM coaching crew for: {req.csmName} ({req.csmEmail})")
-
-        crew = CSMCoachingCrew(user_id=req.userId)
-
-        if stream:
-            async def generate():
-                progress_messages = []
-
-                def step_callback(message: str):
-                    progress_messages.append(message)
-
-                try:
-                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting coaching analysis...'})}\n\n"
-
-                    result = crew.run(
-                        csm_name=req.csmName,
-                        csm_email=req.csmEmail,
-                        accounts_data=req.accountsData,
-                        engagement_data=req.accountEngagementData,
-                        transcription_samples=req.transcriptionSamples,
-                        semantic_insights=req.semanticInsights,  # NEW: Structured signals from vector search
-                        days_back=req.daysBack or 180,
-                        calendar_connected=req.calendarConnected or False,
-                        step_callback=step_callback,
-                    )
-
-                    for msg in progress_messages:
-                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
-
-                    execution_time = (datetime.utcnow() - start_time).total_seconds()
-                    logger.info(f"CSM coaching crew completed in {execution_time:.2f}s")
-
-                    # Check if crew returned an error (success: False)
-                    if result and result.get('success') == False:
-                        error_msg = result.get('error', 'Analysis failed - no result returned')
-                        logger.error(f"CSM coaching crew returned error: {error_msg}")
-                        yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
-                    elif result and result.get('result'):
-                        yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'csm_name': result.get('csm_name'), 'csm_email': result.get('csm_email'), 'accounts_analyzed': result.get('accounts_analyzed'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
-                    else:
-                        logger.error(f"CSM coaching crew returned empty result: {result}")
-                        yield f"data: {json.dumps({'type': 'error', 'message': 'Analysis completed but no result was returned'})}\n\n"
-
-                except Exception as e:
-                    logger.error(f"CSM coaching crew failed: {str(e)}")
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-            return StreamingResponse(
-                generate(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                }
-            )
-        else:
-            result = crew.run(
-                csm_name=req.csmName,
-                csm_email=req.csmEmail,
-                accounts_data=req.accountsData,
-                engagement_data=req.accountEngagementData,
-                transcription_samples=req.transcriptionSamples,
-                semantic_insights=req.semanticInsights,  # NEW: Structured signals from vector search
-                days_back=req.daysBack or 180,
-                calendar_connected=req.calendarConnected or False,
-            )
-
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            logger.info(f"CSM coaching crew completed in {execution_time:.2f}s")
-
-            return {
-                "success": True,
-                "result": result.get("result"),
-                "csm_name": result.get("csm_name"),
-                "csm_email": result.get("csm_email"),
-                "accounts_analyzed": result.get("accounts_analyzed"),
-                "provider": result.get("provider"),
-                "model": result.get("model"),
-                "execution_time": execution_time,
-            }
-
-    except Exception as e:
-        logger.error(f"CSM coaching crew failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/crew/sc-coaching")
-async def run_sc_coaching_crew(request: Request):
-    """Run the Solutions Consultant coaching analysis crew with optional streaming."""
-    import json
-    start_time = datetime.utcnow()
-
-    stream = request.query_params.get("stream", "false").lower() == "true"
-
-    try:
-        body = await request.json()
-        req = SCCoachingRequest(**body)
-
-        logger.info(f"Running SC coaching crew for: {req.scName} ({req.scEmail})")
-
-        crew = SCCoachingCrew(user_id=req.userId)
-
-        if stream:
-            async def generate():
-                progress_messages = []
-
-                def step_callback(message: str):
-                    progress_messages.append(message)
-
-                try:
-                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting coaching analysis...'})}\n\n"
-
-                    result = crew.run(
-                        sc_name=req.scName,
-                        sc_email=req.scEmail,
-                        opportunities_data=req.opportunitiesData,
-                        demo_transcripts=req.demoTranscripts,
-                        discovery_transcripts=req.discoveryTranscripts,
-                        deal_outcomes=req.dealOutcomes,
-                        days_back=req.daysBack or 180,
-                        step_callback=step_callback,
-                    )
-
-                    for msg in progress_messages:
-                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
-
-                    execution_time = (datetime.utcnow() - start_time).total_seconds()
-                    logger.info(f"SC coaching crew completed in {execution_time:.2f}s")
-
-                    # Check if crew returned an error (success: False)
-                    if result and result.get('success') == False:
-                        error_msg = result.get('error', 'Analysis failed - no result returned')
-                        logger.error(f"SC coaching crew returned error: {error_msg}")
-                        yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
-                    elif result and result.get('result'):
-                        yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'sc_name': result.get('sc_name'), 'sc_email': result.get('sc_email'), 'opportunities_analyzed': result.get('opportunities_analyzed'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
-                    else:
-                        logger.error(f"SC coaching crew returned empty result: {result}")
-                        yield f"data: {json.dumps({'type': 'error', 'message': 'Analysis completed but no result was returned'})}\n\n"
-
-                except Exception as e:
-                    logger.error(f"SC coaching crew failed: {str(e)}")
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-            return StreamingResponse(
-                generate(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                }
-            )
-        else:
-            result = crew.run(
-                sc_name=req.scName,
-                sc_email=req.scEmail,
-                opportunities_data=req.opportunitiesData,
-                demo_transcripts=req.demoTranscripts,
-                discovery_transcripts=req.discoveryTranscripts,
-                deal_outcomes=req.dealOutcomes,
-                days_back=req.daysBack or 180,
-            )
-
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            logger.info(f"SC coaching crew completed in {execution_time:.2f}s")
-
-            return {
-                "success": True,
-                "result": result.get("result"),
-                "sc_name": result.get("sc_name"),
-                "sc_email": result.get("sc_email"),
-                "opportunities_analyzed": result.get("opportunities_analyzed"),
-                "provider": result.get("provider"),
-                "model": result.get("model"),
-                "execution_time": execution_time,
-            }
-
-    except Exception as e:
-        logger.error(f"SC coaching crew failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/crew/sdr-coaching")
-async def run_sdr_coaching_crew(request: Request):
-    """Run the SDR (Sales Development Representative) coaching analysis crew with optional streaming."""
-    import json
-    start_time = datetime.utcnow()
-
-    stream = request.query_params.get("stream", "false").lower() == "true"
-
-    try:
-        body = await request.json()
-        req = SDRCoachingRequest(**body)
-
-        logger.info(f"Running SDR coaching crew for: {req.sdrName} ({req.sdrEmail})")
-
-        from .crews.sdr_coaching_crew import SDRCoachingCrew
-        crew = SDRCoachingCrew(user_id=req.userId)
-
-        if stream:
-            async def generate():
-                progress_messages = []
-
-                def step_callback(message: str):
-                    progress_messages.append(message)
-
-                try:
-                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting coaching analysis...'})}\n\n"
-
-                    result = crew.run(
-                        sdr_name=req.sdrName,
-                        sdr_email=req.sdrEmail,
-                        performance_metrics=req.performanceMetrics,
-                        lead_pipeline_analysis=req.leadPipelineAnalysis,
-                        opportunity_analysis=req.opportunityAnalysis,
-                        sequence_data=req.sequenceData,
-                        intent_metrics=req.intentMetrics,
-                        days_back=req.daysBack or 30,
-                        step_callback=step_callback,
-                    )
-
-                    for msg in progress_messages:
-                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
-
-                    execution_time = (datetime.utcnow() - start_time).total_seconds()
-                    logger.info(f"SDR coaching crew completed in {execution_time:.2f}s")
-
-                    # Check if crew returned an error (success: False)
-                    if result and result.get('success') == False:
-                        error_msg = result.get('error', 'Analysis failed - no result returned')
-                        logger.error(f"SDR coaching crew returned error: {error_msg}")
-                        yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
-                    elif result and result.get('result'):
-                        yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'sdr_name': result.get('sdr_name'), 'sdr_email': result.get('sdr_email'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
-                    else:
-                        logger.error(f"SDR coaching crew returned empty result: {result}")
-                        yield f"data: {json.dumps({'type': 'error', 'message': 'Analysis completed but no result was returned'})}\n\n"
-
-                except Exception as e:
-                    logger.error(f"SDR coaching crew failed: {str(e)}")
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-            return StreamingResponse(
-                generate(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                }
-            )
-        else:
-            result = crew.run(
-                sdr_name=req.sdrName,
-                sdr_email=req.sdrEmail,
-                performance_metrics=req.performanceMetrics,
-                lead_pipeline_analysis=req.leadPipelineAnalysis,
-                opportunity_analysis=req.opportunityAnalysis,
-                sequence_data=req.sequenceData,
-                intent_metrics=req.intentMetrics,
-                days_back=req.daysBack or 30,
-            )
-
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            logger.info(f"SDR coaching crew completed in {execution_time:.2f}s")
-
-            return {
-                "success": True,
-                "result": result.get("result"),
-                "sdr_name": result.get("sdr_name"),
-                "sdr_email": result.get("sdr_email"),
-                "provider": result.get("provider"),
-                "model": result.get("model"),
-                "execution_time": execution_time,
-            }
-
-    except Exception as e:
-        logger.error(f"SDR coaching crew failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/crew/support_resolution")
-async def run_support_resolution_crew(request: Request):
-    """Run the support resolution analysis crew with optional streaming."""
-    import json
-    start_time = datetime.utcnow()
-
-    stream = request.query_params.get("stream", "false").lower() == "true"
-
-    try:
-        body = await request.json()
-        req = SupportResolutionRequest(**body)
-
-        logger.info(f"Running support resolution crew for case: {req.caseSubject[:50] if req.caseSubject else 'Unknown'}...")
-
-        crew = SupportResolutionCrew(user_id=req.userId)
-
-        if stream:
-            async def generate():
-                progress_messages = []
-
-                def step_callback(message: str):
-                    progress_messages.append(message)
-
-                try:
-                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Analyzing case...'})}\n\n"
-
-                    result = crew.run(
-                        case_subject=req.caseSubject,
-                        case_description=req.caseDescription,
-                        case_type=req.caseType,
-                        case_priority=req.casePriority,
-                        account_name=req.accountName,
-                        contact_name=req.contactName,
-                        step_callback=step_callback,
-                    )
-
-                    for msg in progress_messages:
-                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
-
-                    execution_time = (datetime.utcnow() - start_time).total_seconds()
-                    logger.info(f"Support resolution crew completed in {execution_time:.2f}s")
-
-                    yield f"data: {json.dumps({'type': 'result', 'result': result.get('result')})}\n\n"
-
-                except Exception as e:
-                    logger.error(f"Support resolution crew failed: {str(e)}")
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-            return StreamingResponse(
-                generate(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                }
-            )
-        else:
-            result = crew.run(
-                case_subject=req.caseSubject,
-                case_description=req.caseDescription,
-                case_type=req.caseType,
-                case_priority=req.casePriority,
-                account_name=req.accountName,
-                contact_name=req.contactName,
-            )
-
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            logger.info(f"Support resolution crew completed in {execution_time:.2f}s")
-
-            return {
-                "success": True,
-                "result": result.get("result"),
-                "execution_time": execution_time,
-            }
-
-    except Exception as e:
-        logger.error(f"Support resolution crew failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/crew/support_training")
-async def run_support_training_crew(request: Request):
-    """Alias for support_resolution - provides case analysis for training purposes."""
-    return await run_support_resolution_crew(request)
+# =============================================================================
+# Coaching endpoints moved to routes/coaching.py
+# Analysis endpoints (project-sentiment, project-analysis, opportunity,
+# competitive, support_resolution) moved to routes/analysis.py
+# =============================================================================
 
 
 @app.post("/api/crew/sc-prep")
 async def run_sc_prep_crew(request: Request):
     """Run the SC preparation crew for discovery synthesis, demo prep, and competitive intel."""
-    import json
-    start_time = datetime.utcnow()
-
     stream = request.query_params.get("stream", "false").lower() == "true"
 
     try:
         body = await request.json()
         req = SCPrepRequest(**body)
-
         logger.info(f"Running SC prep crew for opportunity: {req.opportunityId} (type: {req.prepType})")
 
         crew = SCPrepCrew(user_id=req.userId)
 
         if stream:
+            ctx = SimpleStreamingContext()
+
             async def generate():
-                progress_messages = []
-
-                def step_callback(message: str):
-                    progress_messages.append(message)
-
                 try:
-                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting SC preparation...'})}\n\n"
-
+                    yield ctx.init_message("Starting SC preparation...")
                     result = crew.run(
                         opportunity_id=req.opportunityId,
                         prep_type=req.prepType or "full",
                         user_id=req.userId,
                         force_refresh=req.forceRefresh or False,
-                        step_callback=step_callback,
+                        step_callback=ctx.step_callback,
                         opportunity_data=req.opportunityData.model_dump() if req.opportunityData else None,
                         transcription_data=[t.model_dump() for t in req.transcriptionData] if req.transcriptionData else None,
                     )
-
-                    for msg in progress_messages:
-                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
-
-                    execution_time = (datetime.utcnow() - start_time).total_seconds()
-                    logger.info(f"SC prep crew completed in {execution_time:.2f}s")
-
-                    yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'input_hash': result.get('input_hash'), 'opportunity_name': result.get('opportunity_name'), 'account_name': result.get('account_name'), 'prep_type': result.get('prep_type'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
-
+                    for msg in ctx.get_progress_messages():
+                        yield msg
+                    logger.info(f"SC prep crew completed in {ctx.execution_time:.2f}s")
+                    yield ctx.result_message(result.get('result'),
+                        input_hash=result.get('input_hash'),
+                        opportunity_name=result.get('opportunity_name'),
+                        account_name=result.get('account_name'),
+                        prep_type=result.get('prep_type'),
+                        provider=result.get('provider'), model=result.get('model'))
                 except Exception as e:
                     logger.error(f"SC prep crew failed: {str(e)}")
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+                    yield ctx.error_message(str(e))
 
-            return StreamingResponse(
-                generate(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                }
-            )
+            return create_streaming_response(generate())
         else:
+            start_time = datetime.utcnow()
             result = crew.run(
                 opportunity_id=req.opportunityId,
                 prep_type=req.prepType or "full",
@@ -1977,19 +488,15 @@ async def run_sc_prep_crew(request: Request):
                 opportunity_data=req.opportunityData.model_dump() if req.opportunityData else None,
                 transcription_data=[t.model_dump() for t in req.transcriptionData] if req.transcriptionData else None,
             )
-
             execution_time = (datetime.utcnow() - start_time).total_seconds()
             logger.info(f"SC prep crew completed in {execution_time:.2f}s")
-
             return {
-                "success": True,
-                "result": result.get("result"),
+                "success": True, "result": result.get("result"),
                 "input_hash": result.get("input_hash"),
                 "opportunity_name": result.get("opportunity_name"),
                 "account_name": result.get("account_name"),
                 "prep_type": result.get("prep_type"),
-                "provider": result.get("provider"),
-                "model": result.get("model"),
+                "provider": result.get("provider"), "model": result.get("model"),
                 "execution_time": execution_time,
             }
 
@@ -1998,285 +505,34 @@ async def run_sc_prep_crew(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/crew/competitive")
-async def run_competitive_crew(request: Request):
-    """Run the competitive intelligence analysis crew."""
-    import json
-    start_time = datetime.utcnow()
-
-    stream = request.query_params.get("stream", "false").lower() == "true"
-
-    try:
-        body = await request.json()
-        req = CompetitiveRequest(**body)
-
-        logger.info(f"Running competitive crew for {len(req.companies)} companies (type: {req.analysisType})")
-
-        crew = CompetitiveCrew(user_id=req.userId)
-
-        # Convert Pydantic models to dicts for the crew
-        companies_data = [c.model_dump() for c in req.companies]
-
-        if stream:
-            async def generate():
-                progress_messages = []
-
-                try:
-                    yield f"data: {json.dumps({'type': 'progress', 'stage': 'init', 'message': 'Starting competitive analysis...'})}\n\n"
-
-                    result = crew.run(
-                        companies=companies_data,
-                        analysis_type=req.analysisType or "comparative",
-                    )
-
-                    for msg in progress_messages:
-                        yield f"data: {json.dumps({'type': 'progress', 'stage': 'processing', 'message': msg})}\n\n"
-
-                    execution_time = (datetime.utcnow() - start_time).total_seconds()
-                    logger.info(f"Competitive crew completed in {execution_time:.2f}s")
-
-                    yield f"data: {json.dumps({'type': 'result', 'result': result.get('result'), 'analysis': result.get('analysis'), 'analysisType': result.get('analysisType'), 'provider': result.get('provider'), 'model': result.get('model')})}\n\n"
-
-                except Exception as e:
-                    logger.error(f"Competitive crew failed: {str(e)}")
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-            return StreamingResponse(
-                generate(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",
-                }
-            )
-        else:
-            result = crew.run(
-                companies=companies_data,
-                analysis_type=req.analysisType or "comparative",
-            )
-
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            logger.info(f"Competitive crew completed in {execution_time:.2f}s")
-
-            return {
-                "success": True,
-                "result": result.get("result"),
-                "analysis": result.get("analysis"),
-                "analysisType": result.get("analysisType"),
-                "provider": result.get("provider"),
-                "model": result.get("model"),
-                "execution_time": execution_time,
-            }
-
-    except Exception as e:
-        logger.error(f"Competitive crew failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 # =============================================================================
-# Configuration Endpoints (Crew Studio Integration)
-# Uses Supabase for persistent storage with YAML defaults
+# Config endpoints moved to routes/config.py
 # =============================================================================
-
-class ConfigUpdateRequest(BaseModel):
-    role: Optional[str] = None
-    goal: Optional[str] = None
-    backstory: Optional[str] = None
-    verbose: Optional[bool] = None
-    allow_delegation: Optional[bool] = None
-    description: Optional[str] = None
-    expected_output: Optional[str] = None
-    agent: Optional[str] = None
-    context: Optional[str] = None  # Page context for Crew Studio (e.g., 'sales', 'account', 'implementation')
-
-
-@app.get("/api/config/agents")
-async def get_agents_config():
-    """Get all agent configurations (YAML defaults + DB overrides)."""
-    try:
-        agents = config_store.get_agents()
-        return {"agents": agents}
-    except Exception as e:
-        logger.error(f"Error getting agents config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/config/agents/{agent_name}")
-async def get_agent_config(agent_name: str):
-    """Get a specific agent configuration."""
-    try:
-        agent = config_store.get_agent(agent_name)
-        if agent is None:
-            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
-        return {"agent": agent, "name": agent_name}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting agent '{agent_name}': {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.put("/api/config/agents/{agent_name}")
-async def update_agent_config(agent_name: str, config: ConfigUpdateRequest):
-    """Update an agent configuration (persists to Supabase)."""
-    try:
-        # Convert to dict, removing None values
-        config_dict = {k: v for k, v in config.dict().items() if v is not None}
-
-        if not config_dict:
-            raise HTTPException(status_code=400, detail="No configuration provided")
-
-        result = config_store.update_agent(agent_name, config_dict)
-
-        if result.get("success"):
-            logger.info(f"Updated agent '{agent_name}'")
-            return {"success": True, "agent": result.get("agent"), "name": agent_name}
-        else:
-            raise HTTPException(status_code=500, detail=result.get("error", "Failed to update"))
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating agent '{agent_name}': {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.delete("/api/config/agents/{agent_name}")
-async def reset_agent_config(agent_name: str):
-    """Reset an agent to its YAML defaults (removes DB overrides)."""
-    try:
-        result = config_store.reset_agent(agent_name)
-
-        if result.get("success"):
-            logger.info(f"Reset agent '{agent_name}' to defaults")
-            return {"success": True, "agent": result.get("agent"), "name": agent_name}
-        else:
-            raise HTTPException(status_code=500, detail=result.get("error", "Failed to reset"))
-
-    except Exception as e:
-        logger.error(f"Error resetting agent '{agent_name}': {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/config/tasks")
-async def get_tasks_config():
-    """Get all task configurations (YAML defaults + DB overrides)."""
-    try:
-        tasks = config_store.get_tasks()
-        return {"tasks": tasks}
-    except Exception as e:
-        logger.error(f"Error getting tasks config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/config/tasks/{task_name}")
-async def get_task_config(task_name: str):
-    """Get a specific task configuration."""
-    try:
-        task = config_store.get_task(task_name)
-        if task is None:
-            raise HTTPException(status_code=404, detail=f"Task '{task_name}' not found")
-        return {"task": task, "name": task_name}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting task '{task_name}': {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.put("/api/config/tasks/{task_name}")
-async def update_task_config(task_name: str, config: ConfigUpdateRequest):
-    """Update a task configuration (persists to Supabase)."""
-    try:
-        # Convert to dict, removing None values
-        config_dict = {k: v for k, v in config.dict().items() if v is not None}
-
-        if not config_dict:
-            raise HTTPException(status_code=400, detail="No configuration provided")
-
-        result = config_store.update_task(task_name, config_dict)
-
-        if result.get("success"):
-            logger.info(f"Updated task '{task_name}'")
-            return {"success": True, "task": result.get("task"), "name": task_name}
-        else:
-            raise HTTPException(status_code=500, detail=result.get("error", "Failed to update"))
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating task '{task_name}': {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.delete("/api/config/tasks/{task_name}")
-async def reset_task_config(task_name: str):
-    """Reset a task to its YAML defaults (removes DB overrides)."""
-    try:
-        result = config_store.reset_task(task_name)
-
-        if result.get("success"):
-            logger.info(f"Reset task '{task_name}' to defaults")
-            return {"success": True, "task": result.get("task"), "name": task_name}
-        else:
-            raise HTTPException(status_code=500, detail=result.get("error", "Failed to reset"))
-
-    except Exception as e:
-        logger.error(f"Error resetting task '{task_name}': {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =============================================================================
 # Sandbox Test Runner (Crew Studio)
 # =============================================================================
 
-class SandboxTestRequest(BaseModel):
-    """Request to run a sandbox test with custom agent/task configurations."""
-    agent: Dict[str, Any]  # Agent configuration
-    task: Dict[str, Any]   # Task configuration
-    sampleData: Optional[Dict[str, Any]] = {}  # Sample data for testing
-    userId: Optional[str] = None
-
-
 @app.post("/api/crew/sandbox-test")
 async def run_sandbox_test(request: SandboxTestRequest):
-    """
-    Run a sandbox test with custom agent/task configurations.
-    This is completely separate from production crews.
-    """
-    import asyncio
-    import queue
-    import threading
+    """Run a sandbox test with custom agent/task configurations."""
     from crewai import Agent, Task, Crew, Process, LLM
 
-    start_time = datetime.utcnow()
+    ctx = ThreadedStreamingContext()
 
-    async def event_generator():
-        progress_queue = queue.Queue()
+    async def generate():
+        try:
+            yield ctx.init_message("Initializing sandbox test...")
 
-        def send_progress(message: str, agent: str = "Sandbox Test"):
-            progress_queue.put({
-                "type": "progress",
-                "message": message,
-                "agent": agent,
-                "timestamp": datetime.utcnow().isoformat()
-            })
-
-        def run_crew():
-            try:
-                send_progress("Initializing sandbox test...")
-
-                # Create LLM
+            def run_crew(step_callback):
                 llm = LLM(
                     model=os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini"),
                     api_key=os.environ.get("OPENAI_API_KEY"),
                 )
-
-                # Create agent from config
                 agent_config = request.agent
                 agent_role = agent_config.get("role", "Test Agent")
-                send_progress(f"Creating agent: {agent_role}", agent_role)
+                step_callback(f"Creating agent: {agent_role}")
 
                 test_agent = Agent(
                     role=agent_role,
@@ -2286,88 +542,38 @@ async def run_sandbox_test(request: SandboxTestRequest):
                     allow_delegation=agent_config.get("allow_delegation", False),
                     llm=llm,
                 )
-
-                # Create task from config
                 task_config = request.task
                 task_description = task_config.get("description", "Analyze the provided data.")
-
-                # Interpolate sample data into task description
-                sample_data = request.sampleData or {}
-                for key, value in sample_data.items():
+                for key, value in (request.sampleData or {}).items():
                     task_description = task_description.replace(f"{{{key}}}", str(value))
 
-                send_progress("Creating task...", agent_role)
-
+                step_callback("Creating task...")
                 test_task = Task(
                     description=task_description,
                     expected_output=task_config.get("expected_output", "A comprehensive analysis."),
                     agent=test_agent,
                 )
-
-                # Create and run crew
-                send_progress("Running analysis...", agent_role)
-
-                crew = Crew(
-                    agents=[test_agent],
-                    tasks=[test_task],
-                    process=Process.sequential,
-                    verbose=True,
-                )
-
+                step_callback("Running analysis...")
+                crew = Crew(agents=[test_agent], tasks=[test_task], process=Process.sequential, verbose=True)
                 result = crew.kickoff()
-
-                # Extract result text
                 result_text = str(result) if result else "No result"
+                step_callback(f"Completed in {ctx.execution_time:.1f}s")
+                return {"result": result_text, "duration": ctx.execution_time}
 
-                duration = (datetime.utcnow() - start_time).total_seconds()
-                send_progress(f"Completed in {duration:.1f}s", agent_role)
+            async for msg in ctx.run_with_progress(run_crew):
+                yield msg
 
-                progress_queue.put({
-                    "type": "result",
-                    "result": result_text,
-                    "duration": duration,
-                })
+            if ctx.error:
+                logger.error(f"Sandbox test error: {ctx.error}")
+                yield ctx.error_message()
+            elif ctx.result:
+                yield ctx.result_message(ctx.result.get("result"), duration=ctx.result.get("duration"))
 
-            except Exception as e:
-                logger.error(f"Sandbox test error: {e}")
-                progress_queue.put({
-                    "type": "error",
-                    "message": str(e),
-                })
+        except Exception as e:
+            logger.error(f"Sandbox test error: {e}")
+            yield ctx.error_message(str(e))
 
-        # Run crew in thread
-        thread = threading.Thread(target=run_crew)
-        thread.start()
-
-        # Stream progress updates
-        while True:
-            try:
-                msg = progress_queue.get(timeout=1.0)
-                yield f"data: {json.dumps(msg)}\n\n"
-                if msg.get("type") in ["result", "error"]:
-                    break
-            except queue.Empty:
-                if not thread.is_alive():
-                    # Thread finished - drain any remaining messages from queue
-                    while not progress_queue.empty():
-                        try:
-                            msg = progress_queue.get_nowait()
-                            yield f"data: {json.dumps(msg)}\n\n"
-                        except queue.Empty:
-                            break
-                    break
-                # Send keepalive
-                yield f": keepalive\n\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        }
-    )
+    return create_streaming_response(generate())
 
 
 # =============================================================================
@@ -2647,82 +853,33 @@ async def run_call_analysis_crew(request: CallAnalysisRequest):
 # Custom Analysis Crew (User-created analyses)
 # =============================================================================
 
-class CustomAnalysisContext(BaseModel):
-    """Context data for custom analysis."""
-    target: Optional[Dict[str, Any]] = None
-    accounts: Optional[List[Dict[str, Any]]] = None
-    opportunities: Optional[List[Dict[str, Any]]] = None
-    meetings: Optional[List[Dict[str, Any]]] = None
-    cases: Optional[List[Dict[str, Any]]] = None
-    contacts: Optional[List[Dict[str, Any]]] = None
-
-
-class CustomAnalysisRequest(BaseModel):
-    """Request to run a custom user-created analysis."""
-    analysisId: str
-    analysisName: str
-    expertise: str  # AI persona/backstory
-    questions: str  # What questions to answer
-    outputFormat: Optional[str] = None
-    targetType: str  # account, opportunity, project
-    targetId: str
-    context: CustomAnalysisContext
-
-
 @app.post("/api/crew/custom-analysis")
 async def run_custom_analysis(request: CustomAnalysisRequest):
-    """
-    Run a custom user-created analysis.
-    Takes an analysis configuration (expertise + questions) and context data,
-    dynamically creates an agent to answer the questions.
-    """
-    import asyncio
-    import queue
-    import threading
+    """Run a custom user-created analysis with streaming progress."""
     from crewai import Agent, Task, Crew, Process, LLM
 
-    start_time = datetime.utcnow()
+    ctx = ThreadedStreamingContext()
 
-    async def event_generator():
-        progress_queue = queue.Queue()
+    async def generate():
+        try:
+            yield ctx.init_message(f"Starting analysis: {request.analysisName}")
 
-        def send_progress(message: str, agent: str = "Custom Analysis"):
-            progress_queue.put({
-                "type": "progress",
-                "message": message,
-                "agent": agent,
-                "timestamp": datetime.utcnow().isoformat()
-            })
-
-        def run_crew():
-            try:
-                send_progress(f"Starting analysis: {request.analysisName}")
-
-                # Format context data for the task
+            def run_crew(step_callback):
                 context_text = _format_custom_context(request.context, request.targetType)
-
-                # Create LLM
                 llm = LLM(
                     model=os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini"),
                     api_key=os.environ.get("OPENAI_API_KEY"),
                 )
-
-                # Create the analyst agent using the user's expertise/backstory
-                send_progress("Creating analyst agent...")
+                step_callback("Creating analyst agent...")
                 analyst = Agent(
                     role="Custom Analyst",
-                    goal=f"Answer the user's analysis questions thoroughly and actionably",
+                    goal="Answer the user's analysis questions thoroughly and actionably",
                     backstory=request.expertise,
                     verbose=True,
                     allow_delegation=False,
                     llm=llm,
                 )
-
-                # Build the task description with questions and context
-                output_guidance = ""
-                if request.outputFormat:
-                    output_guidance = f"\n\nOutput format guidance:\n{request.outputFormat}"
-
+                output_guidance = f"\n\nOutput format guidance:\n{request.outputFormat}" if request.outputFormat else ""
                 task_description = f"""Analyze the following {request.targetType} data and answer these questions:
 
 {request.questions}
@@ -2731,80 +888,48 @@ async def run_custom_analysis(request: CustomAnalysisRequest):
 {context_text}
 {output_guidance}"""
 
-                send_progress("Running analysis...")
-
+                step_callback("Running analysis...")
                 analysis_task = Task(
                     description=task_description,
                     expected_output="A comprehensive analysis answering all the questions with specific, actionable insights based on the provided data.",
                     agent=analyst,
                 )
-
-                # Run the crew
-                crew = Crew(
-                    agents=[analyst],
-                    tasks=[analysis_task],
-                    process=Process.sequential,
-                    verbose=True,
-                )
-
+                crew = Crew(agents=[analyst], tasks=[analysis_task], process=Process.sequential, verbose=True)
                 result = crew.kickoff()
                 result_text = str(result) if result else "No result"
-
-                duration = (datetime.utcnow() - start_time).total_seconds()
-                send_progress(f"Completed in {duration:.1f}s")
-
-                progress_queue.put({
-                    "type": "result",
+                step_callback(f"Completed in {ctx.execution_time:.1f}s")
+                return {
                     "result": result_text,
                     "analysisId": request.analysisId,
                     "analysisName": request.analysisName,
                     "targetType": request.targetType,
                     "targetId": request.targetId,
-                    "duration": duration,
-                })
+                    "duration": ctx.execution_time,
+                }
 
-            except Exception as e:
-                logger.error(f"Custom analysis error: {e}")
-                import traceback
-                traceback.print_exc()
-                progress_queue.put({
-                    "type": "error",
-                    "message": str(e),
-                })
+            async for msg in ctx.run_with_progress(run_crew):
+                yield msg
 
-        # Run crew in thread
-        thread = threading.Thread(target=run_crew)
-        thread.start()
+            if ctx.error:
+                logger.error(f"Custom analysis error: {ctx.error}")
+                yield ctx.error_message()
+            elif ctx.result:
+                yield ctx.result_message(
+                    ctx.result.get("result"),
+                    analysisId=ctx.result.get("analysisId"),
+                    analysisName=ctx.result.get("analysisName"),
+                    targetType=ctx.result.get("targetType"),
+                    targetId=ctx.result.get("targetId"),
+                    duration=ctx.result.get("duration"),
+                )
 
-        # Stream progress updates
-        while True:
-            try:
-                msg = progress_queue.get(timeout=1.0)
-                yield f"data: {json.dumps(msg)}\n\n"
-                if msg.get("type") in ["result", "error"]:
-                    break
-            except queue.Empty:
-                if not thread.is_alive():
-                    # Thread finished - drain any remaining messages
-                    while not progress_queue.empty():
-                        try:
-                            msg = progress_queue.get_nowait()
-                            yield f"data: {json.dumps(msg)}\n\n"
-                        except queue.Empty:
-                            break
-                    break
-                # Send keepalive
-                yield f": keepalive\n\n"
+        except Exception as e:
+            logger.error(f"Custom analysis error: {e}")
+            import traceback
+            traceback.print_exc()
+            yield ctx.error_message(str(e))
 
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        }
-    )
+    return create_streaming_response(generate())
 
 
 def _format_custom_context(context: CustomAnalysisContext, target_type: str) -> str:
