@@ -197,7 +197,6 @@ class ContextualDrilldownCrew(BaseCrew):
         parts.append(f"ARR: {self._format_currency(account.get('contract_value', 0))}")
         parts.append(f"Tier: {account.get('account_tier', 'Unknown')}")
         parts.append(f"Health Score: {account.get('health_score', 'N/A')}")
-        parts.append(f"Days Since Contact: {account.get('days_since_last_touch', 'Unknown')}")
         parts.append(f"Contract End: {account.get('contract_end_date', 'Unknown')}")
         parts.append(f"Owner: {account.get('owner_name', 'Unknown')}")
         parts.append("")

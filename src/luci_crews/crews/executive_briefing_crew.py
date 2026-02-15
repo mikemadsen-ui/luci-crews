@@ -102,7 +102,7 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
             return []
         try:
             result = self.supabase.table("accounts").select(
-                "id, name, contract_value, health_score, account_tier, days_since_last_touch"
+                "id, name, contract_value, health_score, account_tier"
             ).lt("health_score", 5).order("contract_value", desc=True).limit(10).execute()
             return result.data or []
         except Exception as e:
@@ -216,10 +216,9 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
             arr = a.get("contract_value", 0) or 0
             total_at_risk += arr
             health = a.get("health_score", 0)
-            days_silent = a.get("days_since_last_touch", 0)
             formatted.append(
                 f"- {name}: {self._format_currency(arr)} "
-                f"(health: {health:.1f}, {days_silent} days since contact)"
+                f"(health: {health}/10, tier: {a.get('account_tier', 'Unknown')})"
             )
 
         header = f"Total ARR at risk: {self._format_currency(total_at_risk)}"
