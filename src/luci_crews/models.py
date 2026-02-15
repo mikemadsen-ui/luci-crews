@@ -91,6 +91,18 @@ class OpportunityStrategyRequest(BaseModel):
     presalesContext: Optional[PresalesContextModel] = None  # Context about presales calls
 
 
+class MeddpiccGapActionsRequest(BaseModel):
+    """Request model for MEDDPICC gap-specific action recommendations."""
+    opportunityId: str
+    gapField: str  # e.g. 'economic_buyer', 'metrics', 'decision_criteria', etc.
+    userId: Optional[str] = None
+    userEmail: Optional[str] = None
+    opportunityData: Optional[OpportunityDataModel] = None
+    transcriptionData: Optional[List[TranscriptionDataModel]] = None
+    salesforceAccountId: Optional[str] = None
+    contactsData: Optional[List[Dict[str, Any]]] = None  # Account contacts for personalization
+
+
 # =============================================================================
 # Account Models
 # =============================================================================

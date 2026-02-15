@@ -17,12 +17,14 @@ from ..models import (
     ProjectSentimentRequest,
     ProjectAnalysisRequest,
     OpportunityStrategyRequest,
+    MeddpiccGapActionsRequest,
     CompetitiveRequest,
     SupportResolutionRequest,
 )
 from ..crews.project_sentiment_crew import ProjectSentimentCrew
 from ..crews.project_analysis_crew import ProjectAnalysisCrew
 from ..crews.opportunity_strategy_crew import OpportunityStrategyCrew
+from ..crews.meddpicc_gap_actions_crew import MeddpiccGapActionsCrew
 from ..crews.competitive_crew import CompetitiveCrew
 from ..crews.support_resolution_crew import SupportResolutionCrew
 from ..utils.streaming import (
@@ -230,6 +232,74 @@ async def run_opportunity_strategy_crew(request: Request):
 
     except Exception as e:
         logger.error(f"Opportunity strategy crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/meddpicc-gap-actions")
+async def run_meddpicc_gap_actions_crew(request: Request):
+    """Run the MEDDPICC gap actions crew to get targeted recommendations for a specific gap."""
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = MeddpiccGapActionsRequest(**body)
+        logger.info(f"Running MEDDPICC gap actions crew for: {req.opportunityId}, gap: {req.gapField}")
+
+        crew = MeddpiccGapActionsCrew(user_id=req.userId)
+
+        if stream:
+            ctx = SimpleStreamingContext()
+
+            async def generate():
+                try:
+                    yield ctx.init_message(f"Analyzing {req.gapField} gap...")
+                    result = crew.run(
+                        opportunity_id=req.opportunityId,
+                        gap_field=req.gapField,
+                        user_id=req.userId,
+                        step_callback=ctx.step_callback,
+                        opportunity_data=req.opportunityData.model_dump() if req.opportunityData else None,
+                        transcription_data=[t.model_dump() for t in req.transcriptionData] if req.transcriptionData else None,
+                        salesforce_account_id=req.salesforceAccountId,
+                        contacts_data=req.contactsData,
+                    )
+                    for msg in ctx.get_progress_messages():
+                        yield msg
+                    logger.info(f"MEDDPICC gap actions crew completed in {ctx.execution_time:.2f}s")
+                    yield ctx.result_message(result.get('result'),
+                        opportunity_name=result.get('opportunity_name'),
+                        account_name=result.get('account_name'),
+                        provider=result.get('provider'), model=result.get('model'))
+                except Exception as e:
+                    logger.error(f"MEDDPICC gap actions crew failed: {str(e)}")
+                    yield ctx.error_message(str(e))
+
+            return create_streaming_response(generate())
+        else:
+            start_time = datetime.utcnow()
+            result = crew.run(
+                opportunity_id=req.opportunityId,
+                gap_field=req.gapField,
+                user_id=req.userId,
+                opportunity_data=req.opportunityData.model_dump() if req.opportunityData else None,
+                transcription_data=[t.model_dump() for t in req.transcriptionData] if req.transcriptionData else None,
+                salesforce_account_id=req.salesforceAccountId,
+                contacts_data=req.contactsData,
+            )
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"MEDDPICC gap actions crew completed in {execution_time:.2f}s")
+            return {
+                "success": result.get("success", True),
+                "result": result.get("result"),
+                "opportunity_name": result.get("opportunity_name"),
+                "account_name": result.get("account_name"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"MEDDPICC gap actions crew failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

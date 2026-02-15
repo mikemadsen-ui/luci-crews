@@ -1283,3 +1283,94 @@ assess_call_risk:
     JSON with risk_level (low/medium/high/critical), risk_factors array,
     implementation_stage, coaching_notes, and follow_up_actions array.
   agent: call_risk_assessor
+
+# =============================================================================
+# MEDDPICC GAP ACTIONS TASKS
+# =============================================================================
+
+analyze_meddpicc_gap:
+  description: >
+    Generate specific, actionable recommendations to resolve this MEDDPICC gap:
+
+    GAP FIELD: {gap_field}
+    GAP LABEL: {gap_label}
+
+    OPPORTUNITY CONTEXT:
+    - Opportunity: {opportunity_name}
+    - Account: {account_name}
+    - Amount: ${amount}
+    - Stage: {stage_name}
+    - Close Date: {close_date}
+    - Owner: {owner_name}
+
+    KNOWN CONTACTS:
+    {contacts_data}
+
+    ACCOUNT CONTEXT:
+    {account_context}
+
+    MEETING TRANSCRIPTS (search for mentions of {gap_label}):
+    {meeting_data}
+
+    Your task is to help the sales rep resolve the "{gap_label}" gap by providing
+    specific, actionable recommendations tailored to THIS opportunity.
+
+    MEDDPICC DIMENSION DEFINITIONS:
+    - metrics: Quantified business impact - need specific numbers on cost/value
+    - economic_buyer: Person who controls budget - need to identify who signs
+    - decision_criteria: How they evaluate solutions - need explicit criteria
+    - decision_process: Steps/timeline to purchase - need the buying process
+    - identify_pain: Business problem being solved - need clear pain points
+    - champion: Internal advocate - need someone fighting for this deal
+    - competition: Alternatives being considered - need competitive landscape
+
+    For the "{gap_field}" gap specifically:
+    1. Search the transcripts for ANY mentions related to this dimension
+    2. Generate discovery questions that would naturally surface this information
+    3. Write an email snippet the rep could send to uncover this information
+    4. Provide coaching specific to resolving this gap
+
+    Return a JSON object with this EXACT structure:
+    {{
+      "gap_field": "{gap_field}",
+      "gap_label": "{gap_label}",
+
+      "suggested_questions": [
+        "<discovery question 1 - specific to this opportunity>",
+        "<discovery question 2>",
+        "<discovery question 3>"
+      ],
+
+      "email_snippet": "<A 3-5 sentence email the rep could send to uncover this gap. Address it to a specific contact if one is known. Make it conversational, not salesy. Reference something specific from the transcripts or opportunity context.>",
+
+      "transcript_evidence": [
+        {{
+          "text": "<exact quote from transcript mentioning this dimension>",
+          "speaker": "<who said it>",
+          "meeting_subject": "<which meeting>",
+          "relevance": "<why this quote matters for this gap>"
+        }}
+      ],
+
+      "coaching_tip": "<2-4 sentences of specific coaching for the rep on how to uncover this information in their next conversation. Reference the specific people, context, or dynamics of this deal.>",
+
+      "next_best_action": {{
+        "action": "<single most important next step>",
+        "who": "<who to contact or involve>",
+        "when": "<timing recommendation>",
+        "why": "<why this action will help close the gap>"
+      }}
+    }}
+
+    CRITICAL RULES:
+    - Questions must be conversational, not interrogative ("Help me understand..." not "What is...")
+    - Email must be personalized with names and context from this opportunity
+    - If no transcript evidence exists, return an empty array for transcript_evidence
+    - Coaching must be specific to THIS deal, not generic MEDDPICC advice
+    - Use actual contact names from contacts_data when available
+
+  expected_output: >
+    A valid JSON object with gap_field, gap_label, suggested_questions (3 questions),
+    email_snippet, transcript_evidence (array of quotes), coaching_tip, and next_best_action.
+    All recommendations must be specific to this opportunity, not generic.
+  agent: meddpicc_gap_analyst
