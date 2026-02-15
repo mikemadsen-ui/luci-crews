@@ -38,15 +38,13 @@ class ContextualDrilldownCrew(BaseCrew):
             # Try by UUID first, then by salesforce_id
             result = self.supabase.table("accounts").select(
                 "id, name, salesforce_id, contract_value, health_score, account_tier, "
-                "industry, contract_end_date, days_since_last_touch, owner_name, "
-                "utilization_pct"
+                "industry, contract_end_date, owner_name"
             ).eq("id", account_id).limit(1).execute()
 
             if not result.data:
                 result = self.supabase.table("accounts").select(
                     "id, name, salesforce_id, contract_value, health_score, account_tier, "
-                    "industry, contract_end_date, days_since_last_touch, owner_name, "
-                    "utilization_pct"
+                    "industry, contract_end_date, owner_name"
                 ).eq("salesforce_id", account_id).limit(1).execute()
 
             return result.data[0] if result.data else {}

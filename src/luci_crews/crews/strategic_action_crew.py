@@ -70,8 +70,7 @@ class StrategicActionCrew(BaseCrew):
         try:
             result = self.supabase.table("accounts").select(
                 "id, name, account_tier, contract_value, health_score, "
-                "contract_end_date, industry, owner_name, utilization_pct, "
-                "days_since_last_touch"
+                "contract_end_date, industry, owner_name"
             ).order("contract_value", desc=True).limit(50).execute()
             return result.data or []
         except Exception as e:
@@ -116,7 +115,7 @@ class StrategicActionCrew(BaseCrew):
         try:
             result = self.supabase.table("competitive_intelligence_summary").select(
                 "*"
-            ).order("mention_count", desc=True).limit(20).execute()
+            ).order("last_computed_at", desc=True).limit(20).execute()
             return result.data or []
         except Exception as e:
             logger.error(f"Error fetching competitive intel: {e}")
