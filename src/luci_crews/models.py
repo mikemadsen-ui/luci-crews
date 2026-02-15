@@ -538,3 +538,37 @@ class RenewalReadinessRequest(BaseModel):
     supportCasesData: Optional[List[Dict[str, Any]]] = None
     engagementGapData: Optional[Dict[str, Any]] = None
     stakeholderMapData: Optional[List[Dict[str, Any]]] = None
+
+
+# =============================================================================
+# Strategic Action Models
+# =============================================================================
+
+class StrategicActionRequest(BaseModel):
+    """Request model for strategic action document generation."""
+    userId: Optional[str] = None
+    actionType: str  # board_summary, pipeline_directive, segment_deep_dive, churn_prevention_plan, competitive_response
+    segment: Optional[str] = None  # For segment_deep_dive (e.g., "Enterprise")
+    accountId: Optional[str] = None  # For churn_prevention_plan
+    quarter: Optional[str] = None  # e.g., "Q1 2026"
+
+
+# =============================================================================
+# Executive Briefing Models
+# =============================================================================
+
+class ExecutiveBriefingRequest(BaseModel):
+    """Request model for executive morning briefing generation."""
+    userId: Optional[str] = None
+
+
+# =============================================================================
+# Contextual Drilldown Models
+# =============================================================================
+
+class ContextualDrilldownRequest(BaseModel):
+    """Request model for contextual drilldown synthesis."""
+    userId: Optional[str] = None
+    entityType: str  # account, metric, renewal
+    entityId: str  # Account UUID or metric name
+    context: Optional[str] = "risk"  # risk, renewal, expansion, engagement

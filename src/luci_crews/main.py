@@ -64,6 +64,9 @@ from .models import (
     QbrSummaryRequest,
     EmailDraftRequest,
     RenewalReadinessRequest,
+    StrategicActionRequest,
+    ExecutiveBriefingRequest,
+    ContextualDrilldownRequest,
 )
 from .crews.sales_pipeline_crew import SalesPipelineCrew
 from .crews.account_health_crew import AccountHealthCrew
@@ -78,6 +81,9 @@ from .crews.account_analysis_crew import AccountAnalysisCrew
 from .crews.qbr_summary_crew import QbrSummaryCrew
 from .crews.email_draft_crew import EmailDraftCrew
 from .crews.renewal_readiness_crew import RenewalReadinessCrew
+from .crews.strategic_action_crew import StrategicActionCrew
+from .crews.executive_briefing_crew import ExecutiveMorningBriefingCrew
+from .crews.contextual_drilldown_crew import ContextualDrilldownCrew
 from .batch_router import router as batch_router
 from .routes.analysis import router as analysis_router
 from .routes.coaching import router as coaching_router
@@ -1093,6 +1099,236 @@ async def run_renewal_readiness_crew(request: Request):
 
     except Exception as e:
         logger.error(f"Renewal readiness crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Strategic Action Crew
+# =============================================================================
+
+@app.post("/api/crew/strategic-action")
+async def run_strategic_action_crew(request: Request):
+    """Generate executive-ready strategic documents (board summaries, directives, deep dives)."""
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = StrategicActionRequest(**body)
+        logger.info(f"Running strategic action crew: {req.actionType}")
+
+        crew = StrategicActionCrew(user_id=req.userId)
+
+        if stream:
+            ctx = SimpleStreamingContext()
+
+            async def generate():
+                try:
+                    yield ctx.init_message(f"Starting {req.actionType.replace('_', ' ')} generation...")
+                    result = crew.run(
+                        action_type=req.actionType,
+                        user_id=req.userId,
+                        segment=req.segment,
+                        account_id=req.accountId,
+                        quarter=req.quarter,
+                        step_callback=ctx.step_callback,
+                    )
+                    for msg in ctx.get_progress_messages():
+                        yield msg
+                    logger.info(f"Strategic action crew completed in {ctx.execution_time:.2f}s")
+                    yield ctx.result_message(
+                        {"document": result.get("document")},
+                        action_type=result.get("action_type"),
+                        quarter=result.get("quarter"),
+                        segment=result.get("segment"),
+                        provider=result.get("provider"),
+                        model=result.get("model"),
+                    )
+                except Exception as e:
+                    logger.error(f"Strategic action crew failed: {str(e)}")
+                    yield ctx.error_message(str(e))
+
+            return create_streaming_response(generate())
+        else:
+            start_time = datetime.utcnow()
+            result = crew.run(
+                action_type=req.actionType,
+                user_id=req.userId,
+                segment=req.segment,
+                account_id=req.accountId,
+                quarter=req.quarter,
+            )
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"Strategic action crew completed in {execution_time:.2f}s")
+            return {
+                "success": result.get("success", True),
+                "document": result.get("document"),
+                "action_type": result.get("action_type"),
+                "quarter": result.get("quarter"),
+                "segment": result.get("segment"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"Strategic action crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Executive Morning Briefing Crew
+# =============================================================================
+
+@app.post("/api/crew/executive-briefing")
+async def run_executive_briefing_crew(request: Request):
+    """Generate executive morning briefing with portfolio synthesis."""
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = ExecutiveBriefingRequest(**body)
+        logger.info("Running executive briefing crew")
+
+        crew = ExecutiveMorningBriefingCrew(user_id=req.userId)
+
+        if stream:
+            ctx = SimpleStreamingContext()
+
+            async def generate():
+                try:
+                    yield ctx.init_message("Starting executive briefing generation...")
+                    result = crew.run(
+                        user_id=req.userId,
+                        step_callback=ctx.step_callback,
+                    )
+                    for msg in ctx.get_progress_messages():
+                        yield msg
+                    logger.info(f"Executive briefing crew completed in {ctx.execution_time:.2f}s")
+                    yield ctx.result_message(
+                        {
+                            "headline": result.get("headline"),
+                            "narrative": result.get("narrative"),
+                            "key_risks": result.get("key_risks"),
+                            "key_wins": result.get("key_wins"),
+                            "recommended_actions": result.get("recommended_actions"),
+                            "confidence_score": result.get("confidence_score"),
+                            "data_summary": result.get("data_summary"),
+                        },
+                        provider=result.get("provider"),
+                        model=result.get("model"),
+                        generated_at=result.get("generated_at"),
+                    )
+                except Exception as e:
+                    logger.error(f"Executive briefing crew failed: {str(e)}")
+                    yield ctx.error_message(str(e))
+
+            return create_streaming_response(generate())
+        else:
+            start_time = datetime.utcnow()
+            result = crew.run(user_id=req.userId)
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"Executive briefing crew completed in {execution_time:.2f}s")
+            return {
+                "success": result.get("success", True),
+                "headline": result.get("headline"),
+                "narrative": result.get("narrative"),
+                "key_risks": result.get("key_risks"),
+                "key_wins": result.get("key_wins"),
+                "recommended_actions": result.get("recommended_actions"),
+                "confidence_score": result.get("confidence_score"),
+                "data_summary": result.get("data_summary"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "generated_at": result.get("generated_at"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"Executive briefing crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Contextual Drilldown Crew
+# =============================================================================
+
+@app.post("/api/crew/drilldown")
+async def run_drilldown_crew(request: Request):
+    """Generate instant drilldown synthesis for an account or metric."""
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = ContextualDrilldownRequest(**body)
+        logger.info(f"Running drilldown crew: {req.entityType}/{req.entityId}")
+
+        crew = ContextualDrilldownCrew(user_id=req.userId)
+
+        if stream:
+            ctx = SimpleStreamingContext()
+
+            async def generate():
+                try:
+                    yield ctx.init_message(f"Starting {req.entityType} drilldown...")
+                    result = crew.run(
+                        entity_type=req.entityType,
+                        entity_id=req.entityId,
+                        context=req.context or "risk",
+                        user_id=req.userId,
+                        step_callback=ctx.step_callback,
+                    )
+                    for msg in ctx.get_progress_messages():
+                        yield msg
+                    logger.info(f"Drilldown crew completed in {ctx.execution_time:.2f}s")
+                    yield ctx.result_message(
+                        {
+                            "synthesis": result.get("synthesis"),
+                            "bullets": result.get("bullets"),
+                            "recommended_actions": result.get("recommended_actions"),
+                            "related_meetings": result.get("related_meetings"),
+                            "related_cases": result.get("related_cases"),
+                        },
+                        entity_type=result.get("entity_type"),
+                        entity_id=result.get("entity_id"),
+                        context=result.get("context"),
+                        provider=result.get("provider"),
+                        model=result.get("model"),
+                    )
+                except Exception as e:
+                    logger.error(f"Drilldown crew failed: {str(e)}")
+                    yield ctx.error_message(str(e))
+
+            return create_streaming_response(generate())
+        else:
+            start_time = datetime.utcnow()
+            result = crew.run(
+                entity_type=req.entityType,
+                entity_id=req.entityId,
+                context=req.context or "risk",
+                user_id=req.userId,
+            )
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"Drilldown crew completed in {execution_time:.2f}s")
+            return {
+                "success": result.get("success", True),
+                "synthesis": result.get("synthesis"),
+                "bullets": result.get("bullets"),
+                "recommended_actions": result.get("recommended_actions"),
+                "related_meetings": result.get("related_meetings"),
+                "related_cases": result.get("related_cases"),
+                "contributing_accounts": result.get("contributing_accounts"),
+                "related_signals": result.get("related_signals"),
+                "entity_type": result.get("entity_type"),
+                "entity_id": result.get("entity_id"),
+                "context": result.get("context"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "generated_at": result.get("generated_at"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"Drilldown crew failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
