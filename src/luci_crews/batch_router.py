@@ -295,103 +295,103 @@ async def run_batch_processing(
         triggered_by: 'cron' or 'manual'
     """
     status = batch_statuses[batch_id]
-    processor = OvernightBatchProcessor()
 
-    try:
-        # Step 1: Sync transcriptions via Next.js unified endpoint
-        logger.info(f"Batch {batch_id}: Starting transcription sync via Next.js...")
-        transcription_result = await sync_transcriptions_via_nextjs()
+    async with OvernightBatchProcessor() as processor:
+        try:
+            # Step 1: Sync transcriptions via Next.js unified endpoint
+            logger.info(f"Batch {batch_id}: Starting transcription sync via Next.js...")
+            transcription_result = await sync_transcriptions_via_nextjs()
 
-        if transcription_result:
-            status["transcriptionsSynced"] = transcription_result.get("totalTranscriptionsSynced", 0)
-            logger.info(f"Batch {batch_id}: Transcription sync complete - {status['transcriptionsSynced']} synced")
-        else:
-            logger.warning(f"Batch {batch_id}: Transcription sync returned no result")
+            if transcription_result:
+                status["transcriptionsSynced"] = transcription_result.get("totalTranscriptionsSynced", 0)
+                logger.info(f"Batch {batch_id}: Transcription sync complete - {status['transcriptionsSynced']} synced")
+            else:
+                logger.warning(f"Batch {batch_id}: Transcription sync returned no result")
 
-        # Step 2: Fetch accounts needing embeddings (may include newly synced transcriptions)
-        accounts = await processor.fetch_accounts_needing_embeddings()
-        status["accountsTotal"] = len(accounts)
+            # Step 2: Fetch accounts needing embeddings (may include newly synced transcriptions)
+            accounts = await processor.fetch_accounts_needing_embeddings()
+            status["accountsTotal"] = len(accounts)
 
-        if len(accounts) == 0:
-            logger.info(f"Batch {batch_id}: No accounts need processing")
-            status["status"] = "completed"
+            if len(accounts) == 0:
+                logger.info(f"Batch {batch_id}: No accounts need processing")
+                status["status"] = "completed"
+                status["completedAt"] = datetime.utcnow().isoformat()
+                await processor.init_batch_record(batch_id, 0, triggered_by)
+                await processor.complete_batch(batch_id, "completed", [])
+                return
+
+            # Initialize database record
+            await processor.init_batch_record(batch_id, len(accounts), triggered_by)
+
+            # Process accounts in batches
+            for i in range(0, len(accounts), batch_size):
+                batch = accounts[i:i + batch_size]
+                logger.info(f"Processing batch {i // batch_size + 1}: accounts {i} to {i + len(batch)}")
+
+                for account in batch:
+                    try:
+                        result = await processor.process_account(
+                            account_id=account.get("id"),
+                            salesforce_account_id=account.get("salesforce_id"),
+                            account_name=account.get("name"),
+                            batch_id=batch_id,
+                        )
+
+                        # Update progress
+                        status["accountsProcessed"] += 1
+                        status["transcriptionsSynced"] += result.get("transcriptions", 0)
+                        status["embeddingsGenerated"] += result.get("embeddings", 0)
+                        status["embeddingsSkipped"] += result.get("skipped", 0)
+
+                    except Exception as e:
+                        error_msg = f"Account {account.get('name', account.get('id'))}: {str(e)}"
+                        logger.error(f"Error processing account: {error_msg}")
+                        status["errors"].append(error_msg)
+                        status["accountsProcessed"] += 1
+
+                # Update database progress after each batch
+                await processor.update_batch_progress(
+                    batch_id=batch_id,
+                    accounts_processed=status["accountsProcessed"],
+                    accounts_total=status["accountsTotal"],
+                    transcriptions_synced=status["transcriptionsSynced"],
+                    embeddings_generated=status["embeddingsGenerated"],
+                    embeddings_skipped=status["embeddingsSkipped"],
+                )
+
+                logger.info(
+                    f"Batch progress: {status['accountsProcessed']}/{status['accountsTotal']} accounts, "
+                    f"{status['transcriptionsSynced']} transcriptions, "
+                    f"{status['embeddingsGenerated']} embeddings"
+                )
+
+            # Mark batch as complete
+            final_status = "completed" if not status["errors"] else "partial"
+            status["status"] = final_status
             status["completedAt"] = datetime.utcnow().isoformat()
-            await processor.init_batch_record(batch_id, 0, triggered_by)
-            await processor.complete_batch(batch_id, "completed", [])
-            return
 
-        # Initialize database record
-        await processor.init_batch_record(batch_id, len(accounts), triggered_by)
-
-        # Process accounts in batches
-        for i in range(0, len(accounts), batch_size):
-            batch = accounts[i:i + batch_size]
-            logger.info(f"Processing batch {i // batch_size + 1}: accounts {i} to {i + len(batch)}")
-
-            for account in batch:
-                try:
-                    result = await processor.process_account(
-                        account_id=account.get("id"),
-                        salesforce_account_id=account.get("salesforce_id"),
-                        account_name=account.get("name"),
-                        batch_id=batch_id,
-                    )
-
-                    # Update progress
-                    status["accountsProcessed"] += 1
-                    status["transcriptionsSynced"] += result.get("transcriptions", 0)
-                    status["embeddingsGenerated"] += result.get("embeddings", 0)
-                    status["embeddingsSkipped"] += result.get("skipped", 0)
-
-                except Exception as e:
-                    error_msg = f"Account {account.get('name', account.get('id'))}: {str(e)}"
-                    logger.error(f"Error processing account: {error_msg}")
-                    status["errors"].append(error_msg)
-                    status["accountsProcessed"] += 1
-
-            # Update database progress after each batch
-            await processor.update_batch_progress(
+            await processor.complete_batch(
                 batch_id=batch_id,
-                accounts_processed=status["accountsProcessed"],
-                accounts_total=status["accountsTotal"],
-                transcriptions_synced=status["transcriptionsSynced"],
-                embeddings_generated=status["embeddingsGenerated"],
-                embeddings_skipped=status["embeddingsSkipped"],
+                status=final_status,
+                errors=status["errors"],
             )
 
             logger.info(
-                f"Batch progress: {status['accountsProcessed']}/{status['accountsTotal']} accounts, "
+                f"Batch {batch_id} completed: "
+                f"{status['accountsProcessed']}/{status['accountsTotal']} accounts, "
                 f"{status['transcriptionsSynced']} transcriptions, "
-                f"{status['embeddingsGenerated']} embeddings"
+                f"{status['embeddingsGenerated']} embeddings, "
+                f"{len(status['errors'])} errors"
             )
 
-        # Mark batch as complete
-        final_status = "completed" if not status["errors"] else "partial"
-        status["status"] = final_status
-        status["completedAt"] = datetime.utcnow().isoformat()
+        except Exception as e:
+            logger.error(f"Batch {batch_id} failed: {e}")
+            status["status"] = "failed"
+            status["errors"].append(str(e))
+            status["completedAt"] = datetime.utcnow().isoformat()
 
-        await processor.complete_batch(
-            batch_id=batch_id,
-            status=final_status,
-            errors=status["errors"],
-        )
-
-        logger.info(
-            f"Batch {batch_id} completed: "
-            f"{status['accountsProcessed']}/{status['accountsTotal']} accounts, "
-            f"{status['transcriptionsSynced']} transcriptions, "
-            f"{status['embeddingsGenerated']} embeddings, "
-            f"{len(status['errors'])} errors"
-        )
-
-    except Exception as e:
-        logger.error(f"Batch {batch_id} failed: {e}")
-        status["status"] = "failed"
-        status["errors"].append(str(e))
-        status["completedAt"] = datetime.utcnow().isoformat()
-
-        await processor.complete_batch(
-            batch_id=batch_id,
-            status="failed",
-            errors=status["errors"],
-        )
+            await processor.complete_batch(
+                batch_id=batch_id,
+                status="failed",
+                errors=status["errors"],
+            )

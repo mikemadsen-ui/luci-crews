@@ -89,7 +89,7 @@ async def generate_openai_embedding(text: str, api_key: str) -> List[float]:
                 "Content-Type": "application/json",
             },
             json={
-                "model": "text-embedding-3-small",
+                "model": os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"),
                 "input": text[:8000],  # Truncate to avoid token limits
             },
             timeout=30.0,
@@ -118,6 +118,35 @@ class OvernightBatchProcessor:
         self.avoma_base_url = None
         self.avoma_api_key = None
 
+    async def __aenter__(self):
+        """Async context manager entry - initializes Supabase client."""
+        self._ensure_supabase()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit - cleans up Supabase client."""
+        await self.close()
+        return False  # Don't suppress exceptions
+
+    async def close(self):
+        """Clean up resources, particularly the Supabase client connection."""
+        if self.supabase is not None:
+            # The Supabase Python client uses httpx under the hood.
+            # Setting to None allows garbage collection to clean up.
+            # If using auth, sign_out() should be called for proper cleanup.
+            try:
+                # Check if there's an auth session to clean up
+                if hasattr(self.supabase, 'auth') and self.supabase.auth:
+                    # Sign out to close any background connections
+                    await asyncio.to_thread(self.supabase.auth.sign_out)
+                    logger.debug("Supabase auth session signed out")
+            except Exception as e:
+                # Don't fail on cleanup errors, just log
+                logger.debug(f"Supabase cleanup note: {e}")
+            finally:
+                self.supabase = None
+                logger.debug("Supabase client reference cleared")
+
     def _ensure_supabase(self):
         """Ensure Supabase client is initialized."""
         if self.supabase is None:
@@ -130,9 +159,12 @@ class OvernightBatchProcessor:
 
         self._ensure_supabase()
 
-        result = self.supabase.table("avoma_configs").select("*").eq(
-            "is_active", True
-        ).limit(1).execute()
+        def _fetch():
+            return self.supabase.table("avoma_configs").select("*").eq(
+                "is_active", True
+            ).limit(1).execute()
+
+        result = await asyncio.to_thread(_fetch)
 
         if result.data and len(result.data) > 0:
             config = result.data[0]
@@ -159,9 +191,12 @@ class OvernightBatchProcessor:
         ninety_days_ago = (datetime.utcnow() - timedelta(days=90)).isoformat()
 
         # Step 1: Get salesforce_account_ids with recent transcriptions
-        transcription_result = self.supabase.table("transcriptions").select(
-            "salesforce_account_id, avoma_meeting_uuid"
-        ).gte("meeting_date", ninety_days_ago).execute()
+        def _fetch_transcriptions():
+            return self.supabase.table("transcriptions").select(
+                "salesforce_account_id, avoma_meeting_uuid"
+            ).gte("meeting_date", ninety_days_ago).execute()
+
+        transcription_result = await asyncio.to_thread(_fetch_transcriptions)
 
         if not transcription_result.data:
             logger.info("No recent transcriptions found")
@@ -191,11 +226,15 @@ class OvernightBatchProcessor:
         batch_size = 50
         for i in range(0, len(sf_account_ids), batch_size):
             batch_ids = sf_account_ids[i:i + batch_size]
-            embed_result = self.supabase.table("account_embeddings").select(
-                "salesforce_account_id, source_id"
-            ).in_("salesforce_account_id", batch_ids).eq(
-                "data_type", "transcription"
-            ).execute()
+
+            def _fetch_embeddings(ids=batch_ids):
+                return self.supabase.table("account_embeddings").select(
+                    "salesforce_account_id, source_id"
+                ).in_("salesforce_account_id", ids).eq(
+                    "data_type", "transcription"
+                ).execute()
+
+            embed_result = await asyncio.to_thread(_fetch_embeddings)
 
             for e in (embed_result.data or []):
                 # Track which transcriptions already have embeddings
@@ -225,10 +264,13 @@ class OvernightBatchProcessor:
         accounts = []
         for i in range(0, len(accounts_needing_work), batch_size):
             batch_ids = accounts_needing_work[i:i + batch_size]
-            account_result = self.supabase.table("accounts").select(
-                "id, salesforce_id, name"
-            ).in_("salesforce_id", batch_ids).execute()
 
+            def _fetch_accounts(ids=batch_ids):
+                return self.supabase.table("accounts").select(
+                    "id, salesforce_id, name"
+                ).in_("salesforce_id", ids).execute()
+
+            account_result = await asyncio.to_thread(_fetch_accounts)
             accounts.extend(account_result.data or [])
 
         logger.info(f"Returning {len(accounts)} accounts for batch processing")
@@ -248,14 +290,17 @@ class OvernightBatchProcessor:
         logger.info(f"Creating batch record: batch_id={batch_id}, accounts_total={accounts_total}, triggered_by={triggered_by}")
 
         try:
-            result = self.supabase.table("batch_processing_runs").insert({
-                "batch_id": batch_id,
-                "batch_type": "overnight_sync",
-                "status": "running",
-                "users_total": accounts_total,  # Reusing field for accounts
-                "triggered_by": triggered_by,
-                "started_at": datetime.utcnow().isoformat(),
-            }).execute()
+            def _insert():
+                return self.supabase.table("batch_processing_runs").insert({
+                    "batch_id": batch_id,
+                    "batch_type": "overnight_sync",
+                    "status": "running",
+                    "users_total": accounts_total,  # Reusing field for accounts
+                    "triggered_by": triggered_by,
+                    "started_at": datetime.utcnow().isoformat(),
+                }).execute()
+
+            result = await asyncio.to_thread(_insert)
 
             if result.data:
                 logger.info(f"Created batch record successfully: {batch_id}")
@@ -279,14 +324,17 @@ class OvernightBatchProcessor:
         logger.info(f"Updating progress for batch {batch_id}: {accounts_processed}/{accounts_total} accounts, {embeddings_generated} embeddings")
 
         try:
-            result = self.supabase.table("batch_processing_runs").update({
-                "users_processed": accounts_processed,  # Reusing field
-                "users_total": accounts_total,  # Reusing field
-                "accounts_synced": accounts_processed,
-                "transcriptions_synced": transcriptions_synced,
-                "embeddings_generated": embeddings_generated,
-                "embeddings_skipped": embeddings_skipped,
-            }).eq("batch_id", batch_id).execute()
+            def _update():
+                return self.supabase.table("batch_processing_runs").update({
+                    "users_processed": accounts_processed,  # Reusing field
+                    "users_total": accounts_total,  # Reusing field
+                    "accounts_synced": accounts_processed,
+                    "transcriptions_synced": transcriptions_synced,
+                    "embeddings_generated": embeddings_generated,
+                    "embeddings_skipped": embeddings_skipped,
+                }).eq("batch_id", batch_id).execute()
+
+            result = await asyncio.to_thread(_update)
 
             # Log result to diagnose update issues
             if result.data:
@@ -301,11 +349,14 @@ class OvernightBatchProcessor:
         self._ensure_supabase()
 
         try:
-            self.supabase.table("batch_processing_runs").update({
-                "status": status,
-                "completed_at": datetime.utcnow().isoformat(),
-                "errors": errors,
-            }).eq("batch_id", batch_id).execute()
+            def _complete():
+                return self.supabase.table("batch_processing_runs").update({
+                    "status": status,
+                    "completed_at": datetime.utcnow().isoformat(),
+                    "errors": errors,
+                }).eq("batch_id", batch_id).execute()
+
+            await asyncio.to_thread(_complete)
             logger.info(f"Batch {batch_id} marked as {status}")
         except Exception as e:
             logger.error(f"Error completing batch: {e}")
