@@ -32,3 +32,11 @@ name = "luci-crews"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/luci_crews"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-v"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
