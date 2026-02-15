@@ -1119,33 +1119,36 @@ async def run_strategic_action_crew(request: Request):
         crew = StrategicActionCrew(user_id=req.userId)
 
         if stream:
-            ctx = SimpleStreamingContext()
+            ctx = ThreadedStreamingContext()
 
             async def generate():
-                try:
-                    yield ctx.init_message(f"Starting {req.actionType.replace('_', ' ')} generation...")
-                    result = crew.run(
+                yield ctx.init_message(f"Starting {req.actionType.replace('_', ' ')} generation...")
+
+                async for msg in ctx.run_with_progress(
+                    lambda step_cb: crew.run(
                         action_type=req.actionType,
                         user_id=req.userId,
                         segment=req.segment,
                         account_id=req.accountId,
                         quarter=req.quarter,
-                        step_callback=ctx.step_callback,
+                        step_callback=step_cb,
                     )
-                    for msg in ctx.get_progress_messages():
-                        yield msg
+                ):
+                    yield msg
+
+                if ctx.error:
+                    logger.error(f"Strategic action crew failed: {ctx.error}")
+                    yield ctx.error_message(ctx.error)
+                elif ctx.result:
                     logger.info(f"Strategic action crew completed in {ctx.execution_time:.2f}s")
                     yield ctx.result_message(
-                        {"document": result.get("document")},
-                        action_type=result.get("action_type"),
-                        quarter=result.get("quarter"),
-                        segment=result.get("segment"),
-                        provider=result.get("provider"),
-                        model=result.get("model"),
+                        {"document": ctx.result.get("document")},
+                        action_type=ctx.result.get("action_type"),
+                        quarter=ctx.result.get("quarter"),
+                        segment=ctx.result.get("segment"),
+                        provider=ctx.result.get("provider"),
+                        model=ctx.result.get("model"),
                     )
-                except Exception as e:
-                    logger.error(f"Strategic action crew failed: {str(e)}")
-                    yield ctx.error_message(str(e))
 
             return create_streaming_response(generate())
         else:
@@ -1192,35 +1195,38 @@ async def run_executive_briefing_crew(request: Request):
         crew = ExecutiveMorningBriefingCrew(user_id=req.userId)
 
         if stream:
-            ctx = SimpleStreamingContext()
+            ctx = ThreadedStreamingContext()
 
             async def generate():
-                try:
-                    yield ctx.init_message("Starting executive briefing generation...")
-                    result = crew.run(
+                yield ctx.init_message("Starting executive briefing generation...")
+
+                async for msg in ctx.run_with_progress(
+                    lambda step_cb: crew.run(
                         user_id=req.userId,
-                        step_callback=ctx.step_callback,
+                        step_callback=step_cb,
                     )
-                    for msg in ctx.get_progress_messages():
-                        yield msg
+                ):
+                    yield msg
+
+                if ctx.error:
+                    logger.error(f"Executive briefing crew failed: {ctx.error}")
+                    yield ctx.error_message(ctx.error)
+                elif ctx.result:
                     logger.info(f"Executive briefing crew completed in {ctx.execution_time:.2f}s")
                     yield ctx.result_message(
                         {
-                            "headline": result.get("headline"),
-                            "narrative": result.get("narrative"),
-                            "key_risks": result.get("key_risks"),
-                            "key_wins": result.get("key_wins"),
-                            "recommended_actions": result.get("recommended_actions"),
-                            "confidence_score": result.get("confidence_score"),
-                            "data_summary": result.get("data_summary"),
+                            "headline": ctx.result.get("headline"),
+                            "narrative": ctx.result.get("narrative"),
+                            "key_risks": ctx.result.get("key_risks"),
+                            "key_wins": ctx.result.get("key_wins"),
+                            "recommended_actions": ctx.result.get("recommended_actions"),
+                            "confidence_score": ctx.result.get("confidence_score"),
+                            "data_summary": ctx.result.get("data_summary"),
                         },
-                        provider=result.get("provider"),
-                        model=result.get("model"),
-                        generated_at=result.get("generated_at"),
+                        provider=ctx.result.get("provider"),
+                        model=ctx.result.get("model"),
+                        generated_at=ctx.result.get("generated_at"),
                     )
-                except Exception as e:
-                    logger.error(f"Executive briefing crew failed: {str(e)}")
-                    yield ctx.error_message(str(e))
 
             return create_streaming_response(generate())
         else:
@@ -1265,38 +1271,41 @@ async def run_drilldown_crew(request: Request):
         crew = ContextualDrilldownCrew(user_id=req.userId)
 
         if stream:
-            ctx = SimpleStreamingContext()
+            ctx = ThreadedStreamingContext()
 
             async def generate():
-                try:
-                    yield ctx.init_message(f"Starting {req.entityType} drilldown...")
-                    result = crew.run(
+                yield ctx.init_message(f"Starting {req.entityType} drilldown...")
+
+                async for msg in ctx.run_with_progress(
+                    lambda step_cb: crew.run(
                         entity_type=req.entityType,
                         entity_id=req.entityId,
                         context=req.context or "risk",
                         user_id=req.userId,
-                        step_callback=ctx.step_callback,
+                        step_callback=step_cb,
                     )
-                    for msg in ctx.get_progress_messages():
-                        yield msg
+                ):
+                    yield msg
+
+                if ctx.error:
+                    logger.error(f"Drilldown crew failed: {ctx.error}")
+                    yield ctx.error_message(ctx.error)
+                elif ctx.result:
                     logger.info(f"Drilldown crew completed in {ctx.execution_time:.2f}s")
                     yield ctx.result_message(
                         {
-                            "synthesis": result.get("synthesis"),
-                            "bullets": result.get("bullets"),
-                            "recommended_actions": result.get("recommended_actions"),
-                            "related_meetings": result.get("related_meetings"),
-                            "related_cases": result.get("related_cases"),
+                            "synthesis": ctx.result.get("synthesis"),
+                            "bullets": ctx.result.get("bullets"),
+                            "recommended_actions": ctx.result.get("recommended_actions"),
+                            "related_meetings": ctx.result.get("related_meetings"),
+                            "related_cases": ctx.result.get("related_cases"),
                         },
-                        entity_type=result.get("entity_type"),
-                        entity_id=result.get("entity_id"),
-                        context=result.get("context"),
-                        provider=result.get("provider"),
-                        model=result.get("model"),
+                        entity_type=ctx.result.get("entity_type"),
+                        entity_id=ctx.result.get("entity_id"),
+                        context=ctx.result.get("context"),
+                        provider=ctx.result.get("provider"),
+                        model=ctx.result.get("model"),
                     )
-                except Exception as e:
-                    logger.error(f"Drilldown crew failed: {str(e)}")
-                    yield ctx.error_message(str(e))
 
             return create_streaming_response(generate())
         else:
