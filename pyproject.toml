@@ -5,7 +5,7 @@ description = "CrewAI agents for LUCI application"
 authors = [{ name = "LeanData", email = "dev@leandata.com" }]
 requires-python = ">=3.11,<3.13"
 dependencies = [
-    "crewai[google-genai,tools]>=0.86.0",
+    "crewai[anthropic,google-genai,tools]>=0.86.0",
     "crewai-tools[mcp]>=0.33.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
