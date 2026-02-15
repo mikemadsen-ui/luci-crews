@@ -533,7 +533,6 @@ class RenewalReadinessRequest(BaseModel):
     currentArr: float
     # Optional pre-fetched data
     healthScoreData: Optional[Dict[str, Any]] = None
-    nrrHistory: Optional[List[Dict[str, Any]]] = None
     usageData: Optional[Dict[str, Any]] = None
     supportCasesData: Optional[List[Dict[str, Any]]] = None
     engagementGapData: Optional[Dict[str, Any]] = None
