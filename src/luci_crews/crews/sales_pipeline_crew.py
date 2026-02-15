@@ -4,49 +4,19 @@ Sales Pipeline Analysis Crew
 Analyzes sales opportunities and provides strategic recommendations.
 """
 
-import os
-import yaml
 from typing import Optional
 from crewai import Agent, Task, Crew, Process
-from crewai import LLM
 
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
 
 
-class SalesPipelineCrew:
+class SalesPipelineCrew(BaseCrew):
     """Crew for analyzing sales pipeline and opportunities."""
-
-    def __init__(self, user_id: Optional[str] = None):
-        """Initialize the crew with optional user-specific AI settings.
-
-        Args:
-            user_id: Optional user ID to fetch management-level AI settings.
-                    If not provided, uses default settings.
-        """
-        self.user_id = user_id
-        if user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
-        self._load_configs()
-
-    def _load_configs(self):
-        """Load agent and task configurations from YAML files."""
-        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
-
-        with open(os.path.join(config_dir, "agents.yaml"), 'r') as f:
-            self.agents_config = yaml.safe_load(f)
-
-        with open(os.path.join(config_dir, "tasks.yaml"), 'r') as f:
-            self.tasks_config = yaml.safe_load(f)
 
     def _create_agents(self):
         """Create agents from configuration."""
-        analyst_config = self.agents_config.get("sales_pipeline_analyst", {})
-        strategist_config = self.agents_config.get("sales_strategist", {})
+        analyst_config = self._get_agent_config("sales_pipeline_analyst")
+        strategist_config = self._get_agent_config("sales_strategist")
 
         self.analyst = Agent(
             role=analyst_config.get("role", "Sales Pipeline Analyst"),
@@ -68,8 +38,8 @@ class SalesPipelineCrew:
 
     def _create_tasks(self, user_email: str, opportunities: list, summary: dict):
         """Create tasks from configuration with data interpolation."""
-        analyze_config = self.tasks_config.get("analyze_pipeline", {})
-        strategy_config = self.tasks_config.get("develop_deal_strategies", {})
+        analyze_config = self._get_task_config("analyze_pipeline")
+        strategy_config = self._get_task_config("develop_deal_strategies")
 
         # Format opportunities data
         if opportunities:

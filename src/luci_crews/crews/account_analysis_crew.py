@@ -9,37 +9,19 @@ into a single comprehensive account analysis. It provides:
 - Actionable recommendations and talking points
 """
 
-import json
 import logging
-import os
-import re
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
-from crewai import Agent, Crew, Task, LLM
+from crewai import Agent, Crew, Task
 
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
+from ..utils import extract_json_from_llm_response
 
 logger = logging.getLogger(__name__)
 
 
-class AccountAnalysisCrew:
+class AccountAnalysisCrew(BaseCrew):
     """Unified account analysis crew combining sentiment and health assessment."""
-
-    def __init__(self, user_id: Optional[str] = None):
-        """Initialize the account analysis crew.
-
-        Args:
-            user_id: Optional user ID to fetch management-level AI settings.
-                    If not provided, uses default settings.
-        """
-        self.user_id = user_id
-        if user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
 
     def _create_account_analyst(self) -> Agent:
         """Create the unified account analyst agent."""
@@ -449,45 +431,19 @@ Return as JSON:
         _emit_progress("Complete", "Analysis complete!")
 
         # Parse result
-        try:
-            raw_result = str(result)
-
-            # Try to extract JSON from the result
-            json_match = re.search(r'\{[\s\S]*\}', raw_result)
-            if json_match:
-                parsed = json.loads(json_match.group(0))
-                parsed["_provider"] = "crewai"
-                parsed["_model"] = os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"])
-                return parsed
-
-            # Fallback: return structured response with raw text
-            return {
-                "score": 5,
-                "status": "stable",
-                "trend": "stable",
-                "executive_summary": raw_result[:500] if raw_result else "Analysis completed",
-                "sentiment_analysis": {"summary": "See executive summary"},
-                "health_analysis": {"summary": "See executive summary"},
-                "recommended_actions": [],
-                "talking_points": [],
-                "_raw_result": raw_result,
-                "_provider": "crewai",
-                "_model": os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-            }
-
-        except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse JSON result: {e}")
-            return {
-                "score": 5,
-                "status": "stable",
-                "trend": "stable",
-                "executive_summary": str(result)[:500] if result else "Analysis completed",
-                "sentiment_analysis": {"summary": "See executive summary"},
-                "health_analysis": {"summary": "See executive summary"},
-                "recommended_actions": [],
-                "talking_points": [],
-                "_raw_result": str(result),
-                "_parse_error": str(e),
-                "_provider": "crewai",
-                "_model": os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-            }
+        raw_result = str(result)
+        default = {
+            "score": 5,
+            "status": "stable",
+            "trend": "stable",
+            "executive_summary": raw_result[:500] if raw_result else "Analysis completed",
+            "sentiment_analysis": {"summary": "See executive summary"},
+            "health_analysis": {"summary": "See executive summary"},
+            "recommended_actions": [],
+            "talking_points": [],
+            "_raw_result": raw_result,
+        }
+        parsed = extract_json_from_llm_response(raw_result, default=default)
+        parsed["_provider"] = "crewai"
+        parsed["_model"] = getattr(self.llm, 'model', 'unknown')
+        return parsed

@@ -5,35 +5,15 @@ Analyzes a support case and provides actionable suggestions for resolution,
 including a suggested response, diagnostic questions, and resolution steps.
 """
 
-import os
-import json
 from typing import Dict, Any, Optional
-from crewai import Agent, Task, Crew, Process, LLM
+from crewai import Agent, Task, Crew, Process
 
-from ..config_loader import load_agents_config, load_tasks_config
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
+from ..utils import extract_json_from_llm_response
 
 
-class SupportResolutionCrew:
+class SupportResolutionCrew(BaseCrew):
     """Crew for analyzing support cases and providing resolution suggestions."""
-
-    def __init__(self, user_id: Optional[str] = None):
-        """Initialize the crew with optional user-specific AI settings.
-
-        Args:
-            user_id: Optional user ID to fetch management-level AI settings.
-                    If not provided, uses default settings.
-        """
-        self.user_id = user_id
-        if user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
-        self.agents_config = load_agents_config()
-        self.tasks_config = load_tasks_config()
 
     def run(
         self,
@@ -61,7 +41,7 @@ class SupportResolutionCrew:
             Structured resolution suggestions
         """
         # Create the support analyst agent
-        analyst_config = self.agents_config.get("support_coach", {})
+        analyst_config = self._get_agent_config("support_coach")
         support_analyst = Agent(
             role="Support Resolution Specialist",
             goal="Analyze support cases and provide clear, actionable resolution guidance",
@@ -141,46 +121,36 @@ Be specific and actionable. The suggested opening should be ready to copy-paste.
         # Parse the result
         result_text = str(result)
 
-        # Try to extract JSON from the result
-        try:
-            import re
-            json_match = re.search(r'\{[\s\S]*\}', result_text)
-            if json_match:
-                parsed_result = json.loads(json_match.group())
-                return {
-                    "success": True,
-                    "result": parsed_result
-                }
-        except json.JSONDecodeError:
-            pass
+        # Extract JSON from the result
+        default = {
+            "suggestedOpening": f"Thank you for reaching out regarding {case_subject}. I understand this is important and I'm here to help.",
+            "recommendedApproach": {
+                "summary": "Review the case details and gather more information",
+                "issueCategory": case_type or "General",
+                "estimatedComplexity": "Medium",
+                "matchesExpertise": True
+            },
+            "diagnosticQuestions": [
+                "When did you first notice this issue?",
+                "Have there been any recent changes to your setup?",
+                "Can you provide any error messages or screenshots?"
+            ],
+            "resolutionSteps": [
+                "Gather additional details from the customer",
+                "Review relevant documentation",
+                "Test the reported scenario if possible",
+                "Provide solution or escalate if needed"
+            ],
+            "tips": [
+                "Be empathetic and acknowledge the customer's frustration",
+                "Set clear expectations about next steps and timeline"
+            ],
+            "confidenceScore": 0.6,
+            "rawResponse": result_text
+        }
+        parsed_result = extract_json_from_llm_response(result_text, default=default)
 
-        # Return structured fallback if JSON parsing fails
         return {
             "success": True,
-            "result": {
-                "suggestedOpening": f"Thank you for reaching out regarding {case_subject}. I understand this is important and I'm here to help.",
-                "recommendedApproach": {
-                    "summary": "Review the case details and gather more information",
-                    "issueCategory": case_type or "General",
-                    "estimatedComplexity": "Medium",
-                    "matchesExpertise": True
-                },
-                "diagnosticQuestions": [
-                    "When did you first notice this issue?",
-                    "Have there been any recent changes to your setup?",
-                    "Can you provide any error messages or screenshots?"
-                ],
-                "resolutionSteps": [
-                    "Gather additional details from the customer",
-                    "Review relevant documentation",
-                    "Test the reported scenario if possible",
-                    "Provide solution or escalate if needed"
-                ],
-                "tips": [
-                    "Be empathetic and acknowledge the customer's frustration",
-                    "Set clear expectations about next steps and timeline"
-                ],
-                "confidenceScore": 0.6,
-                "rawResponse": result_text
-            }
+            "result": parsed_result
         }

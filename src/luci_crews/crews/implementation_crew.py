@@ -5,53 +5,22 @@ Analyzes implementation project health and provides recommendations.
 """
 
 import os
-import re
-import json
-import yaml
 import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from crewai import Agent, Task, Crew, Process
-from crewai import LLM
+from crewai import Agent, Task, Crew, Process, LLM
 
-from ..ai_settings_helper import create_llm_for_user, AISettings, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
 
 logger = logging.getLogger(__name__)
 
 
-class ImplementationCrew:
+class ImplementationCrew(BaseCrew):
     """Crew for analyzing implementation project health."""
-
-    def __init__(self, user_id: Optional[str] = None):
-        """Initialize the crew with optional user-specific AI settings.
-
-        Args:
-            user_id: Optional user ID to fetch management-level AI settings.
-                    If not provided, uses default settings.
-        """
-        self.user_id = user_id
-        if user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
-        self._load_configs()
-
-    def _load_configs(self):
-        """Load agent and task configurations from YAML files."""
-        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
-
-        with open(os.path.join(config_dir, "agents.yaml"), 'r') as f:
-            self.agents_config = yaml.safe_load(f)
-
-        with open(os.path.join(config_dir, "tasks.yaml"), 'r') as f:
-            self.tasks_config = yaml.safe_load(f)
 
     def _create_agents(self):
         """Create agents from configuration."""
-        analyst_config = self.agents_config.get("implementation_analyst", {})
+        analyst_config = self._get_agent_config("implementation_analyst")
 
         self.analyst = Agent(
             role=analyst_config.get("role", "Implementation Project Analyst"),
@@ -250,25 +219,7 @@ class ImplementationCrew:
 
     def _parse_json_result(self, result_text: str) -> Dict[str, Any]:
         """Extract JSON from the crew result, handling markdown code blocks."""
-        # Try to find JSON in code blocks first
-        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', result_text)
-        if json_match:
-            try:
-                return json.loads(json_match.group(1))
-            except json.JSONDecodeError:
-                pass
-
-        # Try to find raw JSON object
-        brace_match = re.search(r'\{[\s\S]*\}', result_text)
-        if brace_match:
-            try:
-                return json.loads(brace_match.group())
-            except json.JSONDecodeError:
-                pass
-
-        # Return a default structure if parsing fails
-        logger.warning("Failed to parse JSON from implementation crew result")
-        return {
+        default_result = {
             "status": "at_risk",
             "status_summary": "Analysis could not be parsed into structured format.",
             "score": 5,
@@ -302,6 +253,7 @@ class ImplementationCrew:
             },
             "coaching": "Review the raw analysis text for insights."
         }
+        return extract_json_from_llm_response(result_text, default=default_result)
 
     def _create_tasks(
         self,
@@ -321,7 +273,7 @@ class ImplementationCrew:
         mavenlink_tasks: Optional[List[dict]] = None,
     ):
         """Create tasks from configuration with data interpolation."""
-        task_config = self.tasks_config.get("analyze_implementation", {})
+        task_config = self._get_task_config("analyze_implementation")
 
         # Format call activity data
         call_activity_text = self._format_call_activity(call_activity)

@@ -6,52 +6,22 @@ deal qualification, stakeholder mapping, competitive positioning, and winning st
 """
 
 import os
-import re
-import json
-import yaml
 import hashlib
 import logging
 import httpx
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from crewai import Agent, Task, Crew, Process
-from crewai import LLM
 
 from ..config_store import get_supabase
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
+from ..utils import extract_json_from_llm_response
 
 logger = logging.getLogger(__name__)
 
 
-class OpportunityStrategyCrew:
+class OpportunityStrategyCrew(BaseCrew):
     """Crew for strategic analysis of sales opportunities."""
-
-    def __init__(self, user_id: Optional[str] = None):
-        """Initialize the crew with optional user-specific AI settings.
-
-        Args:
-            user_id: Optional user ID to fetch management-level AI settings.
-                    If not provided, uses default settings.
-        """
-        self.user_id = user_id
-        if user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
-        self._load_configs()
-
-    def _load_configs(self):
-        """Load agent and task configurations from YAML files."""
-        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
-
-        with open(os.path.join(config_dir, "agents.yaml"), 'r') as f:
-            self.agents_config = yaml.safe_load(f)
-
-        with open(os.path.join(config_dir, "tasks.yaml"), 'r') as f:
-            self.tasks_config = yaml.safe_load(f)
 
     def _fetch_opportunity(self, opportunity_id: str) -> Optional[Dict[str, Any]]:
         """Fetch opportunity details from Supabase."""
@@ -129,7 +99,7 @@ class OpportunityStrategyCrew:
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "text-embedding-3-small",
+                    "model": os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"),
                     "input": query,
                 },
                 timeout=30.0,
@@ -336,25 +306,7 @@ class OpportunityStrategyCrew:
 
     def _parse_json_result(self, result_text: str) -> Dict[str, Any]:
         """Extract JSON from the crew result."""
-        # Try to find JSON in code blocks
-        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', result_text)
-        if json_match:
-            try:
-                return json.loads(json_match.group(1))
-            except json.JSONDecodeError:
-                pass
-
-        # Try to find raw JSON object
-        brace_match = re.search(r'\{[\s\S]*\}', result_text)
-        if brace_match:
-            try:
-                return json.loads(brace_match.group())
-            except json.JSONDecodeError:
-                pass
-
-        # Return default structure if parsing fails
-        logger.warning("Failed to parse JSON from crew result")
-        return {
+        default = {
             "score": 5,
             "win_probability_assessment": "Unable to assess",
             "executive_summary": result_text[:500] if result_text else "Analysis could not be parsed.",
@@ -369,10 +321,11 @@ class OpportunityStrategyCrew:
             "red_flags": [],
             "coaching_for_rep": "",
         }
+        return extract_json_from_llm_response(result_text, default=default)
 
     def _create_agent(self):
         """Create the deal strategist agent."""
-        config = self.agents_config.get("deal_strategist", {})
+        config = self._get_agent_config("deal_strategist")
 
         self.strategist = Agent(
             role=config.get("role", "Senior Deal Strategist"),
@@ -398,7 +351,7 @@ class OpportunityStrategyCrew:
         support_data: str,
     ):
         """Create the analysis task with data interpolation."""
-        task_config = self.tasks_config.get("analyze_opportunity_strategy", {})
+        task_config = self._get_task_config("analyze_opportunity_strategy")
 
         description = task_config.get("description", "").format(
             opportunity_name=opportunity_name,
@@ -614,7 +567,7 @@ class OpportunityStrategyCrew:
                 parsed_result["score"] = 5
 
         # Get actual model info from LLM
-        model_name = getattr(self.llm, 'model', os.environ.get("OPENAI_MODEL_NAME", "gpt-4o"))
+        model_name = getattr(self.llm, 'model', 'unknown')
         provider = "openai"
         if "claude" in model_name.lower() or "anthropic" in model_name.lower():
             provider = "anthropic"

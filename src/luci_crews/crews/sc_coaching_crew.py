@@ -5,35 +5,15 @@ Analyzes demo effectiveness, discovery synthesis, and deal support to provide
 personalized coaching for Solutions Consultants.
 """
 
-import os
-import json
 from typing import Dict, Any, List, Optional
-from crewai import Agent, Task, Crew, Process, LLM
+from crewai import Agent, Task, Crew, Process
 
-from ..config_loader import load_agents_config, load_tasks_config
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
+from ..utils import extract_json_from_llm_response
 
 
-class SCCoachingCrew:
+class SCCoachingCrew(BaseCrew):
     """Crew for analyzing Solutions Consultant performance and providing coaching."""
-
-    def __init__(self, user_id: Optional[str] = None):
-        """Initialize the crew with optional user-specific AI settings.
-
-        Args:
-            user_id: Optional user ID to fetch management-level AI settings.
-                    If not provided, uses default settings.
-        """
-        self.user_id = user_id
-        if user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
-        self.agents_config = load_agents_config()
-        self.tasks_config = load_tasks_config()
 
     def _build_sc_context(
         self,
@@ -152,7 +132,7 @@ Analysis Period: Last {days_back} days
             step_callback("Analyzing demo effectiveness...")
 
         # Create the agents
-        demo_config = self.agents_config.get("demo_effectiveness_analyst", {})
+        demo_config = self._get_agent_config("demo_effectiveness_analyst")
         demo_analyst = Agent(
             role=demo_config.get("role", "Demo Effectiveness Analyst"),
             goal=demo_config.get(
@@ -168,7 +148,7 @@ Analysis Period: Last {days_back} days
             llm=self.llm,
         )
 
-        discovery_config = self.agents_config.get("discovery_synthesis_expert", {})
+        discovery_config = self._get_agent_config("discovery_synthesis_expert")
         discovery_expert = Agent(
             role=discovery_config.get("role", "Discovery Synthesis Expert"),
             goal=discovery_config.get(
@@ -184,7 +164,7 @@ Analysis Period: Last {days_back} days
             llm=self.llm,
         )
 
-        coach_config = self.agents_config.get("technical_win_coach", {})
+        coach_config = self._get_agent_config("technical_win_coach")
         coach = Agent(
             role=coach_config.get("role", "Technical Win Coach"),
             goal=coach_config.get(
@@ -344,42 +324,25 @@ Return your analysis in this JSON format:
         result_text = str(result)
 
         # Get actual model info from LLM
-        model_name = getattr(self.llm, 'model', os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"))
+        model_name = getattr(self.llm, 'model', 'unknown')
         provider = "openai"
         if "claude" in model_name.lower() or "anthropic" in model_name.lower():
             provider = "anthropic"
         elif "gemini" in model_name.lower():
             provider = "google"
 
-        # Try to extract JSON from the result
-        try:
-            import re
+        # Extract JSON from the result
+        parsed_result = extract_json_from_llm_response(result_text)
+        is_raw = "text" in parsed_result and len(parsed_result) == 1
 
-            json_match = re.search(r"\{[\s\S]*\}", result_text)
-            if json_match:
-                parsed_result = json.loads(json_match.group())
-                return {
-                    "success": True,
-                    "result": parsed_result,
-                    "sc_name": sc_name,
-                    "sc_email": sc_email,
-                    "opportunities_analyzed": len(opportunities_data) if opportunities_data else 0,
-                    "days_back": days_back,
-                    "provider": provider,
-                    "model": model_name,
-                }
-        except json.JSONDecodeError:
-            pass
-
-        # Return raw result if JSON parsing fails
         return {
             "success": True,
-            "result": result_text,
+            "result": result_text if is_raw else parsed_result,
             "sc_name": sc_name,
             "sc_email": sc_email,
             "opportunities_analyzed": len(opportunities_data) if opportunities_data else 0,
             "days_back": days_back,
-            "raw_response": True,
+            "raw_response": is_raw,
             "provider": provider,
             "model": model_name,
         }

@@ -6,16 +6,13 @@ Analyzes customer sentiment toward product, company, and IC, plus engagement met
 """
 
 import os
-import re
-import json
-import yaml
 import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from crewai import Agent, Task, Crew, Process
-from crewai import LLM
 
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
+from ..utils import extract_json_from_llm_response
 
 logger = logging.getLogger(__name__)
 
@@ -23,35 +20,13 @@ logger = logging.getLogger(__name__)
 VENDOR_DOMAINS = ['leandata.com', 'leandatainc.com']
 
 
-class CallAnalysisCrew:
+class CallAnalysisCrew(BaseCrew):
     """Crew for analyzing individual call transcripts."""
-
-    def __init__(self, user_id: Optional[str] = None):
-        """Initialize the crew with optional user-specific AI settings."""
-        self.user_id = user_id
-        if user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
-        self._load_configs()
-
-    def _load_configs(self):
-        """Load agent and task configurations from YAML files."""
-        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
-
-        with open(os.path.join(config_dir, "agents.yaml"), 'r') as f:
-            self.agents_config = yaml.safe_load(f)
-
-        with open(os.path.join(config_dir, "tasks.yaml"), 'r') as f:
-            self.tasks_config = yaml.safe_load(f)
 
     def _create_agents(self):
         """Create the analysis agents."""
         # Sentiment Analyzer - analyzes customer feelings toward product/company/IC
-        sentiment_config = self.agents_config.get("call_sentiment_analyzer", {})
+        sentiment_config = self._get_agent_config("call_sentiment_analyzer")
         self.sentiment_analyzer = Agent(
             role=sentiment_config.get("role", "Customer Sentiment Analyst"),
             goal=sentiment_config.get("goal", "Analyze customer sentiment from call transcripts"),
@@ -62,7 +37,7 @@ class CallAnalysisCrew:
         )
 
         # Engagement Analyzer - analyzes talk patterns and participation
-        engagement_config = self.agents_config.get("call_engagement_analyzer", {})
+        engagement_config = self._get_agent_config("call_engagement_analyzer")
         self.engagement_analyzer = Agent(
             role=engagement_config.get("role", "Meeting Engagement Analyst"),
             goal=engagement_config.get("goal", "Analyze meeting dynamics and engagement patterns"),
@@ -73,7 +48,7 @@ class CallAnalysisCrew:
         )
 
         # Action Item Extractor - extracts commitments, blockers, decisions
-        action_config = self.agents_config.get("call_action_extractor", {})
+        action_config = self._get_agent_config("call_action_extractor")
         self.action_extractor = Agent(
             role=action_config.get("role", "Action Item Extractor"),
             goal=action_config.get("goal", "Extract commitments, blockers, and decisions from calls"),
@@ -84,7 +59,7 @@ class CallAnalysisCrew:
         )
 
         # Risk Assessor - synthesizes findings into risk assessment
-        risk_config = self.agents_config.get("call_risk_assessor", {})
+        risk_config = self._get_agent_config("call_risk_assessor")
         self.risk_assessor = Agent(
             role=risk_config.get("role", "Implementation Risk Assessor"),
             goal=risk_config.get("goal", "Assess implementation risk and provide coaching"),
@@ -320,7 +295,7 @@ Date: {meeting_date}
         tasks = []
 
         # Task 1: Sentiment Analysis
-        sentiment_task_config = self.tasks_config.get("analyze_call_sentiment", {})
+        sentiment_task_config = self._get_task_config("analyze_call_sentiment")
         sentiment_description = sentiment_task_config.get("description", "").format(
             context=context,
             transcript=transcript
@@ -377,7 +352,7 @@ Return as JSON:
         ))
 
         # Task 2: Engagement Analysis
-        engagement_task_config = self.tasks_config.get("analyze_call_engagement", {})
+        engagement_task_config = self._get_task_config("analyze_call_engagement")
         engagement_description = f"""
 Analyze the engagement dynamics of this call.
 
@@ -423,7 +398,7 @@ Return as JSON:
         ))
 
         # Task 3: Action Item Extraction
-        action_task_config = self.tasks_config.get("extract_call_actions", {})
+        action_task_config = self._get_task_config("extract_call_actions")
         action_description = f"""
 Extract all actionable items from this call transcript.
 
@@ -483,7 +458,7 @@ Return as JSON:
         ))
 
         # Task 4: Risk Assessment & Coaching
-        risk_task_config = self.tasks_config.get("assess_call_risk", {})
+        risk_task_config = self._get_task_config("assess_call_risk")
         risk_description = f"""
 Based on the previous analyses, assess the implementation risk and provide coaching.
 
@@ -538,21 +513,7 @@ Return as JSON:
 
     def _parse_json_result(self, raw_result: str) -> Dict[str, Any]:
         """Parse JSON from crew result."""
-        try:
-            # Try to extract JSON from markdown code block
-            json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', raw_result)
-            if json_match:
-                return json.loads(json_match.group(1))
-
-            # Try to find JSON object directly
-            json_match = re.search(r'\{[\s\S]*\}', raw_result)
-            if json_match:
-                return json.loads(json_match.group(0))
-
-            return {"raw_text": raw_result}
-        except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse JSON: {e}")
-            return {"raw_text": raw_result, "parse_error": str(e)}
+        return extract_json_from_llm_response(raw_result, default={"raw_text": raw_result})
 
     def run(
         self,

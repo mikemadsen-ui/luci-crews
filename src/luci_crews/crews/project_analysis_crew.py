@@ -16,31 +16,16 @@ import logging
 import os
 from typing import Any, Dict, List, Optional, Callable
 
-from crewai import Agent, Crew, Task, LLM
+from crewai import Agent, Crew, Task
 
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
+from ..utils import extract_json_from_llm_response
 
 logger = logging.getLogger(__name__)
 
 
-class ProjectAnalysisCrew:
+class ProjectAnalysisCrew(BaseCrew):
     """Unified project analysis crew combining strategic health and sentiment."""
-
-    def __init__(self, user_id: Optional[str] = None):
-        """Initialize the project analysis crew.
-
-        Args:
-            user_id: Optional user ID to fetch management-level AI settings.
-                    If not provided, uses default settings.
-        """
-        self.user_id = user_id
-        if user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
 
     def _create_strategic_analyst(self) -> Agent:
         """Create the strategic health analyst agent."""
@@ -384,57 +369,12 @@ Be specific and actionable. Reference specific tasks, quotes, email patterns, or
         _emit_progress("Complete", "Analysis complete!")
 
         # Parse result
-        try:
-            # Try to extract JSON from the result
-            result_str = str(result)
-
-            # Find JSON in the response
-            json_start = result_str.find("{")
-            json_end = result_str.rfind("}") + 1
-
-            if json_start >= 0 and json_end > json_start:
-                json_str = result_str[json_start:json_end]
-
-                # Try parsing as-is first
-                try:
-                    parsed_result = json.loads(json_str)
-                    parsed_result["provider"] = "openai"
-                    parsed_result["model"] = os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")
-                    return parsed_result
-                except json.JSONDecodeError:
-                    # Try to repair common LLM JSON errors
-                    import re
-                    repaired = json_str
-
-                    # Fix: "quote text" – Attribution (unquoted text after string)
-                    # Replace: "text" – Name  with  "text - Name"
-                    repaired = re.sub(r'"\s*[–—-]\s*([^",\}\]]+)', r' - \1"', repaired)
-
-                    # Fix trailing commas before ] or }
-                    repaired = re.sub(r',\s*\]', ']', repaired)
-                    repaired = re.sub(r',\s*\}', '}', repaired)
-
-                    # Fix missing commas between array elements or object properties
-                    repaired = re.sub(r'\}\s*\{', '},{', repaired)
-                    repaired = re.sub(r'\]\s*\[', '],[', repaired)
-
-                    logger.info(f"Attempting JSON repair...")
-                    parsed_result = json.loads(repaired)
-                    parsed_result["provider"] = "openai"
-                    parsed_result["model"] = os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")
-                    logger.info("JSON repair successful")
-                    return parsed_result
-
-        except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse JSON from result (even after repair): {e}")
-            logger.warning(f"Raw result excerpt: {result_str[:500] if result_str else 'empty'}...")
-
-        # Fallback: return raw result with default structure
-        return {
+        result_str = str(result)
+        default = {
             "overall_health_score": None,
             "sentiment_score": None,
             "owner_effectiveness_score": None,
-            "executive_summary": str(result),
+            "executive_summary": result_str,
             "strategic_analysis": "",
             "customer_sentiment_summary": "",
             "owner_coaching_summary": "",
@@ -447,7 +387,9 @@ Be specific and actionable. Reference specific tasks, quotes, email patterns, or
             "key_quotes": [],
             "participants_sentiment": {},
             "project_owner_type": project_owner.get("type", "unknown"),
-            "raw_result": str(result),
-            "provider": "openai",
-            "model": os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"),
+            "raw_result": result_str,
         }
+        parsed_result = extract_json_from_llm_response(result_str, default=default)
+        parsed_result["provider"] = "crewai"
+        parsed_result["model"] = getattr(self.llm, 'model', 'unknown')
+        return parsed_result

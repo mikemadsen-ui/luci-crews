@@ -6,52 +6,22 @@ focusing on PM effectiveness and customer reception.
 """
 
 import os
-import re
-import json
-import yaml
 import hashlib
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from crewai import Agent, Task, Crew, Process
-from crewai import LLM
 
 from ..config_store import get_supabase
 from ..avoma_mcp import get_avoma_client
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
+from ..utils import extract_json_from_llm_response
 
 logger = logging.getLogger(__name__)
 
 
-class ProjectSentimentCrew:
+class ProjectSentimentCrew(BaseCrew):
     """Crew for analyzing project sentiment from meeting transcripts."""
-
-    def __init__(self, user_id: Optional[str] = None):
-        """Initialize the crew with optional user-specific AI settings.
-
-        Args:
-            user_id: Optional user ID to fetch management-level AI settings.
-                    If not provided, uses default settings.
-        """
-        self.user_id = user_id
-        if user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
-        self._load_configs()
-
-    def _load_configs(self):
-        """Load agent and task configurations from YAML files."""
-        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
-
-        with open(os.path.join(config_dir, "agents.yaml"), 'r') as f:
-            self.agents_config = yaml.safe_load(f)
-
-        with open(os.path.join(config_dir, "tasks.yaml"), 'r') as f:
-            self.tasks_config = yaml.safe_load(f)
 
     def _fetch_transcriptions(
         self,
@@ -174,25 +144,7 @@ class ProjectSentimentCrew:
 
     def _parse_json_result(self, result_text: str) -> Dict[str, Any]:
         """Extract JSON from the crew result, handling markdown code blocks."""
-        # Try to find JSON in code blocks first
-        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', result_text)
-        if json_match:
-            try:
-                return json.loads(json_match.group(1))
-            except json.JSONDecodeError:
-                pass
-
-        # Try to find raw JSON object
-        brace_match = re.search(r'\{[\s\S]*\}', result_text)
-        if brace_match:
-            try:
-                return json.loads(brace_match.group())
-            except json.JSONDecodeError:
-                pass
-
-        # Return a default structure if parsing fails
-        logger.warning("Failed to parse JSON from crew result")
-        return {
+        default = {
             "score": 5,
             "pm_effectiveness_score": 5,
             "summary": result_text[:500] if result_text else "Analysis could not be parsed.",
@@ -206,10 +158,11 @@ class ProjectSentimentCrew:
             "key_quotes": [],
             "actions": [],
         }
+        return extract_json_from_llm_response(result_text, default=default)
 
     def _create_agents(self):
         """Create agents from configuration."""
-        coach_config = self.agents_config.get("implementation_coach", {})
+        coach_config = self._get_agent_config("implementation_coach")
 
         self.coach = Agent(
             role=coach_config.get("role", "Implementation Coach"),
@@ -227,7 +180,7 @@ class ProjectSentimentCrew:
         transcripts_data: str,
     ):
         """Create tasks from configuration with data interpolation."""
-        task_config = self.tasks_config.get("analyze_project_sentiment", {})
+        task_config = self._get_task_config("analyze_project_sentiment")
 
         description = task_config.get("description", "").format(
             project_name=project_name,
@@ -359,7 +312,7 @@ class ProjectSentimentCrew:
                 parsed_result["pm_effectiveness_score"] = 5
 
         # Get actual model info from LLM
-        model_name = getattr(self.llm, 'model', os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini"))
+        model_name = getattr(self.llm, 'model', 'unknown')
         provider = "openai"
         if "claude" in model_name.lower() or "anthropic" in model_name.lower():
             provider = "anthropic"

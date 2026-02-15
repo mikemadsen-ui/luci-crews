@@ -7,51 +7,21 @@ materials including competitive battle cards and objection handling.
 """
 
 import os
-import re
-import json
-import yaml
 import hashlib
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from crewai import Agent, Task, Crew, Process
-from crewai import LLM
 
 from ..config_store import get_supabase
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
+from ..utils import extract_json_from_llm_response
 
 logger = logging.getLogger(__name__)
 
 
-class SCPrepCrew:
+class SCPrepCrew(BaseCrew):
     """Crew for SC discovery and demo preparation."""
-
-    def __init__(self, user_id: Optional[str] = None):
-        """Initialize the crew with optional user-specific AI settings.
-
-        Args:
-            user_id: Optional user ID to fetch management-level AI settings.
-                    If not provided, uses default settings.
-        """
-        self.user_id = user_id
-        if user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
-        self._load_configs()
-
-    def _load_configs(self):
-        """Load agent and task configurations from YAML files."""
-        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
-
-        with open(os.path.join(config_dir, "agents.yaml"), 'r') as f:
-            self.agents_config = yaml.safe_load(f)
-
-        with open(os.path.join(config_dir, "tasks.yaml"), 'r') as f:
-            self.tasks_config = yaml.safe_load(f)
 
     def _fetch_opportunity(self, opportunity_id: str) -> Optional[Dict[str, Any]]:
         """Fetch opportunity details from Supabase."""
@@ -227,25 +197,7 @@ class SCPrepCrew:
 
     def _parse_json_result(self, result_text: str) -> Dict[str, Any]:
         """Extract JSON from the crew result."""
-        # Try to find JSON in code blocks
-        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', result_text)
-        if json_match:
-            try:
-                return json.loads(json_match.group(1))
-            except json.JSONDecodeError:
-                pass
-
-        # Try to find raw JSON object
-        brace_match = re.search(r'\{[\s\S]*\}', result_text)
-        if brace_match:
-            try:
-                return json.loads(brace_match.group())
-            except json.JSONDecodeError:
-                pass
-
-        # Return default structure if parsing fails
-        logger.warning("Failed to parse JSON from crew result")
-        return {
+        default = {
             "discovery_synthesis": {
                 "summary": result_text[:500] if result_text else "Analysis could not be parsed.",
                 "key_findings": [],
@@ -269,10 +221,11 @@ class SCPrepCrew:
             "risks_and_concerns": [],
             "actions": [],
         }
+        return extract_json_from_llm_response(result_text, default=default)
 
     def _create_agent(self):
         """Create the SC prep specialist agent."""
-        config = self.agents_config.get("sc_prep_specialist", {})
+        config = self._get_agent_config("sc_prep_specialist")
 
         self.specialist = Agent(
             role=config.get("role", "Senior Solutions Consultant"),
@@ -297,7 +250,7 @@ class SCPrepCrew:
         prep_type: str,
     ):
         """Create the SC prep task with data interpolation."""
-        task_config = self.tasks_config.get("prepare_sc_materials", {})
+        task_config = self._get_task_config("prepare_sc_materials")
 
         description = task_config.get("description", "").format(
             opportunity_name=opportunity_name,
@@ -458,7 +411,7 @@ class SCPrepCrew:
         parsed_result = self._parse_json_result(result_text)
 
         # Get actual model info from LLM
-        model_name = getattr(self.llm, 'model', os.environ.get("OPENAI_MODEL_NAME", "gpt-4o"))
+        model_name = getattr(self.llm, 'model', 'unknown')
         provider = "openai"
         if "claude" in model_name.lower() or "anthropic" in model_name.lower():
             provider = "anthropic"

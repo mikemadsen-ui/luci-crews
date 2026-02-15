@@ -5,49 +5,19 @@ Analyzes competitor companies and provides battle cards, positioning strategies,
 and actionable competitive intelligence.
 """
 
-import os
-import json
-import yaml
 from typing import Optional, List, Dict, Any
 from crewai import Agent, Task, Crew, Process
-from crewai import LLM
 
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
+from ..utils import extract_json_from_llm_response
 
 
-class CompetitiveCrew:
+class CompetitiveCrew(BaseCrew):
     """Crew for analyzing competitors and generating competitive intelligence."""
-
-    def __init__(self, user_id: Optional[str] = None):
-        """Initialize the crew with optional user-specific AI settings.
-
-        Args:
-            user_id: Optional user ID to fetch management-level AI settings.
-                    If not provided, uses default settings.
-        """
-        self.user_id = user_id
-        if user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
-        self._load_configs()
-
-    def _load_configs(self):
-        """Load agent and task configurations from YAML files."""
-        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
-
-        with open(os.path.join(config_dir, "agents.yaml"), 'r') as f:
-            self.agents_config = yaml.safe_load(f)
-
-        with open(os.path.join(config_dir, "tasks.yaml"), 'r') as f:
-            self.tasks_config = yaml.safe_load(f)
 
     def _create_agents(self):
         """Create agents from configuration."""
-        analyst_config = self.agents_config.get("competitive_analyst", {})
+        analyst_config = self._get_agent_config("competitive_analyst")
 
         self.analyst = Agent(
             role=analyst_config.get("role", "Competitive Intelligence Analyst"),
@@ -85,7 +55,7 @@ Company {i}: {name}
         analysis_type: str,
     ):
         """Create tasks from configuration with data interpolation."""
-        task_config = self.tasks_config.get("analyze_companies_competitive", {})
+        task_config = self._get_task_config("analyze_companies_competitive")
 
         companies_text = self._format_companies(companies)
         company_names = [(c.get('properties') or {}).get('name') or c.get('name') or 'Unknown' for c in companies]
@@ -105,51 +75,35 @@ Company {i}: {name}
 
     def _parse_json_result(self, result: str) -> Dict[str, Any]:
         """Extract JSON from the crew result."""
-        result_str = str(result)
-
-        # Try to find JSON in the response
-        try:
-            # First try direct parse
-            return json.loads(result_str)
-        except json.JSONDecodeError:
-            pass
-
-        # Try to extract JSON from markdown code blocks
-        import re
-        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', result_str)
-        if json_match:
-            try:
-                return json.loads(json_match.group(1))
-            except json.JSONDecodeError:
-                pass
-
-        # Try to find JSON object in the text
-        json_match = re.search(r'\{[\s\S]*\}', result_str)
-        if json_match:
-            try:
-                return json.loads(json_match.group(0))
-            except json.JSONDecodeError:
-                pass
-
-        # Return as text if no JSON found
-        return {"analysis_text": result_str}
+        return extract_json_from_llm_response(
+            str(result),
+            default={"analysis_text": str(result)},
+        )
 
     def run(
         self,
         companies: List[Dict[str, Any]],
         analysis_type: str = "comparative",
+        step_callback: Optional[callable] = None,
     ) -> Dict[str, Any]:
         """Run the competitive analysis crew and return the analysis.
 
         Args:
             companies: List of company objects to analyze
             analysis_type: 'single' for one company, 'comparative' for multiple
+            step_callback: Optional callback for progress updates
 
         Returns:
             Dict containing structured analysis results
         """
+        if step_callback:
+            step_callback("Creating analysis agents...")
+
         self._create_agents()
         self._create_tasks(companies, analysis_type)
+
+        if step_callback:
+            step_callback("Running competitive analysis...")
 
         crew = Crew(
             agents=[self.analyst],
@@ -159,6 +113,10 @@ Company {i}: {name}
         )
 
         result = crew.kickoff()
+
+        if step_callback:
+            step_callback("Parsing results...")
+
         parsed_result = self._parse_json_result(str(result))
 
         return {

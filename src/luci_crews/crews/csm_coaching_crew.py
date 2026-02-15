@@ -6,16 +6,15 @@ personalized coaching for Customer Success Managers.
 """
 
 import os
-import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from crewai import Agent, Task, Crew, Process, LLM
 
-from ..config_loader import load_agents_config, load_tasks_config
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
+from ..utils import extract_json_from_llm_response
 
 
-class CSMCoachingCrew:
+class CSMCoachingCrew(BaseCrew):
     """Crew for analyzing Customer Success Manager performance and providing coaching.
 
     Uses tiered model strategy for optimal cost/speed/quality:
@@ -23,37 +22,26 @@ class CSMCoachingCrew:
     - Quality model (GPT-4o or user-configured): Coach agent (final synthesis)
     """
 
-    def __init__(self, user_id: Optional[str] = None):
+    def __init__(self, user_id: Optional[str] = None, llm: Optional[LLM] = None):
         """Initialize the crew with tiered model strategy.
 
         Args:
             user_id: Optional user ID to fetch management-level AI settings.
                     If not provided, uses default settings.
+            llm: Optional pre-configured LLM instance.
         """
-        self.user_id = user_id
+        # Call BaseCrew init first
+        super().__init__(user_id=user_id, llm=llm)
 
         # Fast model for analysis agents (data crunching, pattern matching)
         # GPT-4o-mini is fast, cheap, and great for structured analysis
         self.fast_llm = LLM(
-            model="gpt-4o-mini",
+            model=os.getenv("FAST_LLM_MODEL", "gpt-4o-mini"),
             api_key=os.environ.get("OPENAI_API_KEY"),
         )
 
-        # Quality model for coach agent (synthesis, strategic recommendations)
-        # Uses user-configured model or defaults to GPT-4o for best reasoning
-        if user_id:
-            self.quality_llm = create_llm_for_user(user_id)
-        else:
-            self.quality_llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", "gpt-4o"),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
-
-        # Keep self.llm for backward compatibility
-        self.llm = self.quality_llm
-
-        self.agents_config = load_agents_config()
-        self.tasks_config = load_tasks_config()
+        # Quality model for coach agent - use the inherited self.llm
+        self.quality_llm = self.llm
 
         # Log the tiered model strategy
         print(f"[CSM Coaching] Using tiered models: fast={self.fast_llm.model}, quality={self.quality_llm.model}")
@@ -318,7 +306,7 @@ Analysis Period: Last {days_back} days
         # - Coach agent uses quality_llm (GPT-4o) for best reasoning and output quality
 
         # ANALYSIS AGENT 1: Retention Analyst (uses fast model)
-        retention_config = self.agents_config.get("retention_analyst", {})
+        retention_config = self._get_agent_config("retention_analyst")
         retention_analyst = Agent(
             role=retention_config.get("role", "Retention Analyst"),
             goal=retention_config.get(
@@ -335,7 +323,7 @@ Analysis Period: Last {days_back} days
         )
 
         # ANALYSIS AGENT 2: Engagement Specialist (uses fast model)
-        engagement_config = self.agents_config.get("engagement_specialist", {})
+        engagement_config = self._get_agent_config("engagement_specialist")
         engagement_specialist = Agent(
             role=engagement_config.get("role", "Engagement Specialist"),
             goal=engagement_config.get(
@@ -352,7 +340,7 @@ Analysis Period: Last {days_back} days
         )
 
         # ANALYSIS AGENT 3: Expansion Strategist (uses fast model)
-        expansion_config = self.agents_config.get("expansion_strategist", {})
+        expansion_config = self._get_agent_config("expansion_strategist")
         expansion_strategist = Agent(
             role=expansion_config.get("role", "Expansion Strategist"),
             goal=expansion_config.get(
@@ -369,7 +357,7 @@ Analysis Period: Last {days_back} days
         )
 
         # SYNTHESIS AGENT: CSM Coach (uses quality model for best output)
-        coach_config = self.agents_config.get("csm_coach", {})
+        coach_config = self._get_agent_config("csm_coach")
         coach = Agent(
             role=coach_config.get("role", "CSM Coach"),
             goal=coach_config.get(
@@ -655,42 +643,25 @@ Return your analysis in this JSON format:
         result_text = str(result)
 
         # Get actual model info from LLM
-        model_name = getattr(self.llm, 'model', os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"))
+        model_name = getattr(self.llm, 'model', 'unknown')
         provider = "openai"
         if "claude" in model_name.lower() or "anthropic" in model_name.lower():
             provider = "anthropic"
         elif "gemini" in model_name.lower():
             provider = "google"
 
-        # Try to extract JSON from the result
-        try:
-            import re
+        # Extract JSON from the result
+        parsed_result = extract_json_from_llm_response(result_text)
+        is_raw = "text" in parsed_result and len(parsed_result) == 1
 
-            json_match = re.search(r"\{[\s\S]*\}", result_text)
-            if json_match:
-                parsed_result = json.loads(json_match.group())
-                return {
-                    "success": True,
-                    "result": parsed_result,
-                    "csm_name": csm_name,
-                    "csm_email": csm_email,
-                    "accounts_analyzed": len(accounts_data) if accounts_data else 0,
-                    "days_back": days_back,
-                    "provider": provider,
-                    "model": model_name,
-                }
-        except json.JSONDecodeError:
-            pass
-
-        # Return raw result if JSON parsing fails
         return {
             "success": True,
-            "result": result_text,
+            "result": result_text if is_raw else parsed_result,
             "csm_name": csm_name,
             "csm_email": csm_email,
             "accounts_analyzed": len(accounts_data) if accounts_data else 0,
             "days_back": days_back,
-            "raw_response": True,
+            "raw_response": is_raw,
             "provider": provider,
             "model": model_name,
         }

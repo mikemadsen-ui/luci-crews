@@ -5,16 +5,12 @@ Extracts and categorizes feature requests from customer transcript chunks.
 Identifies product area, urgency, and business impact.
 """
 
-import os
-import json
-import re
-import yaml
 import logging
 from typing import Optional, List, Dict, Any
 from crewai import Agent, Task, Crew, Process
-from crewai import LLM
 
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
+from ..utils import extract_json_from_llm_response
 
 logger = logging.getLogger(__name__)
 
@@ -30,39 +26,12 @@ PRODUCT_CATEGORIES = [
 ]
 
 
-class FeatureExtractionCrew:
+class FeatureExtractionCrew(BaseCrew):
     """Crew for extracting feature requests from customer transcripts."""
-
-    def __init__(self, user_id: Optional[str] = None):
-        """Initialize the crew with optional user-specific AI settings.
-
-        Args:
-            user_id: Optional user ID to fetch management-level AI settings.
-                    If not provided, uses default settings.
-        """
-        self.user_id = user_id
-        if user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
-        self._load_configs()
-
-    def _load_configs(self):
-        """Load agent and task configurations from YAML files."""
-        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
-
-        with open(os.path.join(config_dir, "agents.yaml"), 'r') as f:
-            self.agents_config = yaml.safe_load(f)
-
-        with open(os.path.join(config_dir, "tasks.yaml"), 'r') as f:
-            self.tasks_config = yaml.safe_load(f)
 
     def _create_agents(self):
         """Create agents from configuration."""
-        extractor_config = self.agents_config.get("feature_request_extractor", {})
+        extractor_config = self._get_agent_config("feature_request_extractor")
 
         self.extractor = Agent(
             role=extractor_config.get("role", "Feature Request Analyst"),
@@ -93,7 +62,7 @@ class FeatureExtractionCrew:
 
     def _create_tasks(self, transcript_chunks: List[Dict[str, Any]]):
         """Create tasks from configuration with data interpolation."""
-        task_config = self.tasks_config.get("extract_feature_requests", {})
+        task_config = self._get_task_config("extract_feature_requests")
 
         formatted_chunks = self._format_transcript_chunks(transcript_chunks)
 
@@ -109,28 +78,13 @@ class FeatureExtractionCrew:
 
     def _parse_json_result(self, result_text: str) -> List[Dict[str, Any]]:
         """Parse JSON array from the crew result."""
-        # Try to find JSON array in code blocks first
-        code_block_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', result_text)
-        if code_block_match:
-            try:
-                parsed = json.loads(code_block_match.group(1))
-                if isinstance(parsed, list):
-                    return parsed
-            except json.JSONDecodeError:
-                logger.warning("Found code block but failed to parse JSON")
-
-        # Try to find raw JSON array
-        array_match = re.search(r'\[[\s\S]*\]', result_text)
-        if array_match:
-            try:
-                parsed = json.loads(array_match.group())
-                if isinstance(parsed, list):
-                    return parsed
-            except json.JSONDecodeError:
-                logger.warning("Found JSON-like array but failed to parse")
-
-        # If parsing fails, return empty array
-        logger.warning("Could not parse feature requests from crew output")
+        parsed = extract_json_from_llm_response(result_text, default={"items": []})
+        # Handle array wrapped in items key
+        if "items" in parsed and isinstance(parsed["items"], list):
+            return parsed["items"]
+        # Handle direct list (shouldn't happen with current utility but be safe)
+        if isinstance(parsed, list):
+            return parsed
         return []
 
     def _validate_and_clean_request(self, request: Dict[str, Any]) -> Dict[str, Any]:

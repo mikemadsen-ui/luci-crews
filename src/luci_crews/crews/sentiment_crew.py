@@ -4,58 +4,21 @@ Sentiment Analysis Crew
 Analyzes customer sentiment from communications and interactions.
 """
 
-import os
-import json
-import re
-import yaml
 import logging
 from typing import Optional, Dict, Any
-from crewai import Agent, Task, Crew, Process
-from crewai import LLM
+from crewai import Agent, Task, Crew, Process, LLM
 
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
 
 logger = logging.getLogger(__name__)
 
 
-class SentimentCrew:
+class SentimentCrew(BaseCrew):
     """Crew for analyzing customer sentiment."""
-
-    def __init__(self, user_id: Optional[str] = None, llm=None):
-        """Initialize the crew with optional user-specific AI settings.
-
-        Args:
-            user_id: Optional user ID to fetch management-level AI settings.
-                    If not provided, uses default settings.
-            llm: Optional pre-configured LLM instance. If provided, user_id is ignored.
-                 This is used by the fallback mechanism to inject different providers.
-        """
-        self.user_id = user_id
-        if llm is not None:
-            # Use the provided LLM (for fallback scenarios)
-            self.llm = llm
-        elif user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
-        self._load_configs()
-
-    def _load_configs(self):
-        """Load agent and task configurations from YAML files."""
-        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
-
-        with open(os.path.join(config_dir, "agents.yaml"), 'r') as f:
-            self.agents_config = yaml.safe_load(f)
-
-        with open(os.path.join(config_dir, "tasks.yaml"), 'r') as f:
-            self.tasks_config = yaml.safe_load(f)
 
     def _create_agents(self):
         """Create agents from configuration."""
-        analyst_config = self.agents_config.get("sentiment_analyst", {})
+        analyst_config = self._get_agent_config("sentiment_analyst")
 
         self.analyst = Agent(
             role=analyst_config.get("role", "Customer Sentiment Analyst"),
@@ -74,7 +37,7 @@ class SentimentCrew:
         meeting_notes: Optional[str],
     ):
         """Create tasks from configuration with data interpolation."""
-        task_config = self.tasks_config.get("analyze_sentiment", {})
+        task_config = self._get_task_config("analyze_sentiment")
 
         description = task_config.get("description", "").format(
             account_name=account_name,
@@ -91,21 +54,14 @@ class SentimentCrew:
 
     def _parse_json_result(self, result_text: str) -> Dict[str, Any]:
         """Parse JSON from the crew result, handling various formats."""
-        # Try to find JSON in the result
-        json_match = re.search(r'\{[\s\S]*\}', result_text)
-        if json_match:
-            try:
-                parsed = json.loads(json_match.group())
-                return parsed
-            except json.JSONDecodeError:
-                logger.warning("Found JSON-like content but failed to parse")
-
-        # If no JSON found, return raw text in a structured format
-        return {
-            "score": None,
-            "summary": None,
-            "comprehensiveAnalysis": result_text,
-        }
+        return super()._parse_json_result(
+            result_text,
+            default={
+                "score": None,
+                "summary": None,
+                "comprehensiveAnalysis": result_text,
+            },
+        )
 
     def run(
         self,

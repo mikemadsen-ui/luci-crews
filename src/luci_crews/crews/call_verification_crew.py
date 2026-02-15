@@ -5,49 +5,23 @@ Analyzes call transcripts to verify which agenda items were completed,
 identify new action items, and flag items that need carry-forward.
 """
 
-import os
-import re
-import json
-import yaml
 import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from crewai import Agent, Task, Crew, Process
-from crewai import LLM
 
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
+from ..utils import extract_json_from_llm_response
 
 logger = logging.getLogger(__name__)
 
 
-class CallVerificationCrew:
+class CallVerificationCrew(BaseCrew):
     """Crew for verifying agenda item completion from call transcripts."""
-
-    def __init__(self, user_id: Optional[str] = None):
-        """Initialize the crew with optional user-specific AI settings."""
-        self.user_id = user_id
-        if user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
-        self._load_configs()
-
-    def _load_configs(self):
-        """Load agent and task configurations from YAML files."""
-        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
-
-        with open(os.path.join(config_dir, "agents.yaml"), 'r') as f:
-            self.agents_config = yaml.safe_load(f)
-
-        with open(os.path.join(config_dir, "tasks.yaml"), 'r') as f:
-            self.tasks_config = yaml.safe_load(f)
 
     def _create_agents(self):
         """Create agents from configuration."""
-        analyst_config = self.agents_config.get("call_verification_analyst", {})
+        analyst_config = self._get_agent_config("call_verification_analyst")
 
         self.analyst = Agent(
             role=analyst_config.get("role", "Call Verification Analyst"),
@@ -112,7 +86,7 @@ Call Date: {call_date}
 
     def _create_task(self, context: str, agenda_items: str, transcript: str):
         """Create the verification task."""
-        task_config = self.tasks_config.get("verify_call_completion", {})
+        task_config = self._get_task_config("verify_call_completion")
 
         description = task_config.get("description", "Verify call completion").format(
             context=context,
@@ -128,22 +102,7 @@ Call Date: {call_date}
 
     def _parse_json_result(self, raw_result: str) -> Dict[str, Any]:
         """Parse the raw crew result into structured JSON."""
-        try:
-            # Try to extract JSON from the response
-            json_match = re.search(r'```json\s*([\s\S]*?)\s*```', raw_result)
-            if json_match:
-                return json.loads(json_match.group(1))
-
-            # Try to find JSON object directly
-            json_match = re.search(r'\{[\s\S]*\}', raw_result)
-            if json_match:
-                return json.loads(json_match.group(0))
-
-            # Return as text if no JSON found
-            return {"rawText": raw_result}
-        except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse JSON: {e}")
-            return {"rawText": raw_result, "parseError": str(e)}
+        return extract_json_from_llm_response(raw_result, default={"rawText": raw_result})
 
     def run(
         self,

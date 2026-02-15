@@ -4,53 +4,22 @@ Account Health Analysis Crew
 Analyzes customer account health and provides recommendations.
 """
 
-import os
-import re
-import json
-import yaml
 import logging
 from typing import Optional, Dict, Any
 from crewai import Agent, Task, Crew, Process
-from crewai import LLM
 
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
+from ..utils import extract_json_from_llm_response
 
 logger = logging.getLogger(__name__)
 
 
-class AccountHealthCrew:
+class AccountHealthCrew(BaseCrew):
     """Crew for analyzing account health and churn risk."""
-
-    def __init__(self, user_id: Optional[str] = None):
-        """Initialize the crew with optional user-specific AI settings.
-
-        Args:
-            user_id: Optional user ID to fetch management-level AI settings.
-                    If not provided, uses default settings.
-        """
-        self.user_id = user_id
-        if user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
-        self._load_configs()
-
-    def _load_configs(self):
-        """Load agent and task configurations from YAML files."""
-        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
-
-        with open(os.path.join(config_dir, "agents.yaml"), 'r') as f:
-            self.agents_config = yaml.safe_load(f)
-
-        with open(os.path.join(config_dir, "tasks.yaml"), 'r') as f:
-            self.tasks_config = yaml.safe_load(f)
 
     def _create_agents(self):
         """Create agents from configuration."""
-        analyst_config = self.agents_config.get("account_health_analyst", {})
+        analyst_config = self._get_agent_config("account_health_analyst")
 
         self.analyst = Agent(
             role=analyst_config.get("role", "Customer Success Analyst"),
@@ -71,7 +40,7 @@ class AccountHealthCrew:
         engagement_data: Optional[str],
     ):
         """Create tasks from configuration with data interpolation."""
-        task_config = self.tasks_config.get("assess_account_health", {})
+        task_config = self._get_task_config("assess_account_health")
 
         description = task_config.get("description", "").format(
             account_name=account_name,
@@ -90,25 +59,7 @@ class AccountHealthCrew:
 
     def _parse_json_result(self, result_text: str) -> Dict[str, Any]:
         """Extract JSON from the crew result, handling markdown code blocks."""
-        # Try to find JSON in code blocks first
-        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', result_text)
-        if json_match:
-            try:
-                return json.loads(json_match.group(1))
-            except json.JSONDecodeError:
-                pass
-
-        # Try to find raw JSON object
-        brace_match = re.search(r'\{[\s\S]*\}', result_text)
-        if brace_match:
-            try:
-                return json.loads(brace_match.group())
-            except json.JSONDecodeError:
-                pass
-
-        # Return a default structure if parsing fails
-        logger.warning("Failed to parse JSON from account health crew result")
-        return {
+        default = {
             "score": 5,
             "status": "stable",
             "trend": "stable",
@@ -123,6 +74,7 @@ class AccountHealthCrew:
             "talking_points": [],
             "strategic_focus": "",
         }
+        return extract_json_from_llm_response(result_text, default=default)
 
     def run(
         self,
@@ -176,7 +128,7 @@ class AccountHealthCrew:
                 parsed_result["score"] = 5
 
         # Get actual model info from LLM
-        model_name = getattr(self.llm, 'model', os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini"))
+        model_name = getattr(self.llm, 'model', 'unknown')
         provider = "openai"
         if "claude" in model_name.lower() or "anthropic" in model_name.lower():
             provider = "anthropic"

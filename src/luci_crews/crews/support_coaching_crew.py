@@ -6,46 +6,18 @@ recommendations, identify strengths and improvement areas, and compare
 performance against team benchmarks.
 """
 
-import os
-import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
-from crewai import Agent, Task, Crew, Process, LLM
-from supabase import create_client, Client
+from crewai import Agent, Task, Crew, Process
 
-from ..config_loader import load_agents_config, load_tasks_config
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
+from ..utils import extract_json_from_llm_response
 
 
-class SupportCoachingCrew:
+class SupportCoachingCrew(BaseCrew):
     """Crew for analyzing support agent performance and providing coaching."""
 
-    def __init__(self, user_id: Optional[str] = None):
-        """Initialize the crew with optional user-specific AI settings.
-
-        Args:
-            user_id: Optional user ID to fetch management-level AI settings.
-                    If not provided, uses default settings.
-        """
-        self.user_id = user_id
-        if user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
-        self.agents_config = load_agents_config()
-        self.tasks_config = load_tasks_config()
-        self.supabase = self._get_supabase_client()
-
-    def _get_supabase_client(self) -> Optional[Client]:
-        """Get Supabase client for database access."""
-        url = os.getenv("SUPABASE_URL")
-        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        if url and key:
-            return create_client(url, key)
-        return None
+    needs_supabase = True
 
     def _format_cases_data(self, cases: List[Dict[str, Any]]) -> str:
         """Format cases data for the prompt."""
@@ -198,7 +170,7 @@ Case #{case.get('case_number', 'N/A')}
             step_callback("Analyzing case history...")
 
         # Create the support coach agent
-        coach_config = self.agents_config.get("support_coach", {})
+        coach_config = self._get_agent_config("support_coach")
         support_coach = Agent(
             role=coach_config.get("role", "Support Agent Coach"),
             goal=coach_config.get("goal", "Provide coaching recommendations"),
@@ -209,7 +181,7 @@ Case #{case.get('case_number', 'N/A')}
         )
 
         # Create the analysis task
-        task_config = self.tasks_config.get("analyze_support_agent_performance", {})
+        task_config = self._get_task_config("analyze_support_agent_performance")
         task_description = task_config.get("description", "").format(
             agent_name=agent_name,
             agent_email=agent_email,
@@ -239,31 +211,16 @@ Case #{case.get('case_number', 'N/A')}
         # Parse the result
         result_text = str(result)
 
-        # Try to extract JSON from the result
-        try:
-            # Look for JSON in the response
-            import re
-            json_match = re.search(r'\{[\s\S]*\}', result_text)
-            if json_match:
-                parsed_result = json.loads(json_match.group())
-                return {
-                    "success": True,
-                    "analysis": parsed_result,
-                    "agent_name": agent_name,
-                    "agent_email": agent_email,
-                    "cases_analyzed": len(cases_data),
-                    "days_back": days_back
-                }
-        except json.JSONDecodeError:
-            pass
+        # Extract JSON from the result
+        parsed_result = extract_json_from_llm_response(result_text)
+        is_raw = "text" in parsed_result and len(parsed_result) == 1
 
-        # Return raw result if JSON parsing fails
         return {
             "success": True,
-            "analysis": result_text,
+            "analysis": result_text if is_raw else parsed_result,
             "agent_name": agent_name,
             "agent_email": agent_email,
             "cases_analyzed": len(cases_data),
             "days_back": days_back,
-            "raw_response": True
+            "raw_response": is_raw
         }

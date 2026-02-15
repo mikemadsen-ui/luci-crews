@@ -5,35 +5,15 @@ Analyzes prospecting activity patterns, lead qualification quality, and pipeline
 generation to provide personalized coaching for SDRs.
 """
 
-import os
-import json
 from typing import Dict, Any, List, Optional
-from crewai import Agent, Task, Crew, Process, LLM
+from crewai import Agent, Task, Crew, Process
 
-from ..config_loader import load_agents_config, load_tasks_config
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from .base_crew import BaseCrew
+from ..utils import extract_json_from_llm_response
 
 
-class SDRCoachingCrew:
+class SDRCoachingCrew(BaseCrew):
     """Crew for analyzing SDR performance and providing coaching."""
-
-    def __init__(self, user_id: Optional[str] = None):
-        """Initialize the crew with optional user-specific AI settings.
-
-        Args:
-            user_id: Optional user ID to fetch management-level AI settings.
-                    If not provided, uses default settings.
-        """
-        self.user_id = user_id
-        if user_id:
-            self.llm = create_llm_for_user(user_id)
-        else:
-            self.llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
-        self.agents_config = load_agents_config()
-        self.tasks_config = load_tasks_config()
 
     def _build_activity_context(
         self,
@@ -279,7 +259,7 @@ Analysis Period: Last {days_back} days
             step_callback("Analyzing activity patterns...")
 
         # Create the agents
-        activity_analyst_config = self.agents_config.get("sdr_activity_analyst", {})
+        activity_analyst_config = self._get_agent_config("sdr_activity_analyst")
         activity_analyst = Agent(
             role=activity_analyst_config.get("role", "SDR Activity Pattern Analyst"),
             goal=activity_analyst_config.get(
@@ -295,7 +275,7 @@ Analysis Period: Last {days_back} days
             llm=self.llm,
         )
 
-        lead_analyst_config = self.agents_config.get("sdr_lead_analyst", {})
+        lead_analyst_config = self._get_agent_config("sdr_lead_analyst")
         lead_analyst = Agent(
             role=lead_analyst_config.get("role", "Lead Qualification Analyst"),
             goal=lead_analyst_config.get(
@@ -311,7 +291,7 @@ Analysis Period: Last {days_back} days
             llm=self.llm,
         )
 
-        pipeline_analyst_config = self.agents_config.get("sdr_pipeline_analyst", {})
+        pipeline_analyst_config = self._get_agent_config("sdr_pipeline_analyst")
         pipeline_analyst = Agent(
             role=pipeline_analyst_config.get("role", "Pipeline Generation Analyst"),
             goal=pipeline_analyst_config.get(
@@ -327,7 +307,7 @@ Analysis Period: Last {days_back} days
             llm=self.llm,
         )
 
-        coach_config = self.agents_config.get("sdr_coach", {})
+        coach_config = self._get_agent_config("sdr_coach")
         coach = Agent(
             role=coach_config.get("role", "SDR Performance Coach"),
             goal=coach_config.get(
@@ -493,40 +473,24 @@ Return your analysis in this JSON format:
         result_text = str(result)
 
         # Get actual model info from LLM
-        model_name = getattr(self.llm, 'model', os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"))
+        model_name = getattr(self.llm, 'model', 'unknown')
         provider = "openai"
         if "claude" in model_name.lower() or "anthropic" in model_name.lower():
             provider = "anthropic"
         elif "gemini" in model_name.lower():
             provider = "google"
 
-        # Try to extract JSON from the result
-        try:
-            import re
+        # Extract JSON from the result
+        parsed_result = extract_json_from_llm_response(result_text)
+        is_raw = "text" in parsed_result and len(parsed_result) == 1
 
-            json_match = re.search(r"\{[\s\S]*\}", result_text)
-            if json_match:
-                parsed_result = json.loads(json_match.group())
-                return {
-                    "success": True,
-                    "result": parsed_result,
-                    "sdr_name": sdr_name,
-                    "sdr_email": sdr_email,
-                    "days_back": days_back,
-                    "provider": provider,
-                    "model": model_name,
-                }
-        except json.JSONDecodeError:
-            pass
-
-        # Return raw result if JSON parsing fails
         return {
             "success": True,
-            "result": result_text,
+            "result": result_text if is_raw else parsed_result,
             "sdr_name": sdr_name,
             "sdr_email": sdr_email,
             "days_back": days_back,
-            "raw_response": True,
+            "raw_response": is_raw,
             "provider": provider,
             "model": model_name,
         }
