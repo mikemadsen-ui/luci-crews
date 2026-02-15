@@ -64,6 +64,7 @@ from .models import (
     QbrSummaryRequest,
     EmailDraftRequest,
     RenewalReadinessRequest,
+    ExpansionSpecialistRequest,
     StrategicActionRequest,
     ExecutiveBriefingRequest,
     ContextualDrilldownRequest,
@@ -81,6 +82,7 @@ from .crews.account_analysis_crew import AccountAnalysisCrew
 from .crews.qbr_summary_crew import QbrSummaryCrew
 from .crews.email_draft_crew import EmailDraftCrew
 from .crews.renewal_readiness_crew import RenewalReadinessCrew
+from .crews.expansion_specialist_crew import ExpansionSpecialistCrew
 from .crews.strategic_action_crew import StrategicActionCrew
 from .crews.executive_briefing_crew import ExecutiveMorningBriefingCrew
 from .crews.contextual_drilldown_crew import ContextualDrilldownCrew
@@ -1097,6 +1099,86 @@ async def run_renewal_readiness_crew(request: Request):
 
     except Exception as e:
         logger.error(f"Renewal readiness crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Expansion Specialist Crew
+# =============================================================================
+
+@app.post("/api/crew/expansion-specialist")
+async def run_expansion_specialist_crew(request: Request):
+    """Identify and score expansion opportunities for an account."""
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = ExpansionSpecialistRequest(**body)
+        logger.info(f"Running expansion specialist crew for account: {req.accountId}")
+
+        crew = ExpansionSpecialistCrew(user_id=req.userId)
+
+        if stream:
+            ctx = SimpleStreamingContext()
+
+            async def generate():
+                try:
+                    yield ctx.init_message("Starting expansion analysis...")
+                    result = crew.run(
+                        account_id=req.accountId,
+                        current_arr=req.currentArr or 0,
+                        user_id=req.userId,
+                        step_callback=ctx.step_callback,
+                        usage_data=req.usageData,
+                        arr_history_data=req.arrHistoryData,
+                        health_score_data=req.healthScoreData,
+                        engagement_data=req.engagementData,
+                        stakeholder_data=req.stakeholderData,
+                    )
+                    for msg in ctx.get_progress_messages():
+                        yield msg
+                    logger.info(f"Expansion specialist crew completed in {ctx.execution_time:.2f}s")
+                    yield ctx.result_message(
+                        result.get('result'),
+                        account_name=result.get('account_name'),
+                        account_tier=result.get('account_tier'),
+                        current_arr=result.get('current_arr'),
+                        provider=result.get('provider'),
+                        model=result.get('model'),
+                    )
+                except Exception as e:
+                    logger.error(f"Expansion specialist crew failed: {str(e)}")
+                    yield ctx.error_message(str(e))
+
+            return create_streaming_response(generate())
+        else:
+            start_time = datetime.utcnow()
+            result = crew.run(
+                account_id=req.accountId,
+                current_arr=req.currentArr or 0,
+                user_id=req.userId,
+                usage_data=req.usageData,
+                arr_history_data=req.arrHistoryData,
+                health_score_data=req.healthScoreData,
+                engagement_data=req.engagementData,
+                stakeholder_data=req.stakeholderData,
+            )
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"Expansion specialist crew completed in {execution_time:.2f}s")
+            return {
+                "success": result.get("success", True),
+                "result": result.get("result"),
+                "account_name": result.get("account_name"),
+                "account_tier": result.get("account_tier"),
+                "current_arr": result.get("current_arr"),
+                "contract_end_date": result.get("contract_end_date"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"Expansion specialist crew failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

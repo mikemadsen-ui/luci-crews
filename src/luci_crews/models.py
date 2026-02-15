@@ -522,6 +522,23 @@ class EmailDraftRequest(BaseModel):
 
 
 # =============================================================================
+# Expansion Specialist Models
+# =============================================================================
+
+class ExpansionSpecialistRequest(BaseModel):
+    """Request model for expansion opportunity analysis."""
+    userId: Optional[str] = None
+    accountId: str
+    currentArr: Optional[float] = 0
+    # Optional pre-fetched data
+    usageData: Optional[Dict[str, Any]] = None
+    arrHistoryData: Optional[List[Dict[str, Any]]] = None
+    healthScoreData: Optional[Dict[str, Any]] = None
+    engagementData: Optional[Dict[str, Any]] = None
+    stakeholderData: Optional[List[Dict[str, Any]]] = None
+
+
+# =============================================================================
 # Renewal Readiness Models
 # =============================================================================
 

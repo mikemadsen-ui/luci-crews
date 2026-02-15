@@ -1595,6 +1595,272 @@ compose_email:
 # RENEWAL READINESS TASKS
 # =============================================================================
 
+# =============================================================================
+# EXPANSION SPECIALIST TASKS
+# =============================================================================
+
+analyze_expansion_signals:
+  description: >
+    COMMERCIAL INTELLIGENCE BRIEFING: {account_name}
+
+    ═══════════════════════════════════════════════════════════════════════════
+    ACCOUNT PROFILE
+    ═══════════════════════════════════════════════════════════════════════════
+    Current Tier: {account_tier}
+    Current ARR: ${current_arr}
+    Contract End Date: {contract_end_date}
+
+    ═══════════════════════════════════════════════════════════════════════════
+    SEAT CAPACITY ANALYSIS (Critical for expansion sizing)
+    ═══════════════════════════════════════════════════════════════════════════
+    {seat_utilization_context}
+
+    CALCULATE:
+    - Utilization Ratio: active_users / contracted_seats × 100
+    - Headroom: contracted_seats - active_users
+    - If utilization > 85%: FLAG as "At Capacity — expansion conversation urgent"
+    - If utilization > 100%: FLAG as "In Overage — immediate cost impact"
+
+    ═══════════════════════════════════════════════════════════════════════════
+    USAGE VELOCITY & ADOPTION METRICS
+    ═══════════════════════════════════════════════════════════════════════════
+    {usage_data}
+
+    ═══════════════════════════════════════════════════════════════════════════
+    ARR GROWTH HISTORY
+    ═══════════════════════════════════════════════════════════════════════════
+    {arr_history}
+
+    ═══════════════════════════════════════════════════════════════════════════
+    ENGAGEMENT CONTEXT
+    ═══════════════════════════════════════════════════════════════════════════
+    Health Score: {health_score_data}
+    Recent Engagement: {engagement_data}
+
+    ═══════════════════════════════════════════════════════════════════════════
+    COMMERCIAL SIGNALS (from insight_history)
+    ═══════════════════════════════════════════════════════════════════════════
+    {commercial_insights}
+
+    These are EXPANSION-SPECIFIC signals detected by the system:
+    - limit_reached: Customer has hit or exceeded contracted capacity
+    - high_usage_velocity: Usage growth suggests imminent capacity need
+    - seat_expansion_ready: Clear expansion opportunity identified
+    - upcoming_renewal_with_growth: Renewal window with expansion potential
+    - feature_adoption_spike: New feature adoption unlocking upsell opportunity
+
+    Use these signals to quantify the ROI LIFT — the specific dollar value of
+    acting on this expansion opportunity NOW vs. waiting.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    ROI CALCULATION CONTEXT
+    ═══════════════════════════════════════════════════════════════════════════
+    {roi_context}
+
+    ═══════════════════════════════════════════════════════════════════════════
+    YOUR MISSION
+    ═══════════════════════════════════════════════════════════════════════════
+    Quantify the expansion opportunity in DOLLARS:
+    1. CAPACITY GAP: How much runway before they hit overages?
+    2. OVERAGE COST: If they stay on current tier, what will they pay in penalties?
+    3. UPGRADE SAVINGS: How much would they save by upgrading proactively?
+    4. GROWTH PROJECTION: At current velocity, when do they need more seats?
+    5. FEATURE WHITESPACE: What capabilities would unlock additional value?
+
+    DO NOT focus on "helping them use the tool better" — that's CSM territory.
+    Focus on the COMMERCIAL CASE: growth unlock, cost savings, competitive edge.
+
+    Return a JSON object with this structure:
+    {{
+      "expansion_score": <0-100, where 100 = immediate revenue opportunity>,
+      "opportunity_type": "<seat_expansion|tier_upgrade|add_on_module|multi_play>",
+      "confidence": "<high|medium|low>",
+      "headline": "<1-sentence commercial summary, e.g., 'At 94% seat capacity, upgrading now saves $18K vs. overage pricing'>",
+
+      "seat_economics": {{
+        "contracted_seats": <number>,
+        "active_users": <number>,
+        "utilization_pct": <percentage>,
+        "headroom_seats": <contracted - active>,
+        "at_capacity": <true if utilization >= 85%>,
+        "in_overage": <true if utilization > 100%>,
+        "overage_cost_monthly": <$ if in overage, else null>,
+        "upgrade_savings": <$ saved by proactive upgrade vs. overage trajectory>,
+        "runway_to_capacity": "<X months at current growth rate>"
+      }},
+
+      "growth_trajectory": {{
+        "usage_trend": "<accelerating|stable|decelerating>",
+        "growth_rate_30d": <percentage change>,
+        "projected_seats_needed_q3": <number based on velocity>,
+        "evidence": "<supporting data>"
+      }},
+
+      "revenue_history": {{
+        "trend": "<expanding|flat|contracting>",
+        "cumulative_expansion": <$ total>,
+        "cumulative_contraction": <$ total>,
+        "net_expansion": <$ net>,
+        "expansion_velocity": "<strong|moderate|minimal>"
+      }},
+
+      "whitespace_value": [
+        {{
+          "capability": "<feature/module>",
+          "potential_arr": <$ incremental>,
+          "value_proposition": "<1-sentence ROI case>",
+          "evidence": "<usage data supporting this>"
+        }}
+      ],
+
+      "commercial_blockers": [
+        {{
+          "blocker": "<budget|timing|champion|competition>",
+          "severity": "<high|medium|low>",
+          "mitigation": "<how to address>"
+        }}
+      ],
+
+      "timing": {{
+        "optimal_window": "<now|pre_renewal|post_renewal|wait>",
+        "days_to_renewal": <number or null>,
+        "urgency_driver": "<capacity|contract|competitive|budget_cycle>"
+      }},
+
+      "roi_lift": {{
+        "current_arr": <$ current contract value>,
+        "target_arr": <$ projected new ARR after expansion>,
+        "lift_amount": <$ additional ARR opportunity>,
+        "lift_percentage": <% increase>,
+        "cost_avoidance": <$ saved by proactive expansion vs. overage/churn>,
+        "payback_period": "<immediate|<3mo|3-6mo|6-12mo>",
+        "calculation_basis": "<Which commercial signals drove this calculation>"
+      }},
+
+      "commercial_signals_used": [
+        {{
+          "signal_type": "<limit_reached|high_usage_velocity|seat_expansion_ready|upcoming_renewal_with_growth|feature_adoption_spike>",
+          "severity": "<critical|high|medium>",
+          "message": "<what the signal told us>",
+          "impact_on_roi": "<how it affects the ROI calculation>"
+        }}
+      ]
+    }}
+
+    SCORING RUBRIC (expansion_score):
+    - 90-100: URGENT — In/near overage, immediate cost savings available
+    - 75-89: HOT — At capacity, strong growth trajectory, ready to close
+    - 60-74: WARM — Good signals, needs commercial case development
+    - 40-59: DEVELOPING — Early momentum, nurture the opportunity
+    - 0-39: NOT READY — Focus on adoption before commercial conversation
+  expected_output: >
+    A valid JSON object with expansion_score, opportunity_type, seat_analysis,
+    usage_velocity, arr_trajectory, whitespace_opportunities, expansion_blockers,
+    and timing_assessment. All analysis should be evidence-based.
+  agent: expansion_analyst
+
+develop_expansion_strategy_task:
+  description: >
+    STRATEGIC GROWTH BRIEFING: {account_name}
+
+    Using the commercial intelligence from the expansion analysis, craft a
+    PARTNERSHIP-FRAMED expansion pitch — not a sales script.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    ACCOUNT CONTEXT
+    ═══════════════════════════════════════════════════════════════════════════
+    Current ARR: ${current_arr}
+    Contract End: {contract_end_date}
+
+    STAKEHOLDER MAP:
+    {stakeholder_map_data}
+
+    ═══════════════════════════════════════════════════════════════════════════
+    YOUR MISSION
+    ═══════════════════════════════════════════════════════════════════════════
+    Draft talking points that feel like a STRATEGIC PARTNERSHIP conversation:
+    - "Based on what you've already accomplished with our platform..."
+    - "Your team is demonstrating growth that most companies aspire to..."
+    - "Here's the opportunity in front of you..."
+
+    NOT a cold call:
+    - ❌ "You should upgrade to get more features"
+    - ❌ "Your contract allows for X seats"
+    - ❌ "Our Enterprise tier includes..."
+
+    YES a partnership:
+    - ✅ "Your usage has grown 40% — here's how to scale that efficiently"
+    - ✅ "At your current trajectory, you'll hit overages in Q3. Let's plan ahead."
+    - ✅ "Companies at your stage typically see 3x ROI when they expand here"
+
+    Return a JSON object with this structure:
+    {{
+      "expansion_play": {{
+        "play_type": "<seat_expansion|tier_upgrade|add_on_module|multi_play>",
+        "headline": "<Partnership-framed 1-sentence summary>",
+        "target_uplift_arr": <$ additional ARR>,
+        "new_total_arr": <$ target total>,
+        "confidence": "<high|medium|low>"
+      }},
+
+      "commercial_case": {{
+        "current_value_delivered": "<$ or metric showing what they've achieved>",
+        "expansion_value_unlock": "<$ or outcome they'd gain>",
+        "cost_of_inaction": "<$ or risk of not expanding>",
+        "competitive_context": "<what peers/competitors are doing>"
+      }},
+
+      "partnership_talking_points": [
+        "<Opening frame: acknowledge their success>",
+        "<Opportunity frame: show what's possible>",
+        "<Economic frame: quantify the value>",
+        "<Urgency frame: why now matters>"
+      ],
+
+      "objection_playbook": [
+        {{
+          "objection": "<Budget/Timing/Champion/Priority>",
+          "reframe": "<How to turn this into a partnership discussion>",
+          "evidence": "<Account-specific data to support>"
+        }}
+      ],
+
+      "stakeholder_strategy": {{
+        "champion": "<Name/role or 'Identify via X approach'>",
+        "economic_buyer": "<Who controls budget>",
+        "engagement_play": "<How to mobilize internal support>",
+        "executive_air_cover": <true|false and why>
+      }},
+
+      "action_plan": [
+        {{
+          "action": "<Specific next step>",
+          "owner": "<AM|CSM|Exec>",
+          "timing": "<This week|Pre-renewal|At QBR>",
+          "outcome": "<What this achieves>"
+        }}
+      ],
+
+      "expansion_timeline": {{
+        "phase_1": "<immediate actions (this week)>",
+        "phase_2": "<short-term (next 30 days)>",
+        "phase_3": "<close (target close date)>"
+      }}
+    }}
+
+    Be SPECIFIC to this account. Use actual usage data, ARR history, and
+    stakeholder names. Generic advice is useless — every recommendation
+    should reference something concrete about this customer.
+  expected_output: >
+    A valid JSON object with recommended_play, roi_justification, talking_points,
+    objection_handlers, champion_engagement, next_steps, and expansion_timeline.
+    All recommendations must be specific to this account.
+  agent: upsell_strategist
+
+# =============================================================================
+# RENEWAL READINESS TASKS
+# =============================================================================
+
 analyze_renewal_data:
   description: >
     Analyze renewal risk factors for this account:
