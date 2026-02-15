@@ -29,8 +29,8 @@ class RenewalReadinessCrew(BaseCrew):
 
         try:
             result = self.supabase.table("accounts").select(
-                "id, name, salesforce_id, industry, account_tier, arr, health_score, "
-                "contract_end_date, contract_start_date, customer_since"
+                "id, name, salesforce_id, industry, account_tier, "
+                "contract_value, annual_revenue, contract_end_date, customer_start_date"
             ).eq("id", account_id).limit(1).execute()
             return result.data[0] if result.data else {}
         except Exception as e:
@@ -38,78 +38,73 @@ class RenewalReadinessCrew(BaseCrew):
             return {}
 
     def _fetch_health_score_data(self, account_id: str) -> Dict[str, Any]:
-        """Fetch current and historical health score data."""
+        """Fetch health score from latest crew analysis."""
         if not self.supabase:
             return {}
 
         try:
-            # Get current health
-            current = self.supabase.table("accounts").select(
-                "health_score, health_status, health_trend"
-            ).eq("id", account_id).limit(1).execute()
+            # Get the latest sentiment analysis for this account
+            result = self.supabase.table("crew_analysis_history").select(
+                "result, analyzed_at"
+            ).eq("account_id", account_id).eq(
+                "crew_type", "sentiment"
+            ).order("analyzed_at", desc=True).limit(1).execute()
 
-            # Get historical snapshots (last 6 months)
-            cutoff = (datetime.utcnow() - timedelta(days=180)).isoformat()
-            history = self.supabase.table("account_health_snapshots").select(
-                "score, status, trend, snapshot_date"
-            ).eq("account_id", account_id).gte(
-                "snapshot_date", cutoff
-            ).order("snapshot_date", desc=True).limit(20).execute()
-
-            return {
-                "current": current.data[0] if current.data else {},
-                "history": history.data or [],
-            }
+            if result.data:
+                import json
+                raw = result.data[0].get("result", "{}")
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+                return {
+                    "current": {
+                        "health_score": parsed.get("score", "N/A"),
+                        "trend": parsed.get("trend", "Unknown"),
+                        "confidence": parsed.get("confidence", "Unknown"),
+                        "summary": parsed.get("summary", ""),
+                    },
+                    "analyzed_at": result.data[0].get("analyzed_at"),
+                }
+            return {}
         except Exception as e:
             logger.error(f"Error fetching health score data: {e}")
             return {}
 
-    def _fetch_nrr_history(self, salesforce_account_id: str) -> List[Dict[str, Any]]:
-        """Fetch NRR (Net Revenue Retention) history."""
-        if not self.supabase or not salesforce_account_id:
-            return []
-
-        try:
-            result = self.supabase.table("account_nrr_history").select(
-                "period, arr_start, arr_end, expansion, contraction, churn, nrr_pct"
-            ).eq("salesforce_account_id", salesforce_account_id).order(
-                "period", desc=True
-            ).limit(8).execute()
-            return result.data or []
-        except Exception as e:
-            logger.error(f"Error fetching NRR history: {e}")
-            return []
-
-    def _fetch_usage_data(self, account_id: str) -> Dict[str, Any]:
-        """Fetch product usage metrics."""
+    def _fetch_usage_data(self, account_id: str, salesforce_account_id: str) -> Dict[str, Any]:
+        """Fetch product usage metrics from account_product_usage cache."""
         if not self.supabase:
             return {}
 
         try:
-            # Get recent usage metrics
-            cutoff = (datetime.utcnow() - timedelta(days=90)).isoformat()
-            result = self.supabase.table("account_usage_metrics").select(
-                "*"
-            ).eq("account_id", account_id).gte(
-                "metric_date", cutoff
-            ).order("metric_date", desc=True).limit(50).execute()
+            # Try by salesforce_account_id first, then account_id
+            result = None
+            if salesforce_account_id:
+                result = self.supabase.table("account_product_usage").select(
+                    "utilization_pct, adoption_score, health_grade, "
+                    "contracted_seats, active_users_90d, active_users_30d, "
+                    "routing_objects, unique_nodes, integration_count"
+                ).eq("salesforce_account_id", salesforce_account_id).limit(1).execute()
 
-            if not result.data:
-                return {"message": "No usage data available."}
+            if not result or not result.data:
+                result = self.supabase.table("account_product_usage").select(
+                    "utilization_pct, adoption_score, health_grade, "
+                    "contracted_seats, active_users_90d, active_users_30d, "
+                    "routing_objects, unique_nodes, integration_count"
+                ).eq("account_id", account_id).limit(1).execute()
 
-            return {"metrics": result.data}
+            if result and result.data:
+                return {"usage": result.data[0]}
+            return {"message": "No usage data available."}
         except Exception as e:
             logger.error(f"Error fetching usage data: {e}")
             return {}
 
     def _fetch_support_cases(self, salesforce_account_id: str) -> List[Dict[str, Any]]:
-        """Fetch support case history."""
+        """Fetch support case history from cases table."""
         if not self.supabase or not salesforce_account_id:
             return []
 
         try:
             cutoff = (datetime.utcnow() - timedelta(days=180)).isoformat()
-            result = self.supabase.table("support_cases").select(
+            result = self.supabase.table("cases").select(
                 "case_number, subject, status, priority, type, created_date, closed_date"
             ).eq("salesforce_account_id", salesforce_account_id).gte(
                 "created_date", cutoff
@@ -125,7 +120,6 @@ class RenewalReadinessCrew(BaseCrew):
             return {}
 
         try:
-            # Get recent meeting count
             cutoff_30 = (datetime.utcnow() - timedelta(days=30)).isoformat()
             cutoff_90 = (datetime.utcnow() - timedelta(days=90)).isoformat()
 
@@ -156,8 +150,7 @@ class RenewalReadinessCrew(BaseCrew):
 
         try:
             result = self.supabase.table("contacts").select(
-                "name, title, email, department, is_champion, is_decision_maker, "
-                "engagement_level, last_interaction_date"
+                "name, title, email"
             ).eq("salesforce_account_id", salesforce_account_id).limit(20).execute()
             return result.data or []
         except Exception as e:
@@ -173,51 +166,50 @@ class RenewalReadinessCrew(BaseCrew):
         current = data.get("current", {})
         if current:
             parts.append(f"Current Score: {current.get('health_score', 'N/A')}")
-            parts.append(f"Status: {current.get('health_status', 'Unknown')}")
-            parts.append(f"Trend: {current.get('health_trend', 'Unknown')}")
+            parts.append(f"Trend: {current.get('trend', 'Unknown')}")
+            parts.append(f"Confidence: {current.get('confidence', 'Unknown')}")
+            summary = current.get('summary', '')
+            if summary:
+                parts.append(f"Summary: {summary[:200]}")
 
-        history = data.get("history", [])
-        if history:
-            parts.append("\nHistorical Snapshots:")
-            for snapshot in history[:5]:
-                parts.append(
-                    f"  - {snapshot.get('snapshot_date')}: "
-                    f"Score {snapshot.get('score')}, {snapshot.get('trend')}"
-                )
+        analyzed_at = data.get("analyzed_at")
+        if analyzed_at:
+            parts.append(f"Last analyzed: {analyzed_at}")
 
         return "\n".join(parts) if parts else "No health data available."
-
-    def _format_nrr_history(self, data: List[Dict[str, Any]]) -> str:
-        """Format NRR history for the prompt."""
-        if not data:
-            return "No NRR history available."
-
-        formatted = []
-        for period in data:
-            formatted.append(
-                f"- {period.get('period')}: NRR {period.get('nrr_pct', 'N/A')}% "
-                f"(Start: ${period.get('arr_start', 0):,.0f}, End: ${period.get('arr_end', 0):,.0f})"
-            )
-
-        return "\n".join(formatted)
 
     def _format_usage_data(self, data: Dict[str, Any]) -> str:
         """Format usage data for the prompt."""
         if not data or data.get("message"):
             return data.get("message", "No usage data available.")
 
-        metrics = data.get("metrics", [])
-        if not metrics:
+        usage = data.get("usage", {})
+        if not usage:
             return "No usage metrics recorded."
 
-        return f"Usage data points: {len(metrics)} records in last 90 days."
+        parts = []
+        if usage.get("utilization_pct") is not None:
+            parts.append(f"Utilization: {usage['utilization_pct']}%")
+        if usage.get("adoption_score") is not None:
+            parts.append(f"Adoption Score: {usage['adoption_score']}")
+        if usage.get("health_grade"):
+            parts.append(f"Health Grade: {usage['health_grade']}")
+        if usage.get("contracted_seats") is not None:
+            parts.append(f"Contracted Seats: {usage['contracted_seats']}")
+        if usage.get("active_users_90d") is not None:
+            parts.append(f"Active Users (90d): {usage['active_users_90d']}")
+        if usage.get("active_users_30d") is not None:
+            parts.append(f"Active Users (30d): {usage['active_users_30d']}")
+        if usage.get("integration_count") is not None:
+            parts.append(f"Integrations: {usage['integration_count']}")
+
+        return "\n".join(parts) if parts else "No usage data available."
 
     def _format_support_cases(self, cases: List[Dict[str, Any]]) -> str:
         """Format support cases for the prompt."""
         if not cases:
             return "No support cases in the last 6 months."
 
-        # Analyze cases
         open_count = sum(1 for c in cases if c.get("status") != "Closed")
         high_priority = sum(
             1 for c in cases if c.get("priority") in ["High", "Critical", "Urgent"]
@@ -229,7 +221,6 @@ class RenewalReadinessCrew(BaseCrew):
             f"High priority cases: {high_priority}",
         ]
 
-        # List recent cases
         formatted.append("\nRecent cases:")
         for case in cases[:5]:
             formatted.append(
@@ -264,28 +255,12 @@ class RenewalReadinessCrew(BaseCrew):
         if not contacts:
             return "No stakeholder data available."
 
-        champions = [c for c in contacts if c.get("is_champion")]
-        decision_makers = [c for c in contacts if c.get("is_decision_maker")]
-
         formatted = [f"Total contacts: {len(contacts)}"]
-
-        if champions:
-            formatted.append(f"\nChampions ({len(champions)}):")
-            for c in champions:
-                formatted.append(f"  - {c.get('name')} ({c.get('title', 'Unknown title')})")
-
-        if decision_makers:
-            formatted.append(f"\nDecision Makers ({len(decision_makers)}):")
-            for dm in decision_makers:
-                formatted.append(f"  - {dm.get('name')} ({dm.get('title', 'Unknown title')})")
-
-        # List other key contacts
-        formatted.append("\nOther Key Contacts:")
+        formatted.append("\nKey Contacts:")
         for contact in contacts[:10]:
-            if contact not in champions and contact not in decision_makers:
-                formatted.append(
-                    f"  - {contact.get('name')} ({contact.get('title', 'Unknown')})"
-                )
+            formatted.append(
+                f"  - {contact.get('name', 'Unknown')} ({contact.get('title', 'Unknown title')})"
+            )
 
         return "\n".join(formatted)
 
@@ -309,7 +284,6 @@ class RenewalReadinessCrew(BaseCrew):
         contract_end_date: str,
         current_arr: float,
         health_score_data: str,
-        nrr_history: str,
         usage_data: str,
         support_cases_data: str,
         engagement_gap_data: str,
@@ -324,7 +298,7 @@ class RenewalReadinessCrew(BaseCrew):
                 contract_end_date=contract_end_date,
                 current_arr=current_arr,
                 health_score_data=health_score_data,
-                nrr_history=nrr_history,
+                nrr_history="NRR history not available.",
                 usage_data=usage_data,
                 support_cases_data=support_cases_data,
                 engagement_gap_data=engagement_gap_data,
@@ -358,7 +332,6 @@ class RenewalReadinessCrew(BaseCrew):
         user_id: Optional[str] = None,
         step_callback: Optional[callable] = None,
         health_score_data: Optional[Dict[str, Any]] = None,
-        nrr_history: Optional[List[Dict[str, Any]]] = None,
         usage_data: Optional[Dict[str, Any]] = None,
         support_cases_data: Optional[List[Dict[str, Any]]] = None,
         engagement_gap_data: Optional[Dict[str, Any]] = None,
@@ -374,7 +347,6 @@ class RenewalReadinessCrew(BaseCrew):
             user_id: Optional user ID for context
             step_callback: Optional callback for progress updates
             health_score_data: Optional pre-fetched health data
-            nrr_history: Optional pre-fetched NRR history
             usage_data: Optional pre-fetched usage data
             support_cases_data: Optional pre-fetched support cases
             engagement_gap_data: Optional pre-fetched engagement data
@@ -394,10 +366,8 @@ class RenewalReadinessCrew(BaseCrew):
         # Fetch data if not provided
         if health_score_data is None:
             health_score_data = self._fetch_health_score_data(account_id)
-        if nrr_history is None:
-            nrr_history = self._fetch_nrr_history(sf_account_id)
         if usage_data is None:
-            usage_data = self._fetch_usage_data(account_id)
+            usage_data = self._fetch_usage_data(account_id, sf_account_id)
         if support_cases_data is None:
             support_cases_data = self._fetch_support_cases(sf_account_id)
         if engagement_gap_data is None:
@@ -407,7 +377,6 @@ class RenewalReadinessCrew(BaseCrew):
 
         # Format data for prompts
         health_str = self._format_health_score_data(health_score_data)
-        nrr_str = self._format_nrr_history(nrr_history)
         usage_str = self._format_usage_data(usage_data)
         support_str = self._format_support_cases(support_cases_data)
         engagement_str = self._format_engagement_data(engagement_gap_data)
@@ -427,7 +396,6 @@ class RenewalReadinessCrew(BaseCrew):
             contract_end_date=contract_end_date,
             current_arr=current_arr,
             health_score_data=health_str,
-            nrr_history=nrr_str,
             usage_data=usage_str,
             support_cases_data=support_str,
             engagement_gap_data=engagement_str,
