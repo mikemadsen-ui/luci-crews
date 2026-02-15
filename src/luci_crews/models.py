@@ -483,3 +483,58 @@ class CustomAnalysisRequest(BaseModel):
     targetType: str  # account, opportunity, project
     targetId: str
     context: CustomAnalysisContext
+
+
+# =============================================================================
+# QBR Summary Models
+# =============================================================================
+
+class QbrSummaryRequest(BaseModel):
+    """Request model for QBR summary generation."""
+    userId: Optional[str] = None
+    accountId: str
+    accountName: str
+    quarterStart: str  # YYYY-MM-DD
+    quarterEnd: str  # YYYY-MM-DD
+    # Optional pre-fetched data
+    healthTrendData: Optional[List[Dict[str, Any]]] = None
+    usageData: Optional[Dict[str, Any]] = None
+    supportCasesData: Optional[List[Dict[str, Any]]] = None
+    renewalData: Optional[Dict[str, Any]] = None
+
+
+# =============================================================================
+# Email Draft Models
+# =============================================================================
+
+class EmailDraftRequest(BaseModel):
+    """Request model for email drafting."""
+    userId: Optional[str] = None
+    accountId: str
+    templateType: str  # executive_checkin, renewal_kickoff, risk_mitigation, qbr_followup, expansion_proposal
+    recipientRole: Optional[str] = None  # e.g., "VP of Operations", "CFO"
+    additionalContext: Optional[str] = None
+    # Optional pre-fetched data
+    accountData: Optional[Dict[str, Any]] = None
+    recentInteractions: Optional[List[Dict[str, Any]]] = None
+    openCases: Optional[List[Dict[str, Any]]] = None
+    renewalStatus: Optional[Dict[str, Any]] = None
+
+
+# =============================================================================
+# Renewal Readiness Models
+# =============================================================================
+
+class RenewalReadinessRequest(BaseModel):
+    """Request model for renewal readiness assessment."""
+    userId: Optional[str] = None
+    accountId: str
+    contractEndDate: str  # YYYY-MM-DD
+    currentArr: float
+    # Optional pre-fetched data
+    healthScoreData: Optional[Dict[str, Any]] = None
+    nrrHistory: Optional[List[Dict[str, Any]]] = None
+    usageData: Optional[Dict[str, Any]] = None
+    supportCasesData: Optional[List[Dict[str, Any]]] = None
+    engagementGapData: Optional[Dict[str, Any]] = None
+    stakeholderMapData: Optional[List[Dict[str, Any]]] = None

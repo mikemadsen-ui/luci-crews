@@ -1374,3 +1374,350 @@ analyze_meddpicc_gap:
     email_snippet, transcript_evidence (array of quotes), coaching_tip, and next_best_action.
     All recommendations must be specific to this opportunity, not generic.
   agent: meddpicc_gap_analyst
+
+# =============================================================================
+# QBR SUMMARY TASKS
+# =============================================================================
+
+aggregate_qbr_data:
+  description: >
+    Aggregate quarterly data for the QBR summary:
+
+    ACCOUNT: {account_name}
+    QUARTER: {quarter_start} to {quarter_end}
+
+    HEALTH TREND DATA:
+    {health_trend_data}
+
+    PRODUCT USAGE DATA:
+    {usage_data}
+
+    SUPPORT CASES:
+    {support_cases_data}
+
+    RENEWAL DATA:
+    {renewal_data}
+
+    Synthesize this data to identify:
+    1. Health score trajectory over the quarter (improving, stable, declining)
+    2. Key usage milestones or changes
+    3. Support case patterns and resolution quality
+    4. Renewal timeline and risk factors
+
+    Prepare a structured data summary for the narrative writer.
+  expected_output: >
+    A structured summary of the aggregated data including health trend analysis,
+    usage highlights, support case summary, and renewal context.
+  agent: qbr_data_aggregator
+
+generate_qbr_narrative:
+  description: >
+    Generate an executive-ready QBR summary based on the aggregated data.
+
+    ACCOUNT: {account_name}
+    QUARTER: {quarter_start} to {quarter_end}
+
+    AGGREGATED DATA:
+    {aggregated_data}
+
+    Generate a comprehensive QBR summary that includes:
+    1. Executive Summary (3-5 sentences capturing the quarter at a glance)
+    2. Health Trend (current status, trajectory, key drivers)
+    3. Usage Highlights (adoption wins, feature engagement, areas to improve)
+    4. Risk Items (issues to address, proactive mitigation steps)
+    5. Expansion Opportunities (natural next steps, upsell/cross-sell potential)
+    6. Talking Points (5-7 key messages for the QBR conversation)
+
+    Return a JSON object with this EXACT structure:
+    {{
+      "executive_summary": "<3-5 sentence summary of the quarter for this account>",
+
+      "health_trend": {{
+        "current_score": <1-100 or null if unknown>,
+        "trend": "<improving|stable|declining>",
+        "quarter_over_quarter_change": "<description of change from last quarter>",
+        "key_drivers": ["<driver 1>", "<driver 2>"]
+      }},
+
+      "usage_highlights": [
+        {{
+          "highlight": "<what happened>",
+          "impact": "<why it matters>",
+          "evidence": "<supporting data>"
+        }}
+      ],
+
+      "risk_items": [
+        {{
+          "risk": "<description>",
+          "severity": "<high|medium|low>",
+          "mitigation": "<recommended action>",
+          "owner": "<CSM|Support|Product|Exec>"
+        }}
+      ],
+
+      "expansion_opportunities": [
+        {{
+          "opportunity": "<description>",
+          "potential_value": "<estimated ARR impact or 'TBD'>",
+          "next_step": "<specific action to advance>",
+          "confidence": "<high|medium|low>"
+        }}
+      ],
+
+      "talking_points": [
+        "<point 1: lead with value delivered>",
+        "<point 2: acknowledge any challenges>",
+        "<point 3: highlight partnership wins>",
+        "<point 4: preview roadmap relevant to them>",
+        "<point 5: expansion conversation opener>"
+      ],
+
+      "roi_highlights": {{
+        "value_delivered": "<summary of quantifiable value>",
+        "key_metrics": ["<metric 1>", "<metric 2>"],
+        "customer_quotes": ["<positive quote if available>"]
+      }},
+
+      "recommended_qbr_agenda": [
+        {{"topic": "<topic>", "duration_minutes": <minutes>, "objective": "<goal>"}}
+      ]
+    }}
+
+    IMPORTANT GUIDELINES:
+    - Lead with value - start positive even if there are challenges
+    - Be specific - use actual numbers, dates, and names where available
+    - Be honest about risks - executives respect candor
+    - Make expansion feel natural, not salesy
+    - Tailor talking points to this specific account context
+  expected_output: >
+    A valid JSON object with executive_summary, health_trend, usage_highlights,
+    risk_items, expansion_opportunities, talking_points, roi_highlights, and
+    recommended_qbr_agenda. All content should be specific to this account.
+  agent: qbr_narrative_writer
+
+# =============================================================================
+# EMAIL DRAFT TASKS
+# =============================================================================
+
+gather_email_context:
+  description: >
+    Gather context for drafting a {template_type} email:
+
+    ACCOUNT: {account_name}
+    RECIPIENT ROLE: {recipient_role}
+
+    ACCOUNT DATA:
+    {account_data}
+
+    RECENT INTERACTIONS:
+    {recent_interactions}
+
+    OPEN SUPPORT CASES:
+    {open_cases}
+
+    RENEWAL STATUS:
+    {renewal_status}
+
+    ADDITIONAL CONTEXT:
+    {additional_context}
+
+    Synthesize this information to identify:
+    1. Key relationship context (recent wins, ongoing issues, sentiment)
+    2. Relevant data points to reference in the email
+    3. Tone considerations based on account health and history
+    4. Personalization opportunities based on recipient role
+  expected_output: >
+    A structured context summary including relationship status, key talking
+    points, tone recommendations, and personalization opportunities.
+  agent: email_context_gatherer
+
+compose_email:
+  description: >
+    Draft a {template_type} email based on the gathered context.
+
+    ACCOUNT: {account_name}
+    RECIPIENT ROLE: {recipient_role}
+    TEMPLATE TYPE: {template_type}
+
+    CONTEXT:
+    {context_summary}
+
+    TEMPLATE TYPE GUIDELINES:
+    - executive_checkin: Strategic partnership tone, focus on business outcomes
+    - renewal_kickoff: Positive, forward-looking, acknowledge partnership value
+    - risk_mitigation: Empathetic, solution-focused, proactive communication
+    - qbr_followup: Action-oriented, reinforce key takeaways, next steps
+    - expansion_proposal: Value-driven, consultative, natural progression
+
+    Return a JSON object with this EXACT structure:
+    {{
+      "subject": "<compelling subject line, 5-10 words>",
+
+      "body": "<full email body with proper formatting. Use line breaks for paragraphs. Keep it concise but complete - typically 150-250 words.>",
+
+      "tone_analysis": {{
+        "primary_tone": "<professional|consultative|empathetic|enthusiastic>",
+        "formality_level": "<formal|semi-formal|casual>",
+        "urgency_level": "<high|medium|low>"
+      }},
+
+      "suggested_send_time": {{
+        "recommendation": "<e.g., 'Tuesday morning' or 'Within 24 hours'>",
+        "rationale": "<why this timing is recommended>"
+      }},
+
+      "follow_up_guidance": {{
+        "if_no_response_days": <number of days to wait>,
+        "follow_up_approach": "<brief guidance on follow-up>"
+      }},
+
+      "personalization_notes": [
+        "<specific personalization used and why>"
+      ]
+    }}
+
+    WRITING GUIDELINES:
+    - Open with something relevant to THEM, not about us
+    - Reference specific context (recent call, support case, metric)
+    - Keep paragraphs short (2-3 sentences max)
+    - Include a clear, single call-to-action
+    - Close warmly but professionally
+    - Avoid jargon and corporate-speak
+    - Match formality to recipient role (exec = more formal, ops = more casual)
+  expected_output: >
+    A valid JSON object with subject, body, tone_analysis, suggested_send_time,
+    follow_up_guidance, and personalization_notes. The email should be
+    immediately sendable with minimal editing.
+  agent: email_composer
+
+# =============================================================================
+# RENEWAL READINESS TASKS
+# =============================================================================
+
+analyze_renewal_data:
+  description: >
+    Analyze renewal risk factors for this account:
+
+    ACCOUNT: {account_name}
+    CONTRACT END DATE: {contract_end_date}
+    CURRENT ARR: ${current_arr}
+
+    HEALTH SCORE DATA:
+    {health_score_data}
+
+    NRR HISTORY:
+    {nrr_history}
+
+    PRODUCT USAGE:
+    {usage_data}
+
+    SUPPORT CASES:
+    {support_cases_data}
+
+    ENGAGEMENT GAP DATA:
+    {engagement_gap_data}
+
+    STAKEHOLDER MAP:
+    {stakeholder_map_data}
+
+    Analyze this data to assess:
+    1. Overall renewal risk level
+    2. Key risk factors and their severity
+    3. Positive signals that support renewal
+    4. Stakeholder dynamics and champion strength
+    5. Competitive threat indicators
+  expected_output: >
+    A comprehensive risk analysis including risk score, factor breakdown,
+    positive signals, stakeholder assessment, and competitive intelligence.
+  agent: renewal_data_analyst
+
+develop_renewal_strategy:
+  description: >
+    Develop a comprehensive renewal strategy based on the risk analysis.
+
+    ACCOUNT: {account_name}
+    CONTRACT END DATE: {contract_end_date}
+    CURRENT ARR: ${current_arr}
+
+    RISK ANALYSIS:
+    {risk_analysis}
+
+    Generate a complete renewal readiness assessment with actionable strategy.
+
+    Return a JSON object with this EXACT structure:
+    {{
+      "readiness_score": <0-100, where 100 is fully ready to renew>,
+
+      "risk_factors": [
+        {{
+          "factor": "<description>",
+          "severity": "<critical|high|medium|low>",
+          "evidence": "<supporting data>",
+          "mitigation": "<specific action to address>"
+        }}
+      ],
+
+      "positive_signals": [
+        {{
+          "signal": "<description>",
+          "strength": "<strong|moderate|weak>",
+          "leverage_opportunity": "<how to use this in renewal conversation>"
+        }}
+      ],
+
+      "recommended_strategy": {{
+        "overall_approach": "<expand|flat|defend>",
+        "key_message": "<core value proposition for renewal>",
+        "timeline": "<recommended engagement timeline before renewal>",
+        "escalation_needed": <true|false>,
+        "escalation_reason": "<why escalation is needed, or null>"
+      }},
+
+      "negotiation_scenarios": [
+        {{
+          "scenario": "<expansion|flat_renewal|contraction>",
+          "likelihood": "<high|medium|low>",
+          "target_arr": <target ARR for this scenario>,
+          "key_levers": ["<lever 1>", "<lever 2>"],
+          "concessions_to_avoid": ["<what not to give away>"],
+          "walk_away_point": "<when to escalate or accept loss>"
+        }}
+      ],
+
+      "prep_checklist": [
+        {{
+          "item": "<specific prep action>",
+          "owner": "<CSM|AE|Exec|Support>",
+          "due_date_offset": "<e.g., '60 days before renewal'>",
+          "priority": "<critical|high|medium>"
+        }}
+      ],
+
+      "stakeholder_brief": {{
+        "champion_status": "<strong|at_risk|lost|unknown>",
+        "economic_buyer": "<name/role or 'Unknown'>",
+        "key_relationships": [
+          {{"name": "<name>", "role": "<role>", "sentiment": "<positive|neutral|negative>", "action_needed": "<what to do>"}}
+        ],
+        "relationship_gaps": ["<gap to address>"],
+        "recommended_exec_engagement": "<recommendation for exec involvement>"
+      }},
+
+      "coaching_for_csm": "<5-8 sentences of specific advice for managing this renewal>"
+    }}
+
+    SCORING RUBRIC for readiness_score:
+    - 80-100: High confidence renewal, likely expansion opportunity
+    - 60-79: Solid renewal expected, minor risks to manage
+    - 40-59: At-risk renewal, significant work needed
+    - 20-39: High churn risk, intervention required
+    - 0-19: Critical risk, escalation and executive intervention needed
+
+    BE HONEST about risk. It's better to flag concerns early than be surprised.
+    Provide SPECIFIC actions, not generic advice.
+  expected_output: >
+    A valid JSON object with readiness_score, risk_factors, positive_signals,
+    recommended_strategy, negotiation_scenarios, prep_checklist, stakeholder_brief,
+    and coaching_for_csm. All recommendations should be specific to this account.
+  agent: renewal_strategist

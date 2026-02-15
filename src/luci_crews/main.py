@@ -61,6 +61,9 @@ from .models import (
     SandboxTestRequest,
     CustomAnalysisContext,
     CustomAnalysisRequest,
+    QbrSummaryRequest,
+    EmailDraftRequest,
+    RenewalReadinessRequest,
 )
 from .crews.sales_pipeline_crew import SalesPipelineCrew
 from .crews.account_health_crew import AccountHealthCrew
@@ -72,6 +75,9 @@ from .crews.agenda_generation_crew import AgendaGenerationCrew
 from .crews.call_verification_crew import CallVerificationCrew
 from .crews.call_analysis_crew import CallAnalysisCrew
 from .crews.account_analysis_crew import AccountAnalysisCrew
+from .crews.qbr_summary_crew import QbrSummaryCrew
+from .crews.email_draft_crew import EmailDraftCrew
+from .crews.renewal_readiness_crew import RenewalReadinessCrew
 from .batch_router import router as batch_router
 from .routes.analysis import router as analysis_router
 from .routes.coaching import router as coaching_router
@@ -847,6 +853,247 @@ async def run_call_analysis_crew(request: CallAnalysisRequest):
             "success": False,
             "error": str(e),
         }
+
+
+# =============================================================================
+# QBR Summary Crew
+# =============================================================================
+
+@app.post("/api/crew/qbr-summary")
+async def run_qbr_summary_crew(request: Request):
+    """Generate a quarterly business review summary for an account."""
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = QbrSummaryRequest(**body)
+        logger.info(f"Running QBR summary crew for account: {req.accountName}")
+
+        crew = QbrSummaryCrew(user_id=req.userId)
+
+        if stream:
+            ctx = SimpleStreamingContext()
+
+            async def generate():
+                try:
+                    yield ctx.init_message("Starting QBR summary generation...")
+                    result = crew.run(
+                        account_id=req.accountId,
+                        account_name=req.accountName,
+                        quarter_start=req.quarterStart,
+                        quarter_end=req.quarterEnd,
+                        user_id=req.userId,
+                        step_callback=ctx.step_callback,
+                        health_trend_data=req.healthTrendData,
+                        usage_data=req.usageData,
+                        support_cases_data=req.supportCasesData,
+                        renewal_data=req.renewalData,
+                    )
+                    for msg in ctx.get_progress_messages():
+                        yield msg
+                    logger.info(f"QBR summary crew completed in {ctx.execution_time:.2f}s")
+                    yield ctx.result_message(
+                        result.get('result'),
+                        account_name=result.get('account_name'),
+                        quarter=result.get('quarter'),
+                        provider=result.get('provider'),
+                        model=result.get('model'),
+                    )
+                except Exception as e:
+                    logger.error(f"QBR summary crew failed: {str(e)}")
+                    yield ctx.error_message(str(e))
+
+            return create_streaming_response(generate())
+        else:
+            start_time = datetime.utcnow()
+            result = crew.run(
+                account_id=req.accountId,
+                account_name=req.accountName,
+                quarter_start=req.quarterStart,
+                quarter_end=req.quarterEnd,
+                user_id=req.userId,
+                health_trend_data=req.healthTrendData,
+                usage_data=req.usageData,
+                support_cases_data=req.supportCasesData,
+                renewal_data=req.renewalData,
+            )
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"QBR summary crew completed in {execution_time:.2f}s")
+            return {
+                "success": result.get("success", True),
+                "result": result.get("result"),
+                "account_name": result.get("account_name"),
+                "quarter": result.get("quarter"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"QBR summary crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Email Draft Crew
+# =============================================================================
+
+@app.post("/api/crew/email-draft")
+async def run_email_draft_crew(request: Request):
+    """Draft a customer email based on template type and account context."""
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = EmailDraftRequest(**body)
+        logger.info(f"Running email draft crew: {req.templateType} for account {req.accountId}")
+
+        crew = EmailDraftCrew(user_id=req.userId)
+
+        if stream:
+            ctx = SimpleStreamingContext()
+
+            async def generate():
+                try:
+                    yield ctx.init_message(f"Drafting {req.templateType} email...")
+                    result = crew.run(
+                        account_id=req.accountId,
+                        template_type=req.templateType,
+                        recipient_role=req.recipientRole,
+                        additional_context=req.additionalContext,
+                        user_id=req.userId,
+                        step_callback=ctx.step_callback,
+                        account_data=req.accountData,
+                        recent_interactions=req.recentInteractions,
+                        open_cases=req.openCases,
+                        renewal_status=req.renewalStatus,
+                    )
+                    for msg in ctx.get_progress_messages():
+                        yield msg
+                    logger.info(f"Email draft crew completed in {ctx.execution_time:.2f}s")
+                    yield ctx.result_message(
+                        result.get('result'),
+                        account_name=result.get('account_name'),
+                        template_type=result.get('template_type'),
+                        provider=result.get('provider'),
+                        model=result.get('model'),
+                    )
+                except Exception as e:
+                    logger.error(f"Email draft crew failed: {str(e)}")
+                    yield ctx.error_message(str(e))
+
+            return create_streaming_response(generate())
+        else:
+            start_time = datetime.utcnow()
+            result = crew.run(
+                account_id=req.accountId,
+                template_type=req.templateType,
+                recipient_role=req.recipientRole,
+                additional_context=req.additionalContext,
+                user_id=req.userId,
+                account_data=req.accountData,
+                recent_interactions=req.recentInteractions,
+                open_cases=req.openCases,
+                renewal_status=req.renewalStatus,
+            )
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"Email draft crew completed in {execution_time:.2f}s")
+            return {
+                "success": result.get("success", True),
+                "result": result.get("result"),
+                "account_name": result.get("account_name"),
+                "template_type": result.get("template_type"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"Email draft crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Renewal Readiness Crew
+# =============================================================================
+
+@app.post("/api/crew/renewal-readiness")
+async def run_renewal_readiness_crew(request: Request):
+    """Assess renewal readiness with risk scoring and strategic recommendations."""
+    stream = request.query_params.get("stream", "false").lower() == "true"
+
+    try:
+        body = await request.json()
+        req = RenewalReadinessRequest(**body)
+        logger.info(f"Running renewal readiness crew for account: {req.accountId}")
+
+        crew = RenewalReadinessCrew(user_id=req.userId)
+
+        if stream:
+            ctx = SimpleStreamingContext()
+
+            async def generate():
+                try:
+                    yield ctx.init_message("Starting renewal readiness assessment...")
+                    result = crew.run(
+                        account_id=req.accountId,
+                        contract_end_date=req.contractEndDate,
+                        current_arr=req.currentArr,
+                        user_id=req.userId,
+                        step_callback=ctx.step_callback,
+                        health_score_data=req.healthScoreData,
+                        nrr_history=req.nrrHistory,
+                        usage_data=req.usageData,
+                        support_cases_data=req.supportCasesData,
+                        engagement_gap_data=req.engagementGapData,
+                        stakeholder_map_data=req.stakeholderMapData,
+                    )
+                    for msg in ctx.get_progress_messages():
+                        yield msg
+                    logger.info(f"Renewal readiness crew completed in {ctx.execution_time:.2f}s")
+                    yield ctx.result_message(
+                        result.get('result'),
+                        account_name=result.get('account_name'),
+                        contract_end_date=result.get('contract_end_date'),
+                        current_arr=result.get('current_arr'),
+                        provider=result.get('provider'),
+                        model=result.get('model'),
+                    )
+                except Exception as e:
+                    logger.error(f"Renewal readiness crew failed: {str(e)}")
+                    yield ctx.error_message(str(e))
+
+            return create_streaming_response(generate())
+        else:
+            start_time = datetime.utcnow()
+            result = crew.run(
+                account_id=req.accountId,
+                contract_end_date=req.contractEndDate,
+                current_arr=req.currentArr,
+                user_id=req.userId,
+                health_score_data=req.healthScoreData,
+                nrr_history=req.nrrHistory,
+                usage_data=req.usageData,
+                support_cases_data=req.supportCasesData,
+                engagement_gap_data=req.engagementGapData,
+                stakeholder_map_data=req.stakeholderMapData,
+            )
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"Renewal readiness crew completed in {execution_time:.2f}s")
+            return {
+                "success": result.get("success", True),
+                "result": result.get("result"),
+                "account_name": result.get("account_name"),
+                "contract_end_date": result.get("contract_end_date"),
+                "current_arr": result.get("current_arr"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "execution_time": execution_time,
+            }
+
+    except Exception as e:
+        logger.error(f"Renewal readiness crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =============================================================================
