@@ -58,9 +58,9 @@ class ContextualDrilldownCrew(BaseCrew):
             return []
         try:
             result = self.supabase.table("crew_analysis_history").select(
-                "crew_type, analysis_data, created_at"
+                "crew_type, result, analyzed_at"
             ).eq("account_id", account_id).order(
-                "created_at", desc=True
+                "analyzed_at", desc=True
             ).limit(5).execute()
             return result.data or []
         except Exception as e:
@@ -98,7 +98,7 @@ class ContextualDrilldownCrew(BaseCrew):
         try:
             cutoff = (datetime.utcnow() - timedelta(days=days_back)).isoformat()
             result = self.supabase.table("transcriptions").select(
-                "id, meeting_subject, meeting_date, ai_summary"
+                "id, meeting_subject, meeting_date"
             ).eq("salesforce_account_id", salesforce_account_id).gte(
                 "meeting_date", cutoff
             ).order("meeting_date", desc=True).limit(5).execute()
@@ -206,10 +206,19 @@ class ContextualDrilldownCrew(BaseCrew):
             parts.append("RECENT AI ANALYSIS:")
             for a in analysis[:3]:
                 crew = a.get("crew_type", "unknown")
-                created = a.get("created_at", "")[:10]
-                data = a.get("analysis_data", {})
-                summary = data.get("executive_summary", data.get("summary", ""))[:150]
-                parts.append(f"  [{crew}] ({created}): {summary}")
+                analyzed = a.get("analyzed_at", "")[:10] if a.get("analyzed_at") else ""
+                data = a.get("result", {})
+                if isinstance(data, str):
+                    # Try to parse JSON string
+                    try:
+                        import json
+                        data = json.loads(data)
+                    except:
+                        data = {"summary": data[:150]}
+                summary = ""
+                if isinstance(data, dict):
+                    summary = data.get("executive_summary", data.get("summary", ""))[:150]
+                parts.append(f"  [{crew}] ({analyzed}): {summary}")
             parts.append("")
 
         # Macro insights affecting this account
@@ -226,9 +235,9 @@ class ContextualDrilldownCrew(BaseCrew):
             parts.append("RECENT MEETINGS:")
             for m in meetings[:3]:
                 subject = m.get("meeting_subject", "Unknown")
-                date = m.get("meeting_date", "")[:10]
-                summary = m.get("ai_summary", "")[:100]
-                parts.append(f"  - {subject} ({date}): {summary}")
+                date_str = m.get("meeting_date", "")
+                date = date_str[:10] if date_str else ""
+                parts.append(f"  - {subject} ({date})")
             parts.append("")
 
         # Recent cases
