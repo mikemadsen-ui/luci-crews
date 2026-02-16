@@ -85,10 +85,15 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
             return []
         try:
             # Renewals in next 90 days with health < 7
+            today = datetime.utcnow().date().isoformat()
             cutoff = (datetime.utcnow() + timedelta(days=90)).date().isoformat()
             result = self.supabase.table("accounts").select(
                 "id, name, contract_value, health_score, contract_end_date, account_tier"
-            ).lte("contract_end_date", cutoff).lt("health_score", 7).order(
+            ).gte("contract_end_date", today).lte(
+                "contract_end_date", cutoff
+            ).lt("health_score", 7).gt(
+                "contract_value", 0
+            ).order(
                 "contract_value", desc=True
             ).limit(10).execute()
             return result.data or []
@@ -103,7 +108,11 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
         try:
             result = self.supabase.table("accounts").select(
                 "id, name, contract_value, health_score, account_tier"
-            ).lt("health_score", 5).order("contract_value", desc=True).limit(10).execute()
+            ).lt("health_score", 5).gt(
+                "contract_value", 0
+            ).order(
+                "contract_value", desc=True
+            ).limit(10).execute()
             return result.data or []
         except Exception as e:
             logger.error(f"Error fetching at-risk accounts: {e}")

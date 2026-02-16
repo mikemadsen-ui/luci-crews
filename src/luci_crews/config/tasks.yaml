@@ -1793,6 +1793,12 @@ develop_expansion_strategy_task:
     - ✅ "At your current trajectory, you'll hit overages in Q3. Let's plan ahead."
     - ✅ "Companies at your stage typically see 3x ROI when they expand here"
 
+    CRITICAL STRUCTURAL CONSTRAINT:
+    The "commercial_case" section MUST use a "Problem → Solution → ROI" narrative:
+    - Problem: What constraint the customer is hitting (be specific with data)
+    - Solution: What expansion addresses it (specific tier/module/seats)
+    - ROI: Quantified $ impact (savings, growth, efficiency gains)
+
     Return a JSON object with this structure:
     {{
       "expansion_play": {{
@@ -1804,8 +1810,9 @@ develop_expansion_strategy_task:
       }},
 
       "commercial_case": {{
-        "current_value_delivered": "<$ or metric showing what they've achieved>",
-        "expansion_value_unlock": "<$ or outcome they'd gain>",
+        "problem": "<1-2 sentences: What capacity, efficiency, or competitive constraint is the customer facing? E.g., 'High seat utilization is slowing down the Marketing team.'>",
+        "solution": "<1-2 sentences: What specific expansion addresses this? E.g., 'Move to Enterprise tier for unlimited seats and advanced routing.'>",
+        "roi": "<1-2 sentences with $ figures: What measurable impact? E.g., '15% increase in team output based on usage patterns, saving $18K/yr in overage costs.'>",
         "cost_of_inaction": "<$ or risk of not expanding>",
         "competitive_context": "<what peers/competitors are doing>"
       }},
@@ -1852,9 +1859,11 @@ develop_expansion_strategy_task:
     stakeholder names. Generic advice is useless — every recommendation
     should reference something concrete about this customer.
   expected_output: >
-    A valid JSON object with recommended_play, roi_justification, talking_points,
-    objection_handlers, champion_engagement, next_steps, and expansion_timeline.
-    All recommendations must be specific to this account.
+    A valid JSON object with expansion_play, commercial_case (structured as
+    problem → solution → roi), partnership_talking_points, objection_playbook,
+    stakeholder_strategy, action_plan, and expansion_timeline.
+    The commercial_case MUST follow Problem → Solution → ROI structure with
+    concrete dollar figures. All recommendations must be specific to this account.
   agent: upsell_strategist
 
 # =============================================================================
