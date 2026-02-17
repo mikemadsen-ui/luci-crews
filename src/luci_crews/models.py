@@ -190,6 +190,7 @@ class ImplementationRequest(BaseModel):
     risks_data: Optional[str] = None
     callActivity: Optional[dict] = None  # Past Avoma calls + upcoming calendar events
     mavenlinkTasks: Optional[List[dict]] = None  # Mavenlink stories/tasks with assignee info
+    dataAvailabilityWarnings: Optional[List[str]] = None  # Warnings about missing data to include in analysis
 
 
 class ProjectSentimentRequest(BaseModel):

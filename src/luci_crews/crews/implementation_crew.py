@@ -271,9 +271,16 @@ class ImplementationCrew(BaseCrew):
         risks_data: Optional[str],
         call_activity: Optional[dict] = None,
         mavenlink_tasks: Optional[List[dict]] = None,
+        data_availability_warnings: Optional[List[str]] = None,
     ):
         """Create tasks from configuration with data interpolation."""
         task_config = self._get_task_config("analyze_implementation")
+
+        # Format data availability warnings
+        if data_availability_warnings and len(data_availability_warnings) > 0:
+            warnings_text = "\n\n=== ⚠️ DATA AVAILABILITY WARNINGS ===\n" + "\n".join(data_availability_warnings) + "\n\nIMPORTANT: You MUST acknowledge these data gaps in your analysis and clearly state that certain assessments cannot be made due to missing data.\n"
+        else:
+            warnings_text = ""
 
         # Format call activity data
         call_activity_text = self._format_call_activity(call_activity)
@@ -299,6 +306,10 @@ class ImplementationCrew(BaseCrew):
             mavenlink_tasks=mavenlink_tasks_text,
         )
 
+        # Prepend data availability warnings if any
+        if warnings_text:
+            description = warnings_text + "\n" + description
+
         self.analyze_task = Task(
             description=description,
             expected_output=task_config.get("expected_output", "Implementation health report"),
@@ -322,6 +333,7 @@ class ImplementationCrew(BaseCrew):
         call_activity: Optional[dict] = None,
         mavenlink_tasks: Optional[List[dict]] = None,
         step_callback: Optional[callable] = None,
+        data_availability_warnings: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Run the implementation crew and return structured analysis.
 
@@ -341,6 +353,7 @@ class ImplementationCrew(BaseCrew):
             call_activity: Call activity data dict
             mavenlink_tasks: List of Mavenlink task dicts
             step_callback: Optional callback for progress updates
+            data_availability_warnings: List of data gap warnings to include in analysis
 
         Returns:
             Dict with parsed result and metadata
@@ -353,7 +366,8 @@ class ImplementationCrew(BaseCrew):
             project_name, account_name, project_status,
             start_date, target_go_live, completion_pct,
             hours_used, hours_budgeted, budget_used, budget_total,
-            milestones_data, risks_data, call_activity, mavenlink_tasks
+            milestones_data, risks_data, call_activity, mavenlink_tasks,
+            data_availability_warnings
         )
 
         if step_callback:

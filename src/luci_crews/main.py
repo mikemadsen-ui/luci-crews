@@ -340,6 +340,10 @@ async def run_implementation_crew(request: ImplementationRequest):
         if request.mavenlinkTasks:
             logger.info(f"Mavenlink tasks: {len(request.mavenlinkTasks)} stories/tasks")
 
+        # Log data availability warnings if present
+        if request.dataAvailabilityWarnings:
+            logger.warning(f"Data availability warnings: {request.dataAvailabilityWarnings}")
+
         crew = ImplementationCrew(user_id=request.userId)
         result = crew.run(
             project_name=request.project_name,
@@ -356,6 +360,7 @@ async def run_implementation_crew(request: ImplementationRequest):
             risks_data=request.risks_data,
             call_activity=request.callActivity,
             mavenlink_tasks=request.mavenlinkTasks,
+            data_availability_warnings=request.dataAvailabilityWarnings,
         )
 
         execution_time = (datetime.utcnow() - start_time).total_seconds()
