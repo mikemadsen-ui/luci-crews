@@ -42,12 +42,13 @@ class AccountAnalysisCrew(BaseCrew):
         """Create the synthesis and recommendations agent."""
         return Agent(
             role="Account Strategy Coach",
-            goal="Synthesize analysis findings into actionable recommendations and a unified score",
+            goal="Synthesize analysis findings into actionable recommendations and a unified score that honestly reflects account reality",
             backstory="""You are a strategic advisor who excels at turning complex analyses
-            into clear, actionable guidance. You know how to weight different signals -
-            understanding that customer sentiment and account health metrics together tell
-            a complete story. You provide practical recommendations that account managers
-            can act on immediately.""",
+            into clear, actionable guidance. You are deliberately conservative with scores —
+            you never let positive sentiment mask hard facts like churn, contract expiration,
+            or product disengagement. If an account has churned, that's a 1-2 regardless of
+            how much the contacts liked the product. You provide practical recommendations
+            that account managers can act on immediately.""",
             verbose=False,
             allow_delegation=False,
             llm=self.llm,
@@ -206,18 +207,41 @@ ARR: {arr_str}
             lines.append("\n--- Improvement Recommendations (from adoption model) ---")
             lines.append(help_text)
 
-        # Renewal context
+        # Renewal context and churn detection
         days_to_renewal = engagement_data.get("daysToRenewal")
         arr = engagement_data.get("arr")
         tier = engagement_data.get("tier")
         health_status = engagement_data.get("healthStatus")
         risk_reason = engagement_data.get("riskReason")
+        churn_date = engagement_data.get("churnDate")
+
+        # Detect churn signals and flag prominently
+        is_churned = False
+        if churn_date:
+            is_churned = True
+        if isinstance(days_to_renewal, (int, float)) and days_to_renewal < 0:
+            is_churned = True
+        if health_status and any(
+            kw in str(health_status).lower()
+            for kw in ("churn", "inactive", "cancelled")
+        ):
+            is_churned = True
+
+        if is_churned:
+            lines.append("\n🚨🚨🚨 CRITICAL: CONFIRMED CHURN / EXPIRED CONTRACT 🚨🚨🚨")
+            lines.append("This account has churned or its contract has expired.")
+            lines.append("Health score MUST be capped at 2. Overall score MUST be capped at 2.")
+            lines.append("Do NOT let positive sentiment override this — churn is a hard fact.")
+            if churn_date:
+                lines.append(f"Churn Date: {churn_date}")
+            if isinstance(days_to_renewal, (int, float)) and days_to_renewal < 0:
+                lines.append(f"Contract Expired: {abs(int(days_to_renewal))} days ago")
 
         if days_to_renewal is not None or health_status is not None:
             lines.append("\n--- Renewal Context ---")
             if days_to_renewal is not None:
                 lines.append(f"Days to Renewal: {days_to_renewal}")
-                if isinstance(days_to_renewal, (int, float)) and days_to_renewal <= 90:
+                if isinstance(days_to_renewal, (int, float)) and days_to_renewal <= 90 and days_to_renewal >= 0:
                     lines.append("⚠️ RENEWAL APPROACHING - within 90 days")
             if arr is not None:
                 lines.append(f"ARR: ${arr:,.0f}" if isinstance(arr, (int, float)) else f"ARR: {arr}")
@@ -309,7 +333,8 @@ Evaluate TWO key dimensions:
    - Engagement level and trends
    - Support health (ticket volume, resolution satisfaction)
    - Relationship strength
-   - Churn risk indicators
+   - Churn risk indicators (CRITICAL: if churn date is in the past, contract expired,
+     or status is "churned"/"inactive", health MUST be 1-3 max)
    - Expansion opportunity signals
 
 IMPORTANT: Pay close attention to the CURRENT STATUS of support cases:
@@ -358,9 +383,17 @@ Account: {account_name}
 Review the sentiment and health analysis from the previous task. Create a unified assessment that:
 
 1. UNIFIED SCORE (1-10):
-   - Weight: 40% sentiment + 60% health (health is more predictive of churn)
-   - Calculate the weighted average
+   - Base calculation: 40% sentiment + 60% health (health is more predictive of churn)
    - Round to nearest integer
+
+   CRITICAL HARD CAPS (these override the weighted average):
+   - CONFIRMED CHURN (churn date in the past, contract fully expired, or account status
+     contains "churn"/"inactive"/"cancelled"): score MUST be capped at 2, status "critical"
+   - CONTRACT EXPIRED (contract end date in the past, or days to renewal is negative):
+     score MUST be capped at 3, status "at_risk" or "critical"
+   - NEAR-ZERO UTILIZATION (utilization < 5%): apply a penalty of -3 (minimum score 1)
+   - Positive sentiment does NOT offset churn. An account with great relationships
+     but confirmed churn is still a 1-2, never higher.
 
 2. OVERALL STATUS:
    - "thriving" (9-10): Expanding, strong champion, excellent engagement
