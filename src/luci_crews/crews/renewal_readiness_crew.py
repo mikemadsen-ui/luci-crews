@@ -30,7 +30,7 @@ class RenewalReadinessCrew(BaseCrew):
         try:
             result = self.supabase.table("accounts").select(
                 "id, name, salesforce_id, industry, account_tier, "
-                "contract_value, annual_revenue, contract_end_date, customer_start_date"
+                "contract_value_numeric, annual_revenue, contract_end_date, customer_start_date, updated_at"
             ).eq("id", account_id).limit(1).execute()
             return result.data[0] if result.data else {}
         except Exception as e:
@@ -363,6 +363,9 @@ class RenewalReadinessCrew(BaseCrew):
         account_name = account_data.get("name", "Unknown Account")
         sf_account_id = account_data.get("salesforce_id")
 
+        # Track data freshness
+        data_as_of = account_data.get("updated_at") or datetime.utcnow().isoformat()
+
         # Fetch data if not provided
         if health_score_data is None:
             health_score_data = self._fetch_health_score_data(account_id)
@@ -438,6 +441,7 @@ class RenewalReadinessCrew(BaseCrew):
             "account_name": account_name,
             "contract_end_date": contract_end_date,
             "current_arr": current_arr,
+            "data_as_of": data_as_of,
             "provider": provider,
             "model": model_name,
         }

@@ -69,9 +69,9 @@ class StrategicActionCrew(BaseCrew):
             return []
         try:
             result = self.supabase.table("accounts").select(
-                "id, name, account_tier, contract_value, health_score, "
+                "id, name, account_tier, contract_value_numeric, health_score, "
                 "contract_end_date, industry, owner_name"
-            ).order("contract_value", desc=True).limit(50).execute()
+            ).order("contract_value_numeric", desc=True).limit(50).execute()
             return result.data or []
         except Exception as e:
             logger.error(f"Error fetching accounts summary: {e}")

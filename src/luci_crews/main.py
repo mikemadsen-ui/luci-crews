@@ -219,7 +219,7 @@ async def run_account_health_crew(request: AccountHealthRequest):
             if account_data.found:
                 account_name = account_data.name
                 account_tier = account_tier or account_data.account_tier
-                arr = arr or account_data.contract_value
+                arr = arr or account_data.contract_value_numeric
 
         if not account_name:
             return CrewResponse(
@@ -279,7 +279,7 @@ async def run_account_analysis_crew(request: AccountAnalysisRequest):
                 if not request.accountTier:
                     request.accountTier = account_data.account_tier
                 if not request.arr:
-                    request.arr = account_data.contract_value
+                    request.arr = account_data.contract_value_numeric
 
         if not account_name:
             return {

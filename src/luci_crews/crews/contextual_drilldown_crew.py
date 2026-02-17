@@ -37,13 +37,13 @@ class ContextualDrilldownCrew(BaseCrew):
         try:
             # Try by UUID first, then by salesforce_id
             result = self.supabase.table("accounts").select(
-                "id, name, salesforce_id, contract_value, health_score, account_tier, "
+                "id, name, salesforce_id, contract_value_numeric, health_score, account_tier, "
                 "industry, contract_end_date, owner_name"
             ).eq("id", account_id).limit(1).execute()
 
             if not result.data:
                 result = self.supabase.table("accounts").select(
-                    "id, name, salesforce_id, contract_value, health_score, account_tier, "
+                    "id, name, salesforce_id, contract_value_numeric, health_score, account_tier, "
                     "industry, contract_end_date, owner_name"
                 ).eq("salesforce_id", account_id).limit(1).execute()
 
@@ -154,11 +154,11 @@ class ContextualDrilldownCrew(BaseCrew):
 
             elif metric_id == "health":
                 result = self.supabase.table("accounts").select(
-                    "name, health_score, contract_value, account_tier"
-                ).lt("health_score", 5).order("contract_value", desc=True).limit(10).execute()
+                    "name, health_score, contract_value_numeric, account_tier"
+                ).lt("health_score", 5.0).order("contract_value_numeric", desc=True).limit(10).execute()
                 context["details"] = {
                     "at_risk": result.data or [],
-                    "total_at_risk_arr": sum(a.get("contract_value", 0) or 0 for a in result.data or []),
+                    "total_at_risk_arr": sum(a.get("contract_value_numeric", 0) or 0 for a in result.data or []),
                 }
 
         except Exception as e:
@@ -194,7 +194,7 @@ class ContextualDrilldownCrew(BaseCrew):
 
         # Account overview
         parts.append(f"ACCOUNT: {account.get('name', 'Unknown')}")
-        parts.append(f"ARR: {self._format_currency(account.get('contract_value', 0))}")
+        parts.append(f"ARR: {self._format_currency(account.get('contract_value_numeric', 0))}")
         parts.append(f"Tier: {account.get('account_tier', 'Unknown')}")
         parts.append(f"Health Score: {account.get('health_score', 'N/A')}")
         parts.append(f"Contract End: {account.get('contract_end_date', 'Unknown')}")
@@ -306,7 +306,7 @@ class ContextualDrilldownCrew(BaseCrew):
             parts.append(f"Total ARR at risk: {self._format_currency(total_arr)}")
             for a in at_risk[:5]:
                 parts.append(
-                    f"  - {a.get('name')}: {self._format_currency(a.get('contract_value', 0))} "
+                    f"  - {a.get('name')}: {self._format_currency(a.get('contract_value_numeric', 0))} "
                     f"(health: {a.get('health_score', 0)})"
                 )
 

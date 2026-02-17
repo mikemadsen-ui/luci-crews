@@ -19,12 +19,17 @@ class AccountData:
     """Container for account lookup results."""
     name: Optional[str] = None
     account_tier: Optional[str] = None
-    contract_value: Optional[float] = None
+    contract_value_numeric: Optional[float] = None
 
     @property
     def found(self) -> bool:
         """Return True if account was found (has a name)."""
         return self.name is not None
+
+    @property
+    def contract_value(self) -> Optional[float]:
+        """Alias for contract_value_numeric for backward compatibility."""
+        return self.contract_value_numeric
 
 
 def lookup_account(
@@ -60,7 +65,7 @@ def lookup_account(
         return AccountData()
 
     try:
-        query = supabase.table("accounts").select("name, account_tier, contract_value")
+        query = supabase.table("accounts").select("name, account_tier, contract_value_numeric")
 
         if account_id:
             query = query.eq("id", account_id)
@@ -75,7 +80,7 @@ def lookup_account(
             return AccountData(
                 name=account_data.get("name"),
                 account_tier=account_data.get("account_tier"),
-                contract_value=account_data.get("contract_value"),
+                contract_value_numeric=account_data.get("contract_value_numeric"),
             )
 
         return AccountData()

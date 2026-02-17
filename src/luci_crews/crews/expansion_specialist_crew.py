@@ -33,8 +33,8 @@ class ExpansionSpecialistCrew(BaseCrew):
         try:
             result = self.supabase.table("accounts").select(
                 "id, name, salesforce_id, industry, account_tier, "
-                "contract_value, annual_revenue, contract_end_date, "
-                "customer_start_date, health_score"
+                "contract_value_numeric, annual_revenue, contract_end_date, "
+                "customer_start_date, health_score, updated_at"
             ).eq("id", account_id).limit(1).execute()
             return result.data[0] if result.data else {}
         except Exception as e:
@@ -599,9 +599,12 @@ class ExpansionSpecialistCrew(BaseCrew):
 
         if current_arr == 0:
             try:
-                current_arr = float(account_data.get("contract_value", 0) or 0)
+                current_arr = float(account_data.get("contract_value_numeric", 0) or 0)
             except (ValueError, TypeError):
                 current_arr = 0
+
+        # Track data freshness - use account's updated_at as baseline
+        data_as_of = account_data.get("updated_at") or datetime.utcnow().isoformat()
 
         # Fetch data if not provided
         if usage_data is None:
@@ -696,6 +699,7 @@ class ExpansionSpecialistCrew(BaseCrew):
             "contract_end_date": contract_end_date,
             "provider": provider,
             "model": model_name,
+            "data_as_of": data_as_of,
             # Commercial intelligence metadata
             "commercial_signals_count": len(commercial_insights),
             "seat_metrics": {

@@ -88,13 +88,13 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
             today = datetime.utcnow().date().isoformat()
             cutoff = (datetime.utcnow() + timedelta(days=90)).date().isoformat()
             result = self.supabase.table("accounts").select(
-                "id, name, contract_value, health_score, contract_end_date, account_tier"
+                "id, name, contract_value_numeric, health_score, contract_end_date, account_tier, updated_at"
             ).gte("contract_end_date", today).lte(
                 "contract_end_date", cutoff
-            ).lt("health_score", 7).gt(
-                "contract_value", 0
+            ).lt("health_score", 5.0).gt(
+                "contract_value_numeric", 0
             ).order(
-                "contract_value", desc=True
+                "contract_value_numeric", desc=True
             ).limit(10).execute()
             return result.data or []
         except Exception as e:
@@ -107,11 +107,11 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
             return []
         try:
             result = self.supabase.table("accounts").select(
-                "id, name, contract_value, health_score, account_tier"
-            ).lt("health_score", 5).gt(
-                "contract_value", 0
+                "id, name, contract_value_numeric, health_score, account_tier, updated_at"
+            ).lt("health_score", 5.0).gt(
+                "contract_value_numeric", 0
             ).order(
-                "contract_value", desc=True
+                "contract_value_numeric", desc=True
             ).limit(10).execute()
             return result.data or []
         except Exception as e:
@@ -206,7 +206,7 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
         formatted = []
         for r in renewals:
             name = r.get("name", "Unknown")
-            arr = self._format_currency(r.get("contract_value", 0))
+            arr = self._format_currency(r.get("contract_value_numeric", 0))
             health = r.get("health_score", 0)
             end_date = r.get("contract_end_date", "Unknown")
             formatted.append(f"- {name}: {arr} (health: {health:.1f}, expires: {end_date})")
@@ -222,7 +222,7 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
         total_at_risk = 0
         for a in accounts:
             name = a.get("name", "Unknown")
-            arr = a.get("contract_value", 0) or 0
+            arr = a.get("contract_value_numeric", 0) or 0
             total_at_risk += arr
             health = a.get("health_score", 0)
             formatted.append(
@@ -350,12 +350,25 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
         if step_callback:
             step_callback("Gathering portfolio data...")
 
+        # Track data freshness timestamp
+        data_fetched_at = datetime.utcnow().isoformat()
+
         # Fetch all required data
         macro_insights = self._fetch_macro_insights()
         portfolio_snapshots = self._fetch_portfolio_snapshots()
         critical_renewals = self._fetch_critical_renewals()
         at_risk_accounts = self._fetch_at_risk_accounts()
         recent_wins = self._fetch_recent_wins()
+
+        # Calculate data_as_of from MAX(updated_at) across fetched accounts
+        all_updated_at = []
+        for r in critical_renewals:
+            if r.get("updated_at"):
+                all_updated_at.append(r.get("updated_at"))
+        for a in at_risk_accounts:
+            if a.get("updated_at"):
+                all_updated_at.append(a.get("updated_at"))
+        data_as_of = max(all_updated_at) if all_updated_at else data_fetched_at
 
         if step_callback:
             step_callback("Formatting data for analysis...")
@@ -430,6 +443,7 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
             "recommended_actions": parsed_result.get("recommended_actions", []),
             "confidence_score": parsed_result.get("confidence_score", 0.0),
             "generated_at": datetime.utcnow().isoformat(),
+            "data_as_of": data_as_of,
             "provider": provider,
             "model": model_name,
             "data_summary": {
