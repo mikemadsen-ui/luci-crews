@@ -429,9 +429,30 @@ analyze_sentiment:
     MEETING NOTES:
     {meeting_notes}
 
+    SCORING RULES — follow these strictly:
+
+    1. RECENCY DOMINATES: The most recent 30 days of interactions should carry ~60% of the score weight.
+       Interactions 30-90 days old carry ~30%. Anything older than 90 days carries ~10%.
+       A historically great relationship that is NOW deteriorating should score LOW, not average.
+
+    2. CHURN/OFFBOARDING SIGNALS are extremely negative. If recent conversations mention any of:
+       offboarding, cancellation, churn, not renewing, winding down, transitioning away, end of contract,
+       decommissioning, sunsetting — the score should be 1-3 regardless of historical positivity.
+
+    3. SCORE CALIBRATION:
+       - 1-2: Active churn, offboarding, hostile, or completely disengaged
+       - 3-4: Serious risk — escalation-level concerns, contract disputes, major dissatisfaction
+       - 5: Neutral — no strong signals either way, minimal engagement
+       - 6-7: Generally positive but with notable concerns or gaps
+       - 8-9: Strong positive — engaged champion, expanding, vocal advocate
+       - 10: Exceptional — unsolicited referrals, case study participant, strategic partnership
+
+    4. DO NOT default to 7. A score of 7 requires clear evidence of positive sentiment in RECENT interactions.
+       When in doubt, score LOWER. It is far more harmful to miss a risk than to flag a false alarm.
+
     Analyze the sentiment and return your analysis as JSON with this exact structure:
     {{
-      "score": <number from 1-10 where 1=very negative, 5=neutral, 10=very positive>,
+      "score": <number from 1-10 following the scoring rules above>,
       "confidence": "<high/medium/low>",
       "trend": "<improving/stable/declining>",
       "summary": "<2-3 sentence executive summary of overall sentiment>",
