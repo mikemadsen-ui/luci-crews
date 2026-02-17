@@ -174,25 +174,25 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
 
         lines = [
             f"Total ARR: {self._format_currency(today.get('total_arr', 0))}",
-            f"NRR (T12): {today.get('nrr_trailing_12', 0):.1f}%",
-            f"GRR (T12): {today.get('grr_trailing_12', 0):.1f}%",
-            f"Pipeline Coverage: {today.get('pipeline_coverage', 0):.1f}x",
-            f"Top 10 Concentration: {today.get('top10_concentration_pct', 0):.1f}%",
+            f"NRR (T12): {float(today.get('nrr_trailing_12', 0) or 0):.1f}%",
+            f"GRR (T12): {float(today.get('grr_trailing_12', 0) or 0):.1f}%",
+            f"Pipeline Coverage: {float(today.get('pipeline_coverage', 0) or 0):.1f}x",
+            f"Top 10 Concentration: {float(today.get('top10_concentration_pct', 0) or 0):.1f}%",
         ]
 
         # Add trends
         if week_ago:
-            arr_7d_change = (today.get("total_arr", 0) or 0) - (week_ago.get("total_arr", 0) or 0)
+            arr_7d_change = float(today.get("total_arr", 0) or 0) - float(week_ago.get("total_arr", 0) or 0)
             lines.append(f"7-day ARR change: {self._format_currency(arr_7d_change)}")
 
         if month_ago:
-            arr_30d_change = (today.get("total_arr", 0) or 0) - (month_ago.get("total_arr", 0) or 0)
+            arr_30d_change = float(today.get("total_arr", 0) or 0) - float(month_ago.get("total_arr", 0) or 0)
             lines.append(f"30-day ARR change: {self._format_currency(arr_30d_change)}")
 
         # Health by tier
         health_by_tier = today.get("avg_health_by_tier", {})
         if health_by_tier:
-            tier_lines = [f"  {tier}: {score:.1f}" for tier, score in health_by_tier.items()]
+            tier_lines = [f"  {tier}: {float(score):.1f}" for tier, score in health_by_tier.items()]
             lines.append("Health by Tier:")
             lines.extend(tier_lines)
 
@@ -207,7 +207,7 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
         for r in renewals:
             name = r.get("name", "Unknown")
             arr = self._format_currency(r.get("contract_value_numeric", 0))
-            health = r.get("health_score", 0)
+            health = float(r.get("health_score", 0) or 0)
             end_date = r.get("contract_end_date", "Unknown")
             formatted.append(f"- {name}: {arr} (health: {health:.1f}, expires: {end_date})")
 
@@ -222,7 +222,7 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
         total_at_risk = 0
         for a in accounts:
             name = a.get("name", "Unknown")
-            arr = a.get("contract_value_numeric", 0) or 0
+            arr = float(a.get("contract_value_numeric", 0) or 0)
             total_at_risk += arr
             health = a.get("health_score", 0)
             formatted.append(
@@ -242,7 +242,7 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
         total_won = 0
         for w in wins:
             name = w.get("name", "Unknown")
-            amount = w.get("amount", 0) or 0
+            amount = float(w.get("amount", 0) or 0)
             total_won += amount
             account = w.get("accounts", {})
             account_name = account.get("name", "Unknown") if account else "Unknown"
