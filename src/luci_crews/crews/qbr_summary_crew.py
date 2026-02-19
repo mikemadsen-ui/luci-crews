@@ -87,7 +87,7 @@ class QbrSummaryCrew(BaseCrew):
             return []
 
         try:
-            result = self.supabase.table("support_cases").select(
+            result = self.supabase.table("cases").select(
                 "case_number, subject, status, priority, type, created_date, closed_date"
             ).eq("salesforce_account_id", salesforce_account_id).gte(
                 "created_date", quarter_start
