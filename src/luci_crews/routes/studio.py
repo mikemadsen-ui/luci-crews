@@ -6,8 +6,10 @@ Allows users to create and run custom crews with MCP tool access.
 
 import os
 import json
+import asyncio
 import logging
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from crewai import Agent, Task, Crew, Process, LLM
@@ -17,6 +19,9 @@ from ..mcp_client import get_mcp_tools
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/crew", tags=["studio"])
+
+# Thread pool for running synchronous crew.kickoff() without blocking the event loop
+_crew_executor = ThreadPoolExecutor(max_workers=4)
 
 
 @router.post("/studio-run")
@@ -41,7 +46,6 @@ async def run_studio_crew(request: StudioCrewRequest):
                 try:
                     # MCP tools connect to remote servers (Avoma, Salesforce, etc.)
                     # and need time for schema discovery. 30s is generous but safe.
-                    import asyncio
                     mcp_future = asyncio.to_thread(get_mcp_tools, request.mcp_tools)
                     mcp_tools = await asyncio.wait_for(mcp_future, timeout=30.0)
 
@@ -185,8 +189,28 @@ Please answer the following questions:
                 **(request.context or {}),
             }
 
-            # Run crew
-            result = crew.kickoff(inputs=inputs)
+            # Run crew in a background thread so we can send SSE keepalives.
+            # crew.kickoff() is synchronous and can take 30-120+ seconds.
+            # Without keepalives, Vercel/Railway proxies kill the idle connection
+            # after ~30s, causing the UI to show "Terminated".
+            loop = asyncio.get_event_loop()
+            crew_future = loop.run_in_executor(_crew_executor, crew.kickoff, inputs)
+
+            # Send keepalive comments every 10s while crew is running.
+            # SSE comments (lines starting with ':') keep the TCP connection alive
+            # without generating client-side events.
+            keepalive_interval = 10  # seconds
+            while True:
+                try:
+                    result = await asyncio.wait_for(
+                        asyncio.shield(crew_future), timeout=keepalive_interval
+                    )
+                    break  # Crew finished
+                except asyncio.TimeoutError:
+                    # Crew still running — send keepalive to prevent proxy timeout
+                    elapsed = (datetime.utcnow() - start_time).total_seconds()
+                    yield f": keepalive {int(elapsed)}s\n\n"
+                    logger.debug(f"Sent keepalive at {elapsed:.0f}s")
 
             execution_time = (datetime.utcnow() - start_time).total_seconds()
             logger.info(f"Studio crew '{request.name}' completed in {execution_time:.2f}s")
