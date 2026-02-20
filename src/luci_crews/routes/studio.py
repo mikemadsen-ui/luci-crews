@@ -59,8 +59,17 @@ async def run_studio_crew(request: StudioCrewRequest):
                     yield f"data: {json.dumps({'type': 'progress', 'message': 'Continuing without MCP tools'})}\n\n"
 
             # Initialize LLM
+            # MCP tool schemas are large — gpt-4o-mini's 200K TPM limit is easily
+            # exceeded with 10+ tool definitions. Force gpt-4o for MCP crews.
+            # gpt-4o also produces better tool-calling results with complex schemas.
+            if mcp_tools:
+                model_name = os.environ.get("OPENAI_MODEL_NAME_MCP", "gpt-4o")
+            else:
+                model_name = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini")
+
+            logger.info(f"Using model: {model_name} (mcp_tools={'yes' if mcp_tools else 'no'})")
             llm = LLM(
-                model=os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini"),
+                model=model_name,
                 api_key=os.environ.get("OPENAI_API_KEY"),
             )
 
