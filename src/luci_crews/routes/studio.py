@@ -193,8 +193,15 @@ Please answer the following questions:
             # crew.kickoff() is synchronous and can take 30-120+ seconds.
             # Without keepalives, Vercel/Railway proxies kill the idle connection
             # after ~30s, causing the UI to show "Terminated".
+            def _run_crew():
+                """Run crew.kickoff in a thread with trace prompts suppressed."""
+                # Suppress CrewAI's interactive "view execution traces?" prompt
+                # which blocks the thread for 20s waiting for stdin.
+                os.environ["CREWAI_TELEMETRY_OPT_IN"] = "false"
+                return crew.kickoff(inputs=inputs)
+
             loop = asyncio.get_event_loop()
-            crew_future = loop.run_in_executor(_crew_executor, crew.kickoff, inputs)
+            crew_future = loop.run_in_executor(_crew_executor, _run_crew)
 
             # Send keepalive comments every 10s while crew is running.
             # SSE comments (lines starting with ':') keep the TCP connection alive
@@ -215,8 +222,19 @@ Please answer the following questions:
             execution_time = (datetime.utcnow() - start_time).total_seconds()
             logger.info(f"Studio crew '{request.name}' completed in {execution_time:.2f}s")
 
-            # Send result
-            yield f"data: {json.dumps({'type': 'result', 'result': str(result)})}\n\n"
+            # Send result — convert CrewOutput to string, truncate if massive
+            try:
+                result_str = str(result)
+                if len(result_str) > 50000:
+                    result_str = result_str[:50000] + "\n\n... [Output truncated at 50,000 characters]"
+                logger.info(f"Sending result event ({len(result_str)} chars)")
+                result_payload = json.dumps({'type': 'result', 'result': result_str})
+                logger.info(f"Result JSON payload size: {len(result_payload)} bytes")
+                yield f"data: {result_payload}\n\n"
+                logger.info("Result event yielded successfully")
+            except Exception as ser_err:
+                logger.error(f"Error serializing result: {ser_err}", exc_info=True)
+                yield f"data: {json.dumps({'type': 'result', 'result': f'Crew completed in {execution_time:.1f}s but result could not be serialized: {str(ser_err)[:200]}'})}\n\n"
 
         except Exception as e:
             logger.error(f"Error running studio crew: {e}", exc_info=True)
