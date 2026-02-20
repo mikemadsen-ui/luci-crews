@@ -85,13 +85,16 @@ def _sanitize_tool_schemas(tools: List[Any]) -> List[Any]:
     """
     Sanitize MCP tool schemas to be compatible with OpenAI's function calling API.
 
-    mcpadapt passes through raw MCP schema properties as json_schema_extra on
-    Pydantic fields. These often contain None values (enum: null, items: null)
-    and empty arrays (anyOf: []) that OpenAI's strict validation rejects with
-    errors like "None is not of type 'object', 'boolean'" and "[] should be
-    non-empty".
+    Fixes two classes of issues from mcpadapt's raw MCP schema passthrough:
 
-    This function cleans up those problematic values at the Pydantic field level.
+    1. json_schema_extra contains None values (enum: null, items: null) and
+       empty arrays (anyOf: []) that OpenAI rejects with errors like
+       "None is not of type 'object', 'boolean'" and "[] should be non-empty".
+
+    2. Fields typed as `dict` produce `type: object, additionalProperties: true`
+       in the JSON schema. OpenAI requires `additionalProperties: false` on all
+       nested objects, which breaks freeform dict fields. We convert these to
+       `str` (JSON string) so the LLM serializes the data as a JSON string.
     """
     for tool in tools:
         schema_cls = getattr(tool, 'args_schema', None)
@@ -99,6 +102,16 @@ def _sanitize_tool_schemas(tools: List[Any]) -> List[Any]:
             continue
 
         for field_name, field_info in schema_cls.model_fields.items():
+            # Fix 1: Convert freeform dict fields to str to avoid
+            # OpenAI's "additionalProperties must be false" error.
+            # The LLM will pass a JSON string instead of a nested object.
+            if field_info.annotation is dict:
+                field_info.annotation = str
+                desc = field_info.description or field_name
+                if "json" not in desc.lower():
+                    field_info.description = f"{desc} (as a JSON string, e.g. '{{\"key\": \"value\"}}')"
+
+            # Fix 2: Clean up json_schema_extra from mcpadapt
             extra = field_info.json_schema_extra
             if not isinstance(extra, dict):
                 continue
@@ -115,6 +128,10 @@ def _sanitize_tool_schemas(tools: List[Any]) -> List[Any]:
                 elif key == "properties" and isinstance(value, dict) and len(value) == 0:
                     keys_to_remove.append(key)
                 elif key == "title" and value == "":
+                    keys_to_remove.append(key)
+                elif key == "additionalProperties":
+                    # Remove additionalProperties from extras entirely;
+                    # it's either wrong (true) or unnecessary (false)
                     keys_to_remove.append(key)
 
             for key in keys_to_remove:
