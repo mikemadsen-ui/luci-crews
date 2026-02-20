@@ -81,6 +81,59 @@ MCP_SERVERS = {
 }
 
 
+def _sanitize_tool_schemas(tools: List[Any]) -> List[Any]:
+    """
+    Sanitize MCP tool schemas to be compatible with OpenAI's function calling API.
+
+    mcpadapt passes through raw MCP schema properties as json_schema_extra on
+    Pydantic fields. These often contain None values (enum: null, items: null)
+    and empty arrays (anyOf: []) that OpenAI's strict validation rejects with
+    errors like "None is not of type 'object', 'boolean'" and "[] should be
+    non-empty".
+
+    This function cleans up those problematic values at the Pydantic field level.
+    """
+    for tool in tools:
+        schema_cls = getattr(tool, 'args_schema', None)
+        if not schema_cls or not hasattr(schema_cls, 'model_fields'):
+            continue
+
+        for field_name, field_info in schema_cls.model_fields.items():
+            extra = field_info.json_schema_extra
+            if not isinstance(extra, dict):
+                continue
+
+            # Remove keys with None values (enum: null, items: null)
+            # Remove empty arrays (anyOf: [])
+            # Remove empty dicts for properties on leaf fields
+            keys_to_remove = []
+            for key, value in extra.items():
+                if value is None:
+                    keys_to_remove.append(key)
+                elif isinstance(value, list) and len(value) == 0:
+                    keys_to_remove.append(key)
+                elif key == "properties" and isinstance(value, dict) and len(value) == 0:
+                    keys_to_remove.append(key)
+                elif key == "title" and value == "":
+                    keys_to_remove.append(key)
+
+            for key in keys_to_remove:
+                del extra[key]
+
+            # If extra is now empty, clear it entirely
+            if not extra:
+                field_info.json_schema_extra = None
+
+        # Rebuild the model schema cache so changes take effect
+        if hasattr(schema_cls, 'model_rebuild'):
+            try:
+                schema_cls.model_rebuild(force=True)
+            except Exception:
+                pass  # Non-critical if rebuild fails
+
+    return tools
+
+
 class MCPClient:
     """Generic MCP client that can connect to any configured MCP server."""
 
@@ -142,6 +195,10 @@ class MCPClient:
 
             adapter = MCPServerAdapter(params)
             tools = adapter.tools or []
+
+            # Sanitize schemas to fix OpenAI API compatibility issues
+            # (mcpadapt passes through null/empty values that OpenAI rejects)
+            tools = _sanitize_tool_schemas(tools)
 
             # Filter tools by prefix if specified
             config = MCP_SERVERS.get(server_name, {})
