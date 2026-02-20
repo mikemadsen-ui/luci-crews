@@ -30,22 +30,32 @@ async def run_studio_crew(request: StudioCrewRequest):
     start_time = datetime.utcnow()
 
     async def generate_stream():
+        mcp_tools = []
+
         try:
-            # Load MCP tools if requested
-            mcp_tools = []
+            # Load MCP tools if requested (with timeout protection)
             if request.mcp_tools:
                 logger.info(f"Loading MCP tools: {request.mcp_tools}")
+                yield f"data: {json.dumps({'type': 'progress', 'message': 'Loading MCP tools...'})}\n\n"
+
                 try:
-                    mcp_tools = get_mcp_tools(request.mcp_tools)
+                    # Give MCP tools 5 seconds to load, then continue without them
+                    import asyncio
+                    mcp_future = asyncio.to_thread(get_mcp_tools, request.mcp_tools)
+                    mcp_tools = await asyncio.wait_for(mcp_future, timeout=5.0)
+
                     if mcp_tools:
                         logger.info(f"Loaded {len(mcp_tools)} MCP tools")
-                        yield f"data: {json.dumps({'type': 'progress', 'message': f'Loaded {len(mcp_tools)} MCP tools from {len(request.mcp_tools)} servers'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'progress', 'message': f'Loaded {len(mcp_tools)} MCP tools'})}\n\n"
                     else:
-                        logger.warning(f"No MCP tools loaded (check API keys in Railway environment)")
-                        yield f"data: {json.dumps({'type': 'progress', 'message': 'Warning: MCP tools unavailable (check API keys). Continuing without live data access.'})}\n\n"
+                        logger.warning(f"No MCP tools loaded")
+                        yield f"data: {json.dumps({'type': 'progress', 'message': 'Continuing without MCP tools'})}\n\n"
+                except asyncio.TimeoutError:
+                    logger.warning("MCP tool loading timed out after 5 seconds")
+                    yield f"data: {json.dumps({'type': 'progress', 'message': 'MCP tools timed out, continuing without them'})}\n\n"
                 except Exception as e:
-                    logger.warning(f"Error loading MCP tools: {e}")
-                    yield f"data: {json.dumps({'type': 'progress', 'message': 'Warning: MCP tools unavailable. Continuing without live data access.'})}\n\n"
+                    logger.warning(f"Error loading MCP tools: {str(e)[:100]}")
+                    yield f"data: {json.dumps({'type': 'progress', 'message': 'Continuing without MCP tools'})}\n\n"
 
             # Initialize LLM
             llm = LLM(
