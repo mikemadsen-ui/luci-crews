@@ -109,17 +109,21 @@ class MCPClient:
             return None
 
         # Build server params based on type
+        # mcpadapt defaults to "sse" transport; streamable-http endpoints
+        # (like Avoma) need "transport": "streamable-http" explicitly.
         if config["type"] == "http":
             return {
                 "url": config["url"],
+                "transport": "streamable-http",
                 "headers": {
                     "Authorization": f"Bearer {auth_key}"
                 }
             }
         elif config["type"] == "remote":
-            # Remote SSE connection (like leandata-mcp)
+            # Remote SSE connection (like leandata-mcp hub)
             return {
                 "url": config["url"],
+                "transport": "sse",
                 "headers": {
                     "Authorization": f"Bearer {auth_key}"
                 }

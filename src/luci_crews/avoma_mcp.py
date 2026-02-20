@@ -38,6 +38,7 @@ class AvomaMCPClient:
         """Get MCP server parameters with authentication."""
         return {
             "url": self.mcp_url,
+            "transport": "streamable-http",
             "headers": {
                 "Authorization": f"Bearer {self.api_key}"
             }
