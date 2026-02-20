@@ -58,20 +58,48 @@ async def run_studio_crew(request: StudioCrewRequest):
                     logger.warning(f"Error loading MCP tools: {str(e)[:100]}")
                     yield f"data: {json.dumps({'type': 'progress', 'message': 'Continuing without MCP tools'})}\n\n"
 
-            # Initialize LLM
-            # MCP tool schemas are large — gpt-4o-mini's 200K TPM limit is easily
-            # exceeded with 10+ tool definitions. Force gpt-4o for MCP crews.
-            # gpt-4o also produces better tool-calling results with complex schemas.
-            if mcp_tools:
-                model_name = os.environ.get("OPENAI_MODEL_NAME_MCP", "gpt-4o")
-            else:
-                model_name = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini")
+            # Initialize LLM with user's AI model preferences
+            # Use user's settings if provided, otherwise fall back to defaults
+            if request.provider and request.model_id:
+                # User has specific AI model preferences from management level
+                model_name = request.model_id
+                provider = request.provider
+                logger.info(f"Using user AI settings: {provider}/{model_name}")
 
-            logger.info(f"Using model: {model_name} (mcp_tools={'yes' if mcp_tools else 'no'})")
-            llm = LLM(
-                model=model_name,
-                api_key=os.environ.get("OPENAI_API_KEY"),
-            )
+                # Get API key based on provider
+                if provider == "anthropic":
+                    api_key = os.environ.get("ANTHROPIC_API_KEY")
+                elif provider == "openai":
+                    api_key = os.environ.get("OPENAI_API_KEY")
+                elif provider == "google":
+                    api_key = os.environ.get("GOOGLE_API_KEY")
+                else:
+                    api_key = os.environ.get("OPENAI_API_KEY")
+
+                llm_params = {
+                    "model": model_name,
+                    "api_key": api_key,
+                }
+                if request.temperature is not None:
+                    llm_params["temperature"] = request.temperature
+                if request.max_tokens is not None:
+                    llm_params["max_tokens"] = request.max_tokens
+
+                llm = LLM(**llm_params)
+            else:
+                # No user preferences - use defaults
+                # MCP tool schemas are large — gpt-4o-mini's 200K TPM limit is easily
+                # exceeded with 10+ tool definitions. Force gpt-4o for MCP crews.
+                if mcp_tools:
+                    model_name = os.environ.get("OPENAI_MODEL_NAME_MCP", "gpt-4o")
+                else:
+                    model_name = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini")
+
+                logger.info(f"Using default model: {model_name} (mcp_tools={'yes' if mcp_tools else 'no'})")
+                llm = LLM(
+                    model=model_name,
+                    api_key=os.environ.get("OPENAI_API_KEY"),
+                )
 
             # Create agent based on mode
             if request.mode == "simple":
