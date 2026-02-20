@@ -11,6 +11,50 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# Read-only tool allowlists per server.
+# Only these tools are passed to the LLM to keep token usage under control.
+# Each MCP hub connection downloads ALL tools (~30+), but most are write ops
+# (create, update, delete, execute_apex) that analysis crews don't need.
+# Adding all tools would exceed OpenAI's TPM limits (231K tokens vs 30K limit).
+TOOL_ALLOWLIST = {
+    "avoma": {
+        "list_meetings",
+        "get_meeting",
+        "get_meeting_notes",
+        # get_meeting_transcript excluded — transcripts are huge and blow up context
+    },
+    "salesforce": {
+        "salesforce_query",
+        "salesforce_search",
+        "salesforce_get_record",
+        "salesforce_describe",
+    },
+    "snowflake": {
+        "snowflake_query",
+        "snowflake_list_databases",
+        "snowflake_list_schemas",
+        "snowflake_list_tables",
+        "snowflake_describe_table",
+    },
+    "hubspot": {
+        "hubspot_search_contacts",
+        "hubspot_search_companies",
+        "hubspot_search_deals",
+        "hubspot_get_contact",
+        "hubspot_get_company",
+        "hubspot_get_deal",
+    },
+    "zendesk": {
+        "zendesk_get_tickets",
+        "zendesk_get_ticket",
+        "zendesk_get_ticket_comments",
+    },
+    "userevidence": {
+        "userevidence_search_assets",
+        "userevidence_get_asset",
+    },
+}
+
 # MCP server configurations
 MCP_SERVERS = {
     "avoma": {
@@ -217,11 +261,21 @@ class MCPClient:
             # (mcpadapt passes through null/empty values that OpenAI rejects)
             tools = _sanitize_tool_schemas(tools)
 
-            # Filter tools by prefix if specified
+            # Filter tools by prefix if specified (for hub servers that share one endpoint)
             config = MCP_SERVERS.get(server_name, {})
             prefix = config.get("prefix")
             if prefix:
                 tools = [t for t in tools if hasattr(t, 'name') and t.name.startswith(prefix)]
+
+            # Apply allowlist to keep only read/query tools.
+            # This is critical for staying under OpenAI's TPM limits —
+            # full tool schemas for all MCP tools exceed 230K tokens.
+            allowlist = TOOL_ALLOWLIST.get(server_name)
+            if allowlist:
+                before_count = len(tools)
+                tools = [t for t in tools if hasattr(t, 'name') and t.name in allowlist]
+                if before_count != len(tools):
+                    logger.info(f"Filtered {server_name} tools: {before_count} -> {len(tools)} (allowlist)")
 
             self._adapters[server_name] = adapter
             self._tools_cache[server_name] = tools
