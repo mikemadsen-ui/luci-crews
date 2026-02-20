@@ -39,10 +39,11 @@ async def run_studio_crew(request: StudioCrewRequest):
                 yield f"data: {json.dumps({'type': 'progress', 'message': 'Loading MCP tools...'})}\n\n"
 
                 try:
-                    # Give MCP tools 5 seconds to load, then continue without them
+                    # MCP tools connect to remote servers (Avoma, Salesforce, etc.)
+                    # and need time for schema discovery. 30s is generous but safe.
                     import asyncio
                     mcp_future = asyncio.to_thread(get_mcp_tools, request.mcp_tools)
-                    mcp_tools = await asyncio.wait_for(mcp_future, timeout=5.0)
+                    mcp_tools = await asyncio.wait_for(mcp_future, timeout=30.0)
 
                     if mcp_tools:
                         logger.info(f"Loaded {len(mcp_tools)} MCP tools")
@@ -51,7 +52,7 @@ async def run_studio_crew(request: StudioCrewRequest):
                         logger.warning(f"No MCP tools loaded")
                         yield f"data: {json.dumps({'type': 'progress', 'message': 'Continuing without MCP tools'})}\n\n"
                 except asyncio.TimeoutError:
-                    logger.warning("MCP tool loading timed out after 5 seconds")
+                    logger.warning("MCP tool loading timed out after 30 seconds")
                     yield f"data: {json.dumps({'type': 'progress', 'message': 'MCP tools timed out, continuing without them'})}\n\n"
                 except Exception as e:
                     logger.warning(f"Error loading MCP tools: {str(e)[:100]}")
@@ -75,12 +76,23 @@ async def run_studio_crew(request: StudioCrewRequest):
                     tools=mcp_tools,
                 )
 
-                # Build task description
+                # Build task description with MCP tool guidance
+                mcp_guidance = ""
+                if mcp_tools:
+                    mcp_guidance = """
+IMPORTANT - MCP Tool Usage Guidelines:
+- When querying Salesforce, ALWAYS use salesforce_describe first to discover the actual fields on an object before writing SOQL queries. Do NOT guess custom field names.
+- If a query fails with "No such column", use salesforce_describe to find the correct field name and retry.
+- Use salesforce_get_record with the target ID to get a quick overview of the record.
+- Keep SOQL queries simple - select only the fields you need.
+- For meetings, use list_meetings with date ranges to find relevant calls.
+"""
+
                 description = f"""
 Target ID: {request.target_id}
 Target Type: {request.target_type}
 Additional Context: {json.dumps(request.context or {}, indent=2)}
-
+{mcp_guidance}
 Please answer the following questions:
 {request.questions}
 """
