@@ -37,11 +37,15 @@ async def run_studio_crew(request: StudioCrewRequest):
                 logger.info(f"Loading MCP tools: {request.mcp_tools}")
                 try:
                     mcp_tools = get_mcp_tools(request.mcp_tools)
-                    logger.info(f"Loaded {len(mcp_tools)} MCP tools")
-                    yield f"data: {json.dumps({'type': 'progress', 'message': f'Loaded {len(mcp_tools)} MCP tools'})}\n\n"
+                    if mcp_tools:
+                        logger.info(f"Loaded {len(mcp_tools)} MCP tools")
+                        yield f"data: {json.dumps({'type': 'progress', 'message': f'Loaded {len(mcp_tools)} MCP tools from {len(request.mcp_tools)} servers'})}\n\n"
+                    else:
+                        logger.warning(f"No MCP tools loaded (check API keys in Railway environment)")
+                        yield f"data: {json.dumps({'type': 'progress', 'message': 'Warning: MCP tools unavailable (check API keys). Continuing without live data access.'})}\n\n"
                 except Exception as e:
-                    logger.error(f"Error loading MCP tools: {e}")
-                    yield f"data: {json.dumps({'type': 'progress', 'message': f'Warning: Could not load MCP tools: {str(e)}'})}\n\n"
+                    logger.warning(f"Error loading MCP tools: {e}")
+                    yield f"data: {json.dumps({'type': 'progress', 'message': 'Warning: MCP tools unavailable. Continuing without live data access.'})}\n\n"
 
             # Initialize LLM
             llm = LLM(

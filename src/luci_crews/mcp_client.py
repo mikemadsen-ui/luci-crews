@@ -166,7 +166,7 @@ class MCPClient:
             logger.error("crewai-tools[mcp] not installed. Run: pip install 'crewai-tools[mcp]'")
             return []
         except Exception as e:
-            logger.error(f"Failed to connect to {server_name} MCP: {e}")
+            logger.warning(f"Skipping {server_name} MCP (connection failed): {str(e)[:100]}")
             return []
 
     def get_all_tools(self) -> List[Any]:
