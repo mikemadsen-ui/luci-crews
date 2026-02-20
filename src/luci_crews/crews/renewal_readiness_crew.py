@@ -13,6 +13,7 @@ from crewai import Agent, Task, Crew, Process
 
 from ..config_store import get_supabase
 from .base_crew import BaseCrew
+from ..utils.data_freshness import calculate_data_freshness, extract_sync_timestamps
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class RenewalReadinessCrew(BaseCrew):
         try:
             result = self.supabase.table("accounts").select(
                 "id, name, salesforce_id, industry, account_tier, "
-                "contract_value_numeric, annual_revenue, contract_end_date, customer_start_date, updated_at"
+                "contract_value_numeric, annual_revenue, contract_end_date, customer_start_date, updated_at, last_synced_at"
             ).eq("id", account_id).limit(1).execute()
             return result.data[0] if result.data else {}
         except Exception as e:
@@ -434,6 +435,15 @@ class RenewalReadinessCrew(BaseCrew):
         elif "gemini" in model_name.lower():
             provider = "google"
 
+        # Calculate data freshness
+        sync_timestamps = extract_sync_timestamps({
+            "account": account_data,
+            "usage": usage_data.get("usage") if usage_data and isinstance(usage_data, dict) else None,
+            "support_cases": support_cases_data,
+            "health_score": health_score_data,
+        })
+        data_freshness = calculate_data_freshness(sync_timestamps)
+
         return {
             "success": True,
             "result": parsed_result,
@@ -442,6 +452,7 @@ class RenewalReadinessCrew(BaseCrew):
             "contract_end_date": contract_end_date,
             "current_arr": current_arr,
             "data_as_of": data_as_of,
+            "data_freshness": data_freshness,
             "provider": provider,
             "model": model_name,
         }

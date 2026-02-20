@@ -16,6 +16,7 @@ from crewai import Agent, Task, Crew, Process
 
 from ..config_store import get_supabase
 from .base_crew import BaseCrew
+from ..utils.data_freshness import calculate_data_freshness, extract_sync_timestamps
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class ExpansionSpecialistCrew(BaseCrew):
             result = self.supabase.table("accounts").select(
                 "id, name, salesforce_id, industry, account_tier, "
                 "contract_value_numeric, annual_revenue, contract_end_date, "
-                "customer_start_date, health_score, updated_at"
+                "customer_start_date, health_score, updated_at, last_synced_at"
             ).eq("id", account_id).limit(1).execute()
             return result.data[0] if result.data else {}
         except Exception as e:
@@ -689,6 +690,15 @@ class ExpansionSpecialistCrew(BaseCrew):
         active_90 = usage.get("active_users_90d") or 0
         utilization_pct = round((active_90 / contracted) * 100, 1) if contracted > 0 else 0
 
+        # Calculate data freshness
+        sync_timestamps = extract_sync_timestamps({
+            "account": account_data,
+            "usage": usage_data.get("usage") if usage_data else None,
+            "arr_history": arr_history_data,
+            "health_score": health_score_data,
+        })
+        data_freshness = calculate_data_freshness(sync_timestamps)
+
         return {
             "success": True,
             "result": parsed_result,
@@ -700,6 +710,8 @@ class ExpansionSpecialistCrew(BaseCrew):
             "provider": provider,
             "model": model_name,
             "data_as_of": data_as_of,
+            # Data freshness metadata
+            "data_freshness": data_freshness,
             # Commercial intelligence metadata
             "commercial_signals_count": len(commercial_insights),
             "seat_metrics": {

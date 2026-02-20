@@ -47,8 +47,11 @@ class AccountAnalysisCrew(BaseCrew):
             into clear, actionable guidance. You are deliberately conservative with scores —
             you never let positive sentiment mask hard facts like churn, contract expiration,
             or product disengagement. If an account has churned, that's a 1-2 regardless of
-            how much the contacts liked the product. You provide practical recommendations
-            that account managers can act on immediately.""",
+            how much the contacts liked the product. You understand that silence is NOT health:
+            an account with no recent calls or meetings before a renewal is AT RISK, not stable.
+            Low product adoption (few features, low utilization) is a concrete problem that
+            limits how high a score can go, no matter how positive the sentiment.
+            You provide practical recommendations that account managers can act on immediately.""",
             verbose=False,
             allow_delegation=False,
             llm=self.llm,
@@ -171,6 +174,12 @@ ARR: {arr_str}
             missing = all_features - set(features)
             if missing:
                 lines.append(f"Not Enabled: {', '.join(sorted(missing))}")
+            # Flag minimal feature adoption
+            if isinstance(feature_count, (int, float)) and isinstance(total_features, (int, float)):
+                if feature_count <= 1 and total_features >= 5:
+                    lines.append("⚠️ MINIMAL FEATURE ADOPTION — only 1 feature enabled, apply -1 penalty to health_component")
+                elif feature_count <= 2 and total_features >= 5:
+                    lines.append("⚠️ LOW FEATURE ADOPTION — only using a fraction of available features")
 
         # Adoption score
         adoption_score = engagement_data.get("adoptionScore")
@@ -182,6 +191,11 @@ ARR: {arr_str}
                 lines.append(f"Adoption Score: {adoption_score}")
             if health_grade is not None:
                 lines.append(f"Health Grade: {health_grade}")
+                # Add strong signals for poor grades
+                if health_grade in ("F", "f"):
+                    lines.append("🚨 FAILING ADOPTION — health_component MUST be ≤ 4, overall score MUST be ≤ 5")
+                elif health_grade in ("D", "d"):
+                    lines.append("⚠️ POOR ADOPTION — health_component MUST be ≤ 5, overall score MUST be ≤ 6")
             routing_objs = engagement_data.get("routingObjects")
             if routing_objs is not None:
                 lines.append(f"Routing Objects: {routing_objs}")
@@ -330,12 +344,21 @@ Evaluate TWO key dimensions:
    - Support ticket patterns and satisfaction
 
 2. ACCOUNT HEALTH (from metrics and behavior):
-   - Engagement level and trends
+   - Product adoption (adoption score, health grade, features enabled)
+   - Seat utilization percentage
+   - Engagement level and trends (calls/meetings in last 30/60 days)
    - Support health (ticket volume, resolution satisfaction)
    - Relationship strength
    - Churn risk indicators (CRITICAL: if churn date is in the past, contract expired,
      or status is "churned"/"inactive", health MUST be 1-3 max)
    - Expansion opportunity signals
+
+   IMPORTANT HEALTH SCORING GUIDANCE:
+   - Adoption score F (< 30) or D (< 50) with low utilization (< 50%) = health score 4 or lower
+   - Only 1 of 7 features enabled = significant adoption gap, cap health at 5
+   - 0 calls/meetings in last 30 days near renewal = engagement red flag, cap health at 5
+   - Utilization below 40% = the customer is not getting value, cap health at 5
+   - Do NOT assume "no news is good news" — lack of engagement is a WARNING sign
 
 IMPORTANT: Pay close attention to the CURRENT STATUS of support cases:
 - If all cases are CLOSED/RESOLVED, this is POSITIVE - do NOT describe them as "unresolved" or "open"
@@ -386,7 +409,7 @@ Review the sentiment and health analysis from the previous task. Create a unifie
    - Base calculation: 40% sentiment + 60% health (health is more predictive of churn)
    - Round to nearest integer
 
-   CRITICAL HARD CAPS (these override the weighted average):
+   CRITICAL HARD CAPS (these override the weighted average — apply ALL that match):
    - CONFIRMED CHURN (churn date in the past, contract fully expired, or account status
      contains "churn"/"inactive"/"cancelled"): score MUST be capped at 2, status "critical"
    - CONTRACT EXPIRED (contract end date in the past, or days to renewal is negative):
@@ -394,6 +417,36 @@ Review the sentiment and health analysis from the previous task. Create a unifie
    - NEAR-ZERO UTILIZATION (utilization < 5%): apply a penalty of -3 (minimum score 1)
    - Positive sentiment does NOT offset churn. An account with great relationships
      but confirmed churn is still a 1-2, never higher.
+
+   ADOPTION & UTILIZATION PENALTIES (these also override the weighted average):
+   - FAILING ADOPTION (adoption score < 30 or health grade "F"):
+     health_component CANNOT exceed 4, overall score CANNOT exceed 5
+   - POOR ADOPTION (adoption score 30-49 or health grade "D"):
+     health_component CANNOT exceed 5, overall score CANNOT exceed 6
+   - LOW UTILIZATION (utilization < 30%):
+     health_component CANNOT exceed 5, overall score CANNOT exceed 6
+   - MODERATE-LOW UTILIZATION (utilization 30-49%):
+     health_component CANNOT exceed 6, overall score CANNOT exceed 7
+   - MINIMAL FEATURE ADOPTION (only 1 of 7 features enabled):
+     apply a penalty of -1 to health_component
+
+   ENGAGEMENT & RENEWAL RED FLAGS:
+   - RENEWAL APPROACHING + LOW ADOPTION (renewal within 30 days AND adoption score < 50):
+     overall score CANNOT exceed 4, status MUST be "at_risk" or "critical"
+   - RENEWAL APPROACHING + NO ENGAGEMENT (renewal within 30 days AND 0 calls in last 30 days):
+     overall score CANNOT exceed 5, this is a significant risk signal
+   - NO RECENT ENGAGEMENT (0 calls/meetings in last 60 days):
+     apply a penalty of -1 to the overall score — silence is NOT health
+   - ZERO FORECASTED ARR (forecasted ARR = $0):
+     this is a churn signal, overall score CANNOT exceed 4
+
+   SCORING CALIBRATION:
+   - A score of 8+ ("healthy"/"thriving") requires STRONG product engagement:
+     adoption score >= 60, utilization >= 60%, AND recent engagement (calls in last 30 days)
+   - A score of 7 ("healthy") requires at minimum: adoption score >= 50 OR utilization >= 50%
+   - If the data shows poor adoption AND low utilization, the score CANNOT be above 5 regardless of sentiment
+   - When in doubt, score LOWER not higher. An overly optimistic score is more dangerous
+     than a conservative one — it creates false confidence and delays intervention.
 
 2. OVERALL STATUS:
    - "thriving" (9-10): Expanding, strong champion, excellent engagement

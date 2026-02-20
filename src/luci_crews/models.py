@@ -20,6 +20,7 @@ class CrewResponse(BaseModel):
     result: Optional[Any] = None  # Supports structured results
     error: Optional[str] = None
     execution_time: Optional[float] = None
+    data_freshness: Optional[Dict[str, Any]] = None  # Metadata about underlying data freshness
 
 
 # =============================================================================
