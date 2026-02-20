@@ -16,10 +16,10 @@ from ..models import StudioCrewRequest
 from ..mcp_client import get_mcp_tools
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/crew/studio", tags=["studio"])
+router = APIRouter(prefix="/api/crew", tags=["studio"])
 
 
-@router.post("/run")
+@router.post("/studio-run")
 async def run_studio_crew(request: StudioCrewRequest):
     """
     Run a Crew Studio crew with dynamic configuration.
