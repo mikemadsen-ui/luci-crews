@@ -147,7 +147,7 @@ class MCPClient:
         try:
             from crewai_tools import MCPServerAdapter
 
-            adapter = MCPServerAdapter(params)
+            adapter = MCPServerAdapter(**params)
             tools = adapter.tools or []
 
             # Filter tools by prefix if specified
