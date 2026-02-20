@@ -58,39 +58,14 @@ async def run_studio_crew(request: StudioCrewRequest):
                     logger.warning(f"Error loading MCP tools: {str(e)[:100]}")
                     yield f"data: {json.dumps({'type': 'progress', 'message': 'Continuing without MCP tools'})}\n\n"
 
-            # Initialize LLM with user's AI model preferences from management level.
-            # CrewAI uses litellm under the hood, which needs provider prefixes:
-            #   OpenAI: "gpt-4o" (no prefix)
-            #   Anthropic: "anthropic/claude-sonnet-4-20250514"
-            #   Google: "gemini/gemini-2.5-flash"
-            from ..ai_settings_helper import PROVIDER_MODEL_PREFIXES
-
-            if request.provider and request.model_id:
-                prefix = PROVIDER_MODEL_PREFIXES.get(request.provider, "")
-                model_name = f"{prefix}{request.model_id}"
-
-                api_key_map = {
-                    "openai": "OPENAI_API_KEY",
-                    "anthropic": "ANTHROPIC_API_KEY",
-                    "google": "GOOGLE_API_KEY",
-                }
-                api_key = os.environ.get(api_key_map.get(request.provider, "OPENAI_API_KEY"))
-
-                logger.info(f"Using user model: {model_name} (provider={request.provider})")
-                llm = LLM(
-                    model=model_name,
-                    api_key=api_key,
-                    temperature=request.temperature if request.temperature is not None else 0.7,
-                    max_tokens=request.max_tokens if request.max_tokens is not None else 4096,
-                )
-            else:
-                # No user preferences — use env var default
-                model_name = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o")
-                logger.info(f"Using default model: {model_name}")
-                llm = LLM(
-                    model=model_name,
-                    api_key=os.environ.get("OPENAI_API_KEY"),
-                )
+            # Initialize LLM — use OPENAI_MODEL_NAME env var (default gpt-4o).
+            # TODO: Wire up user's management-level model preference (needs local testing first)
+            model_name = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o")
+            logger.info(f"Using model: {model_name}")
+            llm = LLM(
+                model=model_name,
+                api_key=os.environ.get("OPENAI_API_KEY"),
+            )
 
             # Create agent based on mode
             if request.mode == "simple":
