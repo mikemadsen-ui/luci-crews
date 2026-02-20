@@ -91,6 +91,7 @@ from .routes.analysis import router as analysis_router
 from .routes.coaching import router as coaching_router
 from .routes.config import router as config_router
 from .routes.health import router as health_router
+from .routes.studio import router as studio_router
 from .ai_settings_helper import (
     run_with_fallback,
     is_quota_error,
@@ -161,6 +162,7 @@ app.include_router(batch_router)  # Batch processing for overnight sync jobs
 app.include_router(coaching_router)  # Coaching crew endpoints
 app.include_router(config_router)  # Config management for Crew Studio
 app.include_router(health_router)  # Health check and capabilities endpoints
+app.include_router(studio_router)  # Crew Studio dynamic crew execution
 
 
 # =============================================================================

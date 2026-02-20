@@ -590,3 +590,28 @@ class ContextualDrilldownRequest(BaseModel):
     entityType: str  # account, metric, renewal
     entityId: str  # Account UUID or metric name
     context: Optional[str] = "risk"  # risk, renewal, expansion, engagement
+
+
+# =============================================================================
+# Crew Studio Models
+# =============================================================================
+
+class StudioCrewRequest(BaseModel):
+    """Request model for Crew Studio dynamic crews."""
+    mode: str  # 'simple' or 'advanced'
+    name: str
+    target_type: str
+    target_id: str
+    context: Optional[Dict[str, Any]] = None
+    mcp_tools: Optional[List[str]] = None
+    userId: Optional[str] = None
+
+    # Simple mode fields
+    expertise: Optional[str] = None
+    questions: Optional[str] = None
+    data_sources: Optional[List[str]] = None
+    output_format: Optional[str] = None
+
+    # Advanced mode fields
+    agent: Optional[Dict[str, Any]] = None
+    task: Optional[Dict[str, Any]] = None
