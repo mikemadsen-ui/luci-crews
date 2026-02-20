@@ -606,6 +606,12 @@ class StudioCrewRequest(BaseModel):
     mcp_tools: Optional[List[str]] = None
     userId: Optional[str] = None
 
+    # AI model settings (from user's management level)
+    model_id: Optional[str] = None      # e.g. "claude-sonnet-4-20250514", "gpt-4o"
+    provider: Optional[str] = None      # "anthropic", "openai", "google"
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+
     # Simple mode fields
     expertise: Optional[str] = None
     questions: Optional[str] = None
