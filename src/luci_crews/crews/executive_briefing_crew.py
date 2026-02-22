@@ -292,6 +292,7 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
             "CRITICAL RENEWALS (next 90 days, health < 7):\n{critical_renewals}\n\n"
             "AT-RISK ACCOUNTS (health < 5):\n{at_risk_accounts}\n\n"
             "RECENT WINS (past 7 days):\n{recent_wins}\n\n"
+            "IMPORTANT: All currency values are in US Dollars. Always use the $ symbol, never £ or other currency symbols.\n\n"
             "Create a briefing that includes:\n"
             "1. A headline summarizing portfolio health (e.g., 'Portfolio Health: Caution - 2 systemic risks')\n"
             "2. A 2-3 paragraph narrative that:\n"
@@ -301,7 +302,19 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
             "   - Uses specific numbers and account names\n"
             "3. A structured list of key risks with severity, one-liner description, and affected ARR\n"
             "4. A list of key wins with description and ARR impact\n"
-            "5. 3-5 recommended actions with priority levels\n"
+            "5. 3-5 recommended actions with priority levels and a navigation_target from this list:\n"
+            "   - strategic-health:high-risk-accounts (for churn/retention/whale account risks)\n"
+            "   - strategic-health:critical-renewals (for upcoming renewal concerns)\n"
+            "   - strategic-health:portfolio-kpis (for ARR/NRR/GRR portfolio metrics)\n"
+            "   - strategic-health:health-trend (for health score trends)\n"
+            "   - growth:customer-concentration (for revenue concentration risks)\n"
+            "   - growth:expansion-revenue (for expansion/upsell/cross-sell opportunities)\n"
+            "   - growth:revenue-cohorts (for cohort analysis)\n"
+            "   - growth:industry-breakdown (for industry-specific actions)\n"
+            "   - operations:team-performance (for team workload/capacity)\n"
+            "   - operations:action-queue (for data health/action items)\n"
+            "   - operations:competitive-intel (for competitive intelligence)\n"
+            "   - operations:customer-insights (for emerging themes/voice of customer)\n"
             "6. A confidence score (0.0-1.0) based on data completeness\n\n"
             "Output as JSON with this structure:\n"
             "{{\n"
@@ -309,7 +322,7 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
             '  "narrative": "Good morning. [2-3 paragraphs]...",\n'
             '  "key_risks": [{{"type": "...", "severity": "critical|high|medium", "one_liner": "...", "affected_arr": 0}}],\n'
             '  "key_wins": [{{"description": "...", "arr_impact": 0}}],\n'
-            '  "recommended_actions": [{{"action": "...", "priority": "immediate|this_week|this_month", "crew_to_trigger": "optional"}}],\n'
+            '  "recommended_actions": [{{"action": "...", "priority": "immediate|this_week|this_month", "navigation_target": "strategic-health:high-risk-accounts", "crew_to_trigger": "optional"}}],\n'
             '  "confidence_score": 0.85\n'
             "}}"
         )
