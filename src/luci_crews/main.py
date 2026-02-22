@@ -299,18 +299,34 @@ async def run_account_analysis_crew(request: AccountAnalysisRequest):
                 "recent_tickets": request.salesforceContext.get("recent_tickets", []),
             }
 
-        crew = AccountAnalysisCrew(user_id=request.userId)
-        result = crew.run(
-            account_name=account_name,
-            account_tier=request.accountTier,
-            arr=request.arr,
-            transcription=request.transcription,
-            support_data=support_data,
-            engagement_data=request.engagementData,
+        # Use fallback mechanism to handle quota/rate limit errors
+        # This will automatically try other providers if the primary fails
+        def crew_factory(llm):
+            return AccountAnalysisCrew(user_id=request.userId, llm=llm)
+
+        run_args = {
+            "account_name": account_name,
+            "account_tier": request.accountTier,
+            "arr": request.arr,
+            "transcription": request.transcription,
+            "support_data": support_data,
+            "engagement_data": request.engagementData,
+        }
+
+        result = run_with_fallback(
+            crew_factory=crew_factory,
+            run_args=run_args,
+            user_id=request.userId,
         )
 
         execution_time = (datetime.utcnow() - start_time).total_seconds()
-        logger.info(f"Unified account analysis completed in {execution_time:.2f}s")
+
+        # Log which provider was used
+        provider_used = result.get("_provider_used", "unknown") if isinstance(result, dict) else "unknown"
+        providers_tried = result.get("_providers_tried", []) if isinstance(result, dict) else []
+        logger.info(f"Unified account analysis completed in {execution_time:.2f}s using provider: {provider_used}")
+        if len(providers_tried) > 1:
+            logger.info(f"Providers tried before success: {providers_tried}")
         logger.info(f"Score: {result.get('score')}, Status: {result.get('status')}")
 
         return {
