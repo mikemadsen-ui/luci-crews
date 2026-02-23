@@ -134,12 +134,28 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down LUCI CrewAI Service...")
 
 
-# Create FastAPI app
+# Custom JSON response class that preserves unicode characters (✓, ✗, etc.)
+# instead of escaping them as \u2713, \u2717
+class UnicodeJSONResponse(JSONResponse):
+    """JSONResponse that doesn't escape unicode characters."""
+
+    def render(self, content: Any) -> bytes:
+        return json.dumps(
+            content,
+            ensure_ascii=False,  # Don't escape unicode - preserve ✓ instead of \u2713
+            allow_nan=False,
+            indent=None,
+            separators=(",", ":"),
+        ).encode("utf-8")
+
+
+# Create FastAPI app with custom response class
 app = FastAPI(
     title="LUCI CrewAI Service",
     description="AI-powered analysis crews for LUCI application",
     version="0.1.0",
     lifespan=lifespan,
+    default_response_class=UnicodeJSONResponse,
 )
 
 # Configure CORS
