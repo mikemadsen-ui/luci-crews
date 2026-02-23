@@ -1387,56 +1387,107 @@ async def run_drilldown_crew(request: Request):
         req = ContextualDrilldownRequest(**body)
         logger.info(f"Running drilldown crew: {req.entityType}/{req.entityId}")
 
-        crew = ContextualDrilldownCrew(user_id=req.userId)
-
         if stream:
-            ctx = ThreadedStreamingContext()
+            # Streaming with fallback - try providers in sequence
+            from .ai_settings_helper import get_available_providers, create_llm_for_provider, is_quota_error
+
+            available_providers = get_available_providers()
+            if not available_providers:
+                raise RuntimeError("No AI providers configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_API_KEY.")
 
             async def generate():
-                yield ctx.init_message(f"Starting {req.entityType} drilldown...")
+                last_error = None
 
-                async for msg in ctx.run_with_progress(
-                    lambda step_cb: crew.run(
-                        entity_type=req.entityType,
-                        entity_id=req.entityId,
-                        context=req.context or "risk",
-                        user_id=req.userId,
-                        step_callback=step_cb,
-                    )
-                ):
-                    yield msg
+                for i, (provider, model_id, api_key) in enumerate(available_providers[:3]):
+                    try:
+                        if i > 0:
+                            yield f"data: {json.dumps({'type': 'info', 'message': f'Retrying with {provider}...'})}\n\n"
 
-                if ctx.error:
-                    logger.error(f"Drilldown crew failed: {ctx.error}")
-                    yield ctx.error_message(ctx.error)
-                elif ctx.result:
-                    logger.info(f"Drilldown crew completed in {ctx.execution_time:.2f}s")
-                    yield ctx.result_message(
-                        {
-                            "synthesis": ctx.result.get("synthesis"),
-                            "bullets": ctx.result.get("bullets"),
-                            "recommended_actions": ctx.result.get("recommended_actions"),
-                            "related_meetings": ctx.result.get("related_meetings"),
-                            "related_cases": ctx.result.get("related_cases"),
-                        },
-                        entity_type=ctx.result.get("entity_type"),
-                        entity_id=ctx.result.get("entity_id"),
-                        context=ctx.result.get("context"),
-                        provider=ctx.result.get("provider"),
-                        model=ctx.result.get("model"),
-                    )
+                        # Create LLM and crew for this provider
+                        llm = create_llm_for_provider(provider, model_id, api_key)
+                        crew = ContextualDrilldownCrew(user_id=req.userId, llm=llm)
+
+                        ctx = ThreadedStreamingContext()
+                        yield ctx.init_message(f"Starting {req.entityType} drilldown...")
+
+                        async for msg in ctx.run_with_progress(
+                            lambda step_cb: crew.run(
+                                entity_type=req.entityType,
+                                entity_id=req.entityId,
+                                context=req.context or "risk",
+                                user_id=req.userId,
+                                step_callback=step_cb,
+                            )
+                        ):
+                            yield msg
+
+                        if ctx.error:
+                            raise Exception(ctx.error)
+                        elif ctx.result:
+                            logger.info(f"Drilldown crew completed in {ctx.execution_time:.2f}s using provider: {provider}")
+                            yield ctx.result_message(
+                                {
+                                    "synthesis": ctx.result.get("synthesis"),
+                                    "bullets": ctx.result.get("bullets"),
+                                    "recommended_actions": ctx.result.get("recommended_actions"),
+                                    "related_meetings": ctx.result.get("related_meetings"),
+                                    "related_cases": ctx.result.get("related_cases"),
+                                },
+                                entity_type=ctx.result.get("entity_type"),
+                                entity_id=ctx.result.get("entity_id"),
+                                context=ctx.result.get("context"),
+                                provider=provider,
+                                model=model_id,
+                            )
+                            return  # Success - exit generator
+
+                    except Exception as e:
+                        last_error = e
+                        if is_quota_error(e):
+                            logger.warning(f"Provider {provider} quota/rate limit error: {str(e)[:200]}")
+                            if i + 1 < len(available_providers):
+                                continue  # Try next provider
+                        else:
+                            # Non-quota error - don't retry
+                            logger.error(f"Provider {provider} failed with non-quota error: {str(e)[:200]}")
+                            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+                            return
+
+                # All providers failed
+                error_msg = f"All AI providers failed. Last error: {str(last_error)[:200]}"
+                logger.error(error_msg)
+                yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
 
             return create_streaming_response(generate())
         else:
             start_time = datetime.utcnow()
-            result = crew.run(
-                entity_type=req.entityType,
-                entity_id=req.entityId,
-                context=req.context or "risk",
+
+            # Use fallback mechanism to handle quota/rate limit errors
+            def crew_factory(llm):
+                return ContextualDrilldownCrew(user_id=req.userId, llm=llm)
+
+            run_args = {
+                "entity_type": req.entityType,
+                "entity_id": req.entityId,
+                "context": req.context or "risk",
+                "user_id": req.userId,
+            }
+
+            result = run_with_fallback(
+                crew_factory=crew_factory,
+                run_args=run_args,
                 user_id=req.userId,
             )
+
             execution_time = (datetime.utcnow() - start_time).total_seconds()
-            logger.info(f"Drilldown crew completed in {execution_time:.2f}s")
+
+            # Log which provider was used
+            provider_used = result.get("_provider_used", "unknown") if isinstance(result, dict) else "unknown"
+            providers_tried = result.get("_providers_tried", []) if isinstance(result, dict) else []
+            logger.info(f"Drilldown crew completed in {execution_time:.2f}s using provider: {provider_used}")
+            if len(providers_tried) > 1:
+                logger.info(f"Providers tried before success: {providers_tried}")
+
             return {
                 "success": result.get("success", True),
                 "synthesis": result.get("synthesis"),
