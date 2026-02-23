@@ -559,4 +559,9 @@ Return as JSON:
         parsed = extract_json_from_llm_response(raw_result, default=default)
         parsed["_provider"] = "crewai"
         parsed["_model"] = getattr(self.llm, 'model', 'unknown')
+
+        # Add data source metadata for UI display
+        parsed["has_transcription"] = bool(transcription and len(transcription.strip()) > 0)
+        parsed["cases_count"] = support_data.get("total_cases_count", 0) if support_data else 0
+
         return parsed
