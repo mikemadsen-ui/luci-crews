@@ -237,8 +237,15 @@ ARR: {arr_str}
         # Check if account is currently active based on utilization
         # High utilization (>50%) means account is active regardless of historical churn
         is_currently_active = False
+        print(f"[BOOMERANG DEBUG] Account: {account_name if 'account_name' in locals() else 'unknown'}")
+        print(f"[BOOMERANG DEBUG] util_pct value: {util_pct}, type: {type(util_pct)}")
+        print(f"[BOOMERANG DEBUG] churn_date value: {churn_date}")
+        print(f"[BOOMERANG DEBUG] days_to_renewal value: {days_to_renewal}")
         if util_pct is not None and isinstance(util_pct, (int, float)) and util_pct > 50:
             is_currently_active = True
+            print(f"[BOOMERANG DEBUG] Setting is_currently_active = TRUE (util={util_pct}%)")
+        else:
+            print(f"[BOOMERANG DEBUG] NOT setting is_currently_active (util={util_pct})")
 
         # Only flag as churned if we have clear signals AND account is not currently active
         if churn_date and not is_currently_active:
