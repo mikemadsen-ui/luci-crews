@@ -230,15 +230,25 @@ ARR: {arr_str}
         churn_date = engagement_data.get("churnDate")
 
         # Detect churn signals and flag prominently
+        # IMPORTANT: Only flag as churned if CURRENTLY churned, not historically
+        # Boomerang customers (churned then returned) should NOT be penalized
         is_churned = False
-        if churn_date:
+
+        # Check if account is currently active based on utilization
+        # High utilization (>50%) means account is active regardless of historical churn
+        is_currently_active = False
+        if util_pct is not None and isinstance(util_pct, (int, float)) and util_pct > 50:
+            is_currently_active = True
+
+        # Only flag as churned if we have clear signals AND account is not currently active
+        if churn_date and not is_currently_active:
             is_churned = True
         if isinstance(days_to_renewal, (int, float)) and days_to_renewal < 0:
             is_churned = True
         if health_status and any(
             kw in str(health_status).lower()
             for kw in ("churn", "inactive", "cancelled")
-        ):
+        ) and not is_currently_active:
             is_churned = True
 
         if is_churned:
