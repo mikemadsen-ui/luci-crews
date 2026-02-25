@@ -621,3 +621,23 @@ class StudioCrewRequest(BaseModel):
     # Advanced mode fields
     agent: Optional[Dict[str, Any]] = None
     task: Optional[Dict[str, Any]] = None
+
+
+# =============================================================================
+# Project Analysis Models
+# =============================================================================
+
+class ProjectAnalysisRequest(BaseModel):
+    """Request model for unified project analysis (strategic health + sentiment)."""
+    salesforceProjectId: str
+    salesforceAccountId: Optional[str] = None
+    project: dict
+    projectOwner: dict
+    transcripts: List[dict]
+    mavenlinkTasks: List[dict]
+    mavenlinkTimeEntries: List[dict]
+    callActivity: Optional[dict] = None
+    emailActivity: Optional[dict] = None
+    userEmail: Optional[str] = None
+    inputHash: Optional[str] = None
+    userId: Optional[str] = None

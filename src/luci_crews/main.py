@@ -68,6 +68,7 @@ from .models import (
     StrategicActionRequest,
     ExecutiveBriefingRequest,
     ContextualDrilldownRequest,
+    ProjectAnalysisRequest,
 )
 from .crews.sales_pipeline_crew import SalesPipelineCrew
 from .crews.account_health_crew import AccountHealthCrew
@@ -86,6 +87,7 @@ from .crews.expansion_specialist_crew import ExpansionSpecialistCrew
 from .crews.strategic_action_crew import StrategicActionCrew
 from .crews.executive_briefing_crew import ExecutiveMorningBriefingCrew
 from .crews.contextual_drilldown_crew import ContextualDrilldownCrew
+from .crews.project_analysis_crew import ProjectAnalysisCrew
 from .batch_router import router as batch_router
 from .routes.analysis import router as analysis_router
 from .routes.coaching import router as coaching_router
@@ -932,6 +934,158 @@ async def run_call_analysis_crew(request: CallAnalysisRequest):
 
     except Exception as e:
         logger.error(f"Call analysis crew failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
+# =============================================================================
+# Project Analysis Crew (Unified strategic health + sentiment)
+# =============================================================================
+
+@app.post("/api/crew/project-analysis")
+async def run_project_analysis_crew(request: Request):
+    """
+    Run unified project analysis combining strategic health and customer sentiment.
+
+    Analyzes:
+    - Strategic project health (tasks, timeline, resources)
+    - Customer sentiment (from transcripts with task context)
+    - Email engagement patterns (volume, responsiveness, trend)
+    - Coaching recommendations for project owner (PM or IC)
+
+    Supports Server-Sent Events (SSE) streaming via ?stream=true query parameter.
+    """
+    import asyncio
+
+    stream = request.query_params.get("stream", "false").lower() == "true"
+    start_time = datetime.utcnow()
+
+    try:
+        body = await request.json()
+        req = ProjectAnalysisRequest(**body)
+
+        project_name = req.project.get("project_name", "Unknown Project")
+        owner_type = req.projectOwner.get("type", "unknown")
+        owner_name = req.projectOwner.get("name", "Unknown")
+
+        logger.info(f"Running project analysis for: {project_name}")
+        logger.info(f"Owner: {owner_type.upper()} - {owner_name}")
+        logger.info(f"Data: {len(req.transcripts)} transcripts, {len(req.mavenlinkTasks)} tasks, {len(req.mavenlinkTimeEntries)} time entries")
+
+        if not stream:
+            # Non-streaming response (legacy)
+            crew = ProjectAnalysisCrew(user_id=req.userId)
+            result = crew.run(
+                project=req.project,
+                project_owner=req.projectOwner,
+                transcripts=req.transcripts,
+                mavenlink_tasks=req.mavenlinkTasks,
+                mavenlink_time_entries=req.mavenlinkTimeEntries,
+                call_activity=req.callActivity,
+                email_activity=req.emailActivity,
+            )
+
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"Project analysis completed in {execution_time:.2f}s")
+
+            return {
+                "success": True,
+                "result": result,
+                "execution_time": execution_time,
+            }
+
+        else:
+            # Streaming response (SSE)
+            async def generate_stream():
+                progress_messages = []
+
+                def send_progress(step: str, message: str):
+                    """Callback to capture progress messages for streaming."""
+                    progress_messages.append({"step": step, "message": message})
+
+                try:
+                    # Send initial progress event
+                    yield f"data: {json.dumps({'type': 'progress', 'message': 'Starting project analysis...', 'step': 'init'})}\n\n"
+
+                    # Create crew instance
+                    crew = ProjectAnalysisCrew(user_id=req.userId)
+
+                    # Run crew in background thread with progress callback
+                    def _run_crew():
+                        os.environ["CREWAI_TELEMETRY_OPT_IN"] = "false"
+                        return crew.run(
+                            project=req.project,
+                            project_owner=req.projectOwner,
+                            transcripts=req.transcripts,
+                            mavenlink_tasks=req.mavenlinkTasks,
+                            mavenlink_time_entries=req.mavenlinkTimeEntries,
+                            call_activity=req.callActivity,
+                            email_activity=req.emailActivity,
+                            send_progress=send_progress,
+                        )
+
+                    loop = asyncio.get_event_loop()
+                    crew_future = loop.run_in_executor(_crew_executor, _run_crew)
+
+                    # Send keepalive comments every 15s while crew is running
+                    keepalive_interval = 15
+                    last_progress_count = 0
+
+                    while True:
+                        try:
+                            result = await asyncio.wait_for(
+                                asyncio.shield(crew_future), timeout=keepalive_interval
+                            )
+                            break  # Crew finished
+                        except asyncio.TimeoutError:
+                            # Send keepalive and any new progress messages
+                            elapsed = (datetime.utcnow() - start_time).total_seconds()
+
+                            # Send any new progress messages that accumulated
+                            new_messages = progress_messages[last_progress_count:]
+                            for msg in new_messages:
+                                yield f"data: {json.dumps({'type': 'progress', 'message': msg['message'], 'step': msg['step']})}\n\n"
+                            last_progress_count = len(progress_messages)
+
+                            # Send keepalive
+                            yield f": keepalive {int(elapsed)}s\n\n"
+                            logger.debug(f"Sent keepalive at {elapsed:.0f}s")
+
+                    execution_time = (datetime.utcnow() - start_time).total_seconds()
+                    logger.info(f"Project analysis completed in {execution_time:.2f}s")
+                    logger.info(f"Health: {result.get('overall_health_score')}, Sentiment: {result.get('sentiment_score')}")
+
+                    # Send any final progress messages
+                    new_messages = progress_messages[last_progress_count:]
+                    for msg in new_messages:
+                        yield f"data: {json.dumps({'type': 'progress', 'message': msg['message'], 'step': msg['step']})}\n\n"
+
+                    # Send final result
+                    result['execution_time'] = execution_time
+                    result_payload = json.dumps({'type': 'result', 'result': result})
+                    yield f"data: {result_payload}\n\n"
+                    logger.info("Result event sent")
+
+                except Exception as e:
+                    logger.error(f"Error in project analysis stream: {e}", exc_info=True)
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            return StreamingResponse(
+                generate_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
+    except Exception as e:
+        logger.error(f"Project analysis failed: {str(e)}", exc_info=True)
         import traceback
         traceback.print_exc()
         return {
