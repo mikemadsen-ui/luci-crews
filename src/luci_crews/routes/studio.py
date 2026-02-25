@@ -93,11 +93,11 @@ async def run_studio_crew(request: StudioCrewRequest):
                     llm = create_llm_for_user(request.userId)
                 except Exception as e:
                     logger.warning(f"Failed to create LLM for user, using default: {e}")
-                    model_name = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o")
+                    model_name = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini")
                     llm = LLM(model=model_name, api_key=os.environ.get("OPENAI_API_KEY"))
             else:
                 # Fallback to env var
-                model_name = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o")
+                model_name = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini")
                 logger.info(f"Using default model: {model_name}")
                 llm = LLM(model=model_name, api_key=os.environ.get("OPENAI_API_KEY"))
 
