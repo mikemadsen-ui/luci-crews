@@ -873,21 +873,36 @@ async def run_call_analysis_crew(request: CallAnalysisRequest):
                 "error": "No speaker data provided",
             }
 
-        crew = CallAnalysisCrew(user_id=request.userId)
-        result = crew.run(
-            transcript_segments=request.transcriptSegments,
-            speakers=request.speakers,
-            project_name=request.projectName,
-            account_name=request.accountName,
-            meeting_subject=request.meetingSubject,
-            meeting_date=request.meetingDate,
-            attendees=request.attendees,
-            implementation_stage=request.implementationStage,
-            project_context=request.projectContext,
+        # Use fallback mechanism to handle quota/rate limit errors
+        def crew_factory(llm):
+            return CallAnalysisCrew(user_id=request.userId, llm=llm)
+
+        run_args = {
+            "transcript_segments": request.transcriptSegments,
+            "speakers": request.speakers,
+            "project_name": request.projectName,
+            "account_name": request.accountName,
+            "meeting_subject": request.meetingSubject,
+            "meeting_date": request.meetingDate,
+            "attendees": request.attendees,
+            "implementation_stage": request.implementationStage,
+            "project_context": request.projectContext,
+        }
+
+        result = run_with_fallback(
+            crew_factory=crew_factory,
+            run_args=run_args,
+            user_id=request.userId,
         )
 
         execution_time = (datetime.utcnow() - start_time).total_seconds()
-        logger.info(f"Call analysis crew completed in {execution_time:.2f}s")
+
+        # Log which provider was used
+        provider_used = result.get("_provider_used", "unknown") if isinstance(result, dict) else "unknown"
+        providers_tried = result.get("_providers_tried", []) if isinstance(result, dict) else []
+        logger.info(f"Call analysis crew completed in {execution_time:.2f}s using provider: {provider_used}")
+        if len(providers_tried) > 1:
+            logger.info(f"Providers tried before success: {providers_tried}")
         logger.info(f"Risk level: {result.get('risk_level')}, Overall sentiment: {result.get('overall_sentiment')}")
 
         return {
