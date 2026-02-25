@@ -35,13 +35,14 @@ PROVIDER_MODEL_PREFIXES = {
 # Fallback provider chain - ordered by preference
 # Each entry: (provider, model_id, env_var_for_api_key)
 # NOTE: Model versions updated Feb 2026 - Claude 3.5 and Gemini 1.5 were retired
+# NOTE: Model IDs here should NOT include provider prefixes - those are added automatically
 FALLBACK_PROVIDERS = [
     ("openai", os.getenv("FAST_LLM_MODEL", "gpt-4o-mini"), "OPENAI_API_KEY"),
     # Claude 3.5 Sonnet retired Oct 2025 - upgraded to Claude Sonnet 4.6 (released Feb 17, 2026)
     ("anthropic", os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6-20260217"), "ANTHROPIC_API_KEY"),
     # Gemini 1.5 Flash retired - upgraded to Gemini 2.5 Flash (stable, fast, cost-efficient)
-    # Note: Gemini requires "gemini/" prefix for CrewAI/LiteLLM compatibility
-    ("google", os.getenv("GOOGLE_MODEL", "gemini/gemini-2.5-flash"), "GOOGLE_API_KEY"),
+    # Note: "gemini/" prefix is added automatically by create_llm_for_provider
+    ("google", os.getenv("GOOGLE_MODEL", "gemini-2.5-flash"), "GOOGLE_API_KEY"),
 ]
 
 # Error patterns that indicate quota/rate limit issues
@@ -54,6 +55,8 @@ QUOTA_ERROR_PATTERNS = [
     "exceeded your current quota",
     "resource_exhausted",
     "too many requests",
+    "credit balance",  # Anthropic credit balance errors
+    "credits",  # General credit-based quota errors
 ]
 
 
