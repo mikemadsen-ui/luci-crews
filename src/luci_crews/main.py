@@ -1029,7 +1029,7 @@ async def run_project_analysis_crew(request: Request):
                         )
 
                     loop = asyncio.get_event_loop()
-                    crew_future = loop.run_in_executor(_crew_executor, _run_crew)
+                    crew_future = loop.run_in_executor(None, _run_crew)
 
                     # Send keepalive comments every 15s while crew is running
                     keepalive_interval = 15
