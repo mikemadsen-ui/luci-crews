@@ -130,12 +130,27 @@ class CleanAPIUsageFormatter(logging.Formatter):
                 pass  # Fall back to default formatting
         return super().format(record)
 
-# Configure logging with custom formatter
-# Use [INFO] format with brackets so Railway doesn't show them as errors
-handler = logging.StreamHandler()
-handler.setFormatter(CleanAPIUsageFormatter(
-    '%(asctime)s - %(name)s - [%(levelname)s] - %(message)s'
-))
+# Configure logging with level-based stream routing for Railway color coding
+# Railway colors logs based on stderr (red) vs stdout (blue) and level keywords
+import sys
+
+class LevelRoutingHandler(logging.StreamHandler):
+    """Routes ERROR/CRITICAL to stderr, everything else to stdout.
+    Railway shows stderr as red and stdout as blue/default."""
+    def __init__(self):
+        super().__init__(sys.stdout)  # default stream
+        self.stderr = sys.stderr
+
+    def emit(self, record):
+        if record.levelno >= logging.ERROR:
+            self.stream = self.stderr
+        else:
+            self.stream = sys.stdout
+        super().emit(record)
+
+log_format = '%(asctime)s \u2013 %(name)s \u2013 %(levelname)s \u2013 %(message)s'
+handler = LevelRoutingHandler()
+handler.setFormatter(CleanAPIUsageFormatter(log_format))
 logging.root.handlers = []  # Clear default handlers
 logging.root.addHandler(handler)
 logging.root.setLevel(logging.INFO)
