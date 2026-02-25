@@ -37,7 +37,8 @@ PROVIDER_MODEL_PREFIXES = {
 FALLBACK_PROVIDERS = [
     ("openai", os.getenv("FAST_LLM_MODEL", "gpt-4o-mini"), "OPENAI_API_KEY"),
     ("anthropic", os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"), "ANTHROPIC_API_KEY"),
-    ("google", os.getenv("GOOGLE_MODEL", "gemini-1.5-flash"), "GOOGLE_API_KEY"),
+    # Note: Gemini requires "gemini/" prefix for CrewAI/LiteLLM compatibility
+    ("google", os.getenv("GOOGLE_MODEL", "gemini/gemini-1.5-flash"), "GOOGLE_API_KEY"),
 ]
 
 # Error patterns that indicate quota/rate limit issues
