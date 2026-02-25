@@ -85,7 +85,9 @@ def extract_json_from_llm_response(
             pass
 
     # Fallback: return default or wrap text
-    logger.warning("Failed to extract JSON from LLM response")
+    # Log first 500 chars to help debug what format is causing issues
+    preview = result_str[:500] if len(result_str) > 500 else result_str
+    logger.warning(f"Failed to extract JSON from LLM response. Preview: {preview}...")
     if default is not None:
         return default
     return {"text": result_str[:2000] if len(result_str) > 2000 else result_str}
