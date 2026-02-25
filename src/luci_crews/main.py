@@ -111,11 +111,33 @@ sys.stdout = _original_stdout
 # Load environment variables
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Custom formatter to clean up API usage logs
+class CleanAPIUsageFormatter(logging.Formatter):
+    def format(self, record):
+        # Format OpenAI API usage logs more cleanly
+        if "OpenAI API usage:" in record.getMessage():
+            try:
+                # Extract the dict and format it nicely
+                import re
+                match = re.search(r"OpenAI API usage: ({.*})", record.getMessage())
+                if match:
+                    usage_dict = eval(match.group(1))  # Safe here since it's our own log
+                    prompt = usage_dict.get('prompt_tokens', 0)
+                    completion = usage_dict.get('completion_tokens', 0)
+                    total = usage_dict.get('total_tokens', 0)
+                    record.msg = f"OpenAI: {prompt:,} prompt + {completion:,} completion = {total:,} tokens"
+            except:
+                pass  # Fall back to default formatting
+        return super().format(record)
+
+# Configure logging with custom formatter
+handler = logging.StreamHandler()
+handler.setFormatter(CleanAPIUsageFormatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+))
+logging.root.handlers = []  # Clear default handlers
+logging.root.addHandler(handler)
+logging.root.setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Suppress verbose HTTP request logging from httpx (shows as errors in Railway)
