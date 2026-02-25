@@ -16,8 +16,8 @@ from supabase import create_client, Client
 logger = logging.getLogger(__name__)
 
 # Default AI settings if database lookup fails
-# Note: Using OpenAI as default since it's most reliable
-# Google's gemini-1.5-flash was deprecated in late 2025
+# Note: Using OpenAI as default since it's most reliable and stable
+# Updated Feb 2026: Claude 3.5 Sonnet (Oct 2025) and Gemini 1.5 Flash retired
 DEFAULT_AI_SETTINGS = {
     "provider": "openai",
     "model_id": os.getenv("FAST_LLM_MODEL", "gpt-4o-mini"),
@@ -34,11 +34,14 @@ PROVIDER_MODEL_PREFIXES = {
 
 # Fallback provider chain - ordered by preference
 # Each entry: (provider, model_id, env_var_for_api_key)
+# NOTE: Model versions updated Feb 2026 - Claude 3.5 and Gemini 1.5 were retired
 FALLBACK_PROVIDERS = [
     ("openai", os.getenv("FAST_LLM_MODEL", "gpt-4o-mini"), "OPENAI_API_KEY"),
-    ("anthropic", os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"), "ANTHROPIC_API_KEY"),
+    # Claude 3.5 Sonnet retired Oct 2025 - upgraded to Claude Sonnet 4.6 (released Feb 17, 2026)
+    ("anthropic", os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6-20260217"), "ANTHROPIC_API_KEY"),
+    # Gemini 1.5 Flash retired - upgraded to Gemini 2.5 Flash (stable, fast, cost-efficient)
     # Note: Gemini requires "gemini/" prefix for CrewAI/LiteLLM compatibility
-    ("google", os.getenv("GOOGLE_MODEL", "gemini/gemini-1.5-flash"), "GOOGLE_API_KEY"),
+    ("google", os.getenv("GOOGLE_MODEL", "gemini/gemini-2.5-flash"), "GOOGLE_API_KEY"),
 ]
 
 # Error patterns that indicate quota/rate limit issues
