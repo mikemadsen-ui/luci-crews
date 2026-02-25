@@ -131,9 +131,10 @@ class CleanAPIUsageFormatter(logging.Formatter):
         return super().format(record)
 
 # Configure logging with custom formatter
+# Use [INFO] format with brackets so Railway doesn't show them as errors
 handler = logging.StreamHandler()
 handler.setFormatter(CleanAPIUsageFormatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    '%(asctime)s - %(name)s - [%(levelname)s] - %(message)s'
 ))
 logging.root.handlers = []  # Clear default handlers
 logging.root.addHandler(handler)
