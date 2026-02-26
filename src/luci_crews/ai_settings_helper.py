@@ -43,14 +43,14 @@ class ModelTier(Enum):
 TIER_ORDER = [ModelTier.PREMIUM, ModelTier.STANDARD, ModelTier.ECONOMY]
 
 # Model tier classification (mirrors database, used as fallback)
+# Only includes models verified to exist as of Feb 2026
 MODEL_TIERS = {
     # PREMIUM - highest capability
-    "claude-sonnet-4-6-20260217": ModelTier.PREMIUM,
     "claude-sonnet-4-5-20250929": ModelTier.PREMIUM,
+    "claude-3-5-sonnet-20241022": ModelTier.PREMIUM,
     "gpt-4.1": ModelTier.PREMIUM,
     "gpt-4o": ModelTier.PREMIUM,
     "gemini-1.5-pro": ModelTier.PREMIUM,
-    "gemini-2.0-pro": ModelTier.PREMIUM,
 
     # STANDARD - balanced
     "claude-haiku-4-5-20251001": ModelTier.STANDARD,
@@ -71,9 +71,10 @@ def get_model_tier(model_id: str) -> ModelTier:
 
 
 # Provider ordering within each tier (for fallback diversity)
+# Uses verified existing models only
 TIER_PROVIDERS = {
     ModelTier.PREMIUM: [
-        ("anthropic", "claude-sonnet-4-6-20260217"),
+        ("anthropic", "claude-sonnet-4-5-20250929"),
         ("openai", "gpt-4.1"),
         ("google", "gemini-1.5-pro"),
     ],
