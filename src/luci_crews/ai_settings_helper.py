@@ -49,17 +49,16 @@ MODEL_TIERS = {
     "claude-sonnet-4-5-20250929": ModelTier.PREMIUM,
     "gpt-4.1": ModelTier.PREMIUM,
     "gpt-4o": ModelTier.PREMIUM,
-    "gemini-3-pro": ModelTier.PREMIUM,
-    "gemini-2.5-pro": ModelTier.PREMIUM,
+    "gemini-1.5-pro": ModelTier.PREMIUM,
+    "gemini-2.0-pro": ModelTier.PREMIUM,
 
     # STANDARD - balanced
     "claude-haiku-4-5-20251001": ModelTier.STANDARD,
     "claude-3-5-haiku-20241022": ModelTier.STANDARD,
     "gpt-4.1-mini": ModelTier.STANDARD,
     "gpt-4o-mini": ModelTier.STANDARD,
-    "gemini-3-flash": ModelTier.STANDARD,
-    "gemini-2.5-flash": ModelTier.STANDARD,
     "gemini-2.0-flash": ModelTier.STANDARD,
+    "gemini-1.5-flash": ModelTier.STANDARD,
 
     # ECONOMY - cheapest
     "gpt-4.1-nano": ModelTier.ECONOMY,
@@ -76,10 +75,10 @@ TIER_PROVIDERS = {
     ModelTier.PREMIUM: [
         ("anthropic", "claude-sonnet-4-6-20260217"),
         ("openai", "gpt-4.1"),
-        ("google", "gemini-3-pro"),
+        ("google", "gemini-1.5-pro"),
     ],
     ModelTier.STANDARD: [
-        ("google", "gemini-3-flash"),
+        ("google", "gemini-2.0-flash"),
         ("openai", "gpt-4.1-mini"),
         ("anthropic", "claude-haiku-4-5-20251001"),
     ],
@@ -400,7 +399,7 @@ def get_llm_for_task(
     else:
         # LOW priority or no user: use cheapest
         starting_provider = "google"
-        starting_model = "gemini-3-flash"
+        starting_model = "gemini-2.0-flash"
         logger.info(f"[{task_name or 'unknown'}] Using economy model for {task_priority.value} priority")
 
     # Build the fallback chain
