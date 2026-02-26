@@ -38,6 +38,7 @@ from ..utils.streaming import (
     ThreadedStreamingContext,
     create_streaming_response,
 )
+from ..ai_settings_helper import run_with_smart_fallback, TaskPriority
 
 logger = logging.getLogger(__name__)
 
@@ -116,20 +117,28 @@ def create_coaching_endpoint(config: CoachingEndpointConfig):
             if config.debug_logging:
                 config.debug_logging(req)
 
-            crew = config.crew_class(user_id=req.userId)
             run_params = config.run_params_builder(req)
 
             if stream:
                 if config.use_threaded_streaming:
                     return await _handle_threaded_streaming(
-                        crew, run_params, config, person_name, person_email
+                        config.crew_class, req.userId, run_params, config, person_name, person_email
                     )
                 else:
                     return await _handle_simple_streaming(
-                        crew, run_params, config, person_name, person_email
+                        config.crew_class, req.userId, run_params, config, person_name, person_email
                     )
             else:
-                result = crew.run(**run_params)
+                def crew_factory(llm):
+                    return config.crew_class(user_id=req.userId, llm=llm)
+
+                result = run_with_smart_fallback(
+                    crew_factory=crew_factory,
+                    run_args=run_params,
+                    task_priority=TaskPriority.MEDIUM,  # User-triggered coaching
+                    user_id=req.userId,
+                    task_name=f"{config.role_name}_coaching",
+                )
 
                 execution_time = (datetime.utcnow() - start_time).total_seconds()
                 logger.info(f"{config.role_name} coaching crew completed in {execution_time:.2f}s")
@@ -150,7 +159,8 @@ def create_coaching_endpoint(config: CoachingEndpointConfig):
 
 
 async def _handle_simple_streaming(
-    crew,
+    crew_class,
+    user_id: str,
     run_params: Dict[str, Any],
     config: CoachingEndpointConfig,
     person_name: str,
@@ -163,7 +173,19 @@ async def _handle_simple_streaming(
         try:
             yield ctx.init_message("Starting coaching analysis...")
 
-            result = crew.run(**run_params, step_callback=ctx.step_callback)
+            def crew_factory(llm):
+                return crew_class(user_id=user_id, llm=llm)
+
+            # Add step_callback to run_args for streaming
+            streaming_run_params = {**run_params, "step_callback": ctx.step_callback}
+
+            result = run_with_smart_fallback(
+                crew_factory=crew_factory,
+                run_args=streaming_run_params,
+                task_priority=TaskPriority.MEDIUM,  # User-triggered coaching
+                user_id=user_id,
+                task_name=f"{config.role_name}_coaching",
+            )
 
             for msg in ctx.get_progress_messages():
                 yield msg
@@ -192,7 +214,8 @@ async def _handle_simple_streaming(
 
 
 async def _handle_threaded_streaming(
-    crew,
+    crew_class,
+    user_id: str,
     run_params: Dict[str, Any],
     config: CoachingEndpointConfig,
     person_name: str,
@@ -206,7 +229,19 @@ async def _handle_threaded_streaming(
             yield ctx.init_message("Starting coaching analysis...")
 
             def run_crew(step_callback):
-                return crew.run(**run_params, step_callback=step_callback)
+                def crew_factory(llm):
+                    return crew_class(user_id=user_id, llm=llm)
+
+                # Add step_callback to run_args for streaming
+                streaming_run_params = {**run_params, "step_callback": step_callback}
+
+                return run_with_smart_fallback(
+                    crew_factory=crew_factory,
+                    run_args=streaming_run_params,
+                    task_priority=TaskPriority.MEDIUM,  # User-triggered coaching
+                    user_id=user_id,
+                    task_name=f"{config.role_name}_coaching",
+                )
 
             async for msg in ctx.run_with_progress(run_crew):
                 yield msg
