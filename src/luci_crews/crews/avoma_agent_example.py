@@ -12,6 +12,7 @@ REQUIRED ENVIRONMENT VARIABLES:
 import os
 from crewai import Agent, Task, Crew, Process, LLM
 from ..avoma_mcp import get_avoma_tools
+from ..ai_settings_helper import get_llm_for_task, create_llm_for_provider, TaskPriority
 
 
 def create_meeting_analyst_crew():
@@ -25,10 +26,12 @@ def create_meeting_analyst_crew():
     - get_meeting_notes: Get AI-generated meeting notes
     """
 
-    llm = LLM(
-        model=os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini"),
-        api_key=os.environ.get("OPENAI_API_KEY"),
+    # Use intelligent model selection
+    provider, model_id, env_var, _ = get_llm_for_task(
+        task_priority=TaskPriority.LOW,  # Example code, use low priority
+        task_name="avoma_example",
     )
+    llm = create_llm_for_provider(provider, model_id, os.getenv(env_var))
 
     # Get Avoma MCP tools - these let the agent query Avoma directly
     avoma_tools = get_avoma_tools()
