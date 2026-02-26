@@ -100,6 +100,8 @@ from .ai_settings_helper import (
     is_quota_error,
     get_available_providers,
     TaskPriority,
+    get_llm_for_task,
+    create_llm_for_provider,
 )
 from .utils.streaming import (
     SimpleStreamingContext,
@@ -1739,10 +1741,12 @@ async def run_custom_analysis(request: CustomAnalysisRequest):
 
             def run_crew(step_callback):
                 context_text = _format_custom_context(request.context, request.targetType)
-                llm = LLM(
-                    model=os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini"),
-                    api_key=os.environ.get("OPENAI_API_KEY"),
+                provider, model_id, env_var, _ = get_llm_for_task(
+                    task_priority=TaskPriority.MEDIUM,  # User-triggered
+                    user_id=request.userId if hasattr(request, 'userId') else None,
+                    task_name="custom_analysis",
                 )
+                llm = create_llm_for_provider(provider, model_id, os.getenv(env_var))
                 step_callback("Creating analyst agent...")
                 analyst = Agent(
                     role="Custom Analyst",
