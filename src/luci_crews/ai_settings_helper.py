@@ -135,6 +135,15 @@ QUOTA_ERROR_PATTERNS = [
     "credits",  # General credit-based quota errors
 ]
 
+# Error patterns that indicate ACCOUNT-WIDE issues (skip ALL models from this provider)
+ACCOUNT_EXHAUSTED_PATTERNS = [
+    "credit balance is too low",  # Anthropic: no credits left
+    "billing hard limit",  # OpenAI: spending limit hit
+    "account.*suspended",  # Any provider: account issues
+    "api key.*invalid",  # Bad API key
+    "authentication failed",
+]
+
 
 @dataclass
 class AISettings:
@@ -266,6 +275,23 @@ def is_quota_error(error: Exception) -> bool:
     """
     error_str = str(error).lower()
     return any(pattern in error_str for pattern in QUOTA_ERROR_PATTERNS)
+
+
+def is_account_exhausted_error(error: Exception) -> bool:
+    """
+    Check if an error indicates the ENTIRE provider account is exhausted.
+
+    This is different from rate limits - credit balance errors mean NO models
+    from this provider will work until credits are purchased.
+
+    Args:
+        error: The exception to check
+
+    Returns:
+        True if ALL models from this provider should be skipped
+    """
+    error_str = str(error).lower()
+    return any(pattern in error_str for pattern in ACCOUNT_EXHAUSTED_PATTERNS)
 
 
 def get_available_providers() -> List[tuple]:
@@ -435,6 +461,7 @@ def run_with_smart_fallback(
     2. Builds a quality-ordered fallback chain
     3. Tries each model in sequence until success
     4. Logs usage for cost tracking
+    5. Skips ALL models from a provider when account-wide errors occur (e.g., credit exhausted)
 
     Args:
         crew_factory: Callable that takes an LLM and returns a crew instance
@@ -459,12 +486,20 @@ def run_with_smart_fallback(
 
     last_error = None
     providers_tried = []
+    exhausted_providers = set()  # Track providers with account-wide failures
 
+    attempt_num = 0
     for i, (provider, model_id, env_var) in enumerate(fallback_chain[:max_retries]):
+        # Skip if this provider is exhausted (credit balance, billing, etc.)
+        if provider in exhausted_providers:
+            logger.info(f"[{task_name or 'crew'}] Skipping {provider}/{model_id} (provider exhausted)")
+            continue
+
+        attempt_num += 1
         providers_tried.append(f"{provider}/{model_id}")
 
         try:
-            logger.info(f"[{task_name or 'crew'}] Attempt {i+1}/{min(len(fallback_chain), max_retries)}: {provider}/{model_id}")
+            logger.info(f"[{task_name or 'crew'}] Attempt {attempt_num}/{min(len(fallback_chain), max_retries)}: {provider}/{model_id}")
 
             # Create LLM for this provider
             llm = create_llm_for_provider(provider, model_id, os.getenv(env_var))
@@ -481,15 +516,20 @@ def run_with_smart_fallback(
                 result["_provider_used"] = provider
                 result["_task_priority"] = task_priority.value
                 result["_providers_tried"] = providers_tried
-                result["_fallback_count"] = i
+                result["_fallback_count"] = attempt_num - 1
 
             return result
 
         except Exception as e:
             last_error = e
-            error_str = str(e).lower()
 
-            if is_quota_error(e):
+            # Check for account-wide exhaustion (skip ALL models from this provider)
+            if is_account_exhausted_error(e):
+                logger.warning(f"[{task_name or 'crew'}] {provider} account exhausted (credits/billing), skipping all {provider} models")
+                exhausted_providers.add(provider)
+                continue
+            elif is_quota_error(e):
+                # Regular quota error (rate limit) - just try next model
                 logger.warning(f"[{task_name or 'crew'}] {provider} quota/credit error, trying next...")
                 continue
             else:
@@ -505,6 +545,7 @@ def run_with_smart_fallback(
     raise RuntimeError(
         f"All AI providers failed for {task_name or 'crew'}. "
         f"Tried: {', '.join(providers_tried)}. "
+        f"Exhausted providers: {', '.join(exhausted_providers) or 'none'}. "
         f"Last error: {str(last_error)[:200]}"
     )
 
