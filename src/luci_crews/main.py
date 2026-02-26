@@ -96,8 +96,10 @@ from .routes.health import router as health_router
 from .routes.studio import router as studio_router
 from .ai_settings_helper import (
     run_with_fallback,
+    run_with_smart_fallback,
     is_quota_error,
     get_available_providers,
+    TaskPriority,
 )
 from .utils.streaming import (
     SimpleStreamingContext,
@@ -873,7 +875,7 @@ async def run_call_analysis_crew(request: CallAnalysisRequest):
                 "error": "No speaker data provided",
             }
 
-        # Use fallback mechanism to handle quota/rate limit errors
+        # Use intelligent model selection with quality-ordered fallback
         def crew_factory(llm):
             return CallAnalysisCrew(user_id=request.userId, llm=llm)
 
@@ -889,10 +891,12 @@ async def run_call_analysis_crew(request: CallAnalysisRequest):
             "project_context": request.projectContext,
         }
 
-        result = run_with_fallback(
+        result = run_with_smart_fallback(
             crew_factory=crew_factory,
             run_args=run_args,
+            task_priority=TaskPriority.MEDIUM,
             user_id=request.userId,
+            task_name="call_analysis",
         )
 
         execution_time = (datetime.utcnow() - start_time).total_seconds()

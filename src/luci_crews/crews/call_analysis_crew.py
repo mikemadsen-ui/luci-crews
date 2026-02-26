@@ -13,6 +13,7 @@ from crewai import Agent, Task, Crew, Process
 
 from .base_crew import BaseCrew
 from ..utils import extract_json_from_llm_response
+from ..ai_settings_helper import TaskPriority
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,9 @@ VENDOR_DOMAINS = ['leandata.com', 'leandatainc.com']
 
 class CallAnalysisCrew(BaseCrew):
     """Crew for analyzing individual call transcripts."""
+
+    task_priority = TaskPriority.MEDIUM  # User-triggered analysis
+    task_name = "call_analysis"
 
     def _create_agents(self):
         """Create the analysis agents."""
