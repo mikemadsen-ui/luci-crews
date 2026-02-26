@@ -419,6 +419,96 @@ def get_llm_for_task(
     return primary[0], primary[1], primary[2], fallback_chain
 
 
+def run_with_smart_fallback(
+    crew_factory: Callable,
+    run_args: Dict[str, Any],
+    task_priority: TaskPriority,
+    user_id: Optional[str] = None,
+    task_name: Optional[str] = None,
+    max_retries: int = 6,
+) -> Dict[str, Any]:
+    """
+    Run a crew with intelligent model selection and quality-ordered fallback.
+
+    This function:
+    1. Determines the best starting model based on task priority and user role
+    2. Builds a quality-ordered fallback chain
+    3. Tries each model in sequence until success
+    4. Logs usage for cost tracking
+
+    Args:
+        crew_factory: Callable that takes an LLM and returns a crew instance
+        run_args: Arguments to pass to crew.run()
+        task_priority: Task importance (LOW/MEDIUM/HIGH)
+        user_id: Optional user ID for role-based model ceiling
+        task_name: Optional name for logging
+        max_retries: Maximum number of models to try
+
+    Returns:
+        The crew result dict with metadata about model used
+
+    Raises:
+        RuntimeError: If all models fail
+    """
+    # Get model configuration and fallback chain
+    primary_provider, primary_model, _, fallback_chain = get_llm_for_task(
+        task_priority=task_priority,
+        user_id=user_id,
+        task_name=task_name,
+    )
+
+    last_error = None
+    providers_tried = []
+
+    for i, (provider, model_id, env_var) in enumerate(fallback_chain[:max_retries]):
+        providers_tried.append(f"{provider}/{model_id}")
+
+        try:
+            logger.info(f"[{task_name or 'crew'}] Attempt {i+1}/{min(len(fallback_chain), max_retries)}: {provider}/{model_id}")
+
+            # Create LLM for this provider
+            llm = create_llm_for_provider(provider, model_id, os.getenv(env_var))
+
+            # Create and run the crew
+            crew = crew_factory(llm)
+            result = crew.run(**run_args)
+
+            logger.info(f"[{task_name or 'crew'}] Success with {provider}/{model_id}")
+
+            # Add metadata
+            if isinstance(result, dict):
+                result["_model_used"] = model_id
+                result["_provider_used"] = provider
+                result["_task_priority"] = task_priority.value
+                result["_providers_tried"] = providers_tried
+                result["_fallback_count"] = i
+
+            return result
+
+        except Exception as e:
+            last_error = e
+            error_str = str(e).lower()
+
+            if is_quota_error(e):
+                logger.warning(f"[{task_name or 'crew'}] {provider} quota/credit error, trying next...")
+                continue
+            else:
+                # Non-quota error - log but still try next provider
+                logger.error(f"[{task_name or 'crew'}] {provider} error: {str(e)[:200]}")
+                # For non-quota errors, we could either:
+                # 1. Raise immediately (strict)
+                # 2. Try next provider (lenient)
+                # Using lenient approach for better availability
+                continue
+
+    # All providers failed
+    raise RuntimeError(
+        f"All AI providers failed for {task_name or 'crew'}. "
+        f"Tried: {', '.join(providers_tried)}. "
+        f"Last error: {str(last_error)[:200]}"
+    )
+
+
 def run_with_fallback(
     crew_factory: Callable,
     run_args: Dict[str, Any],
