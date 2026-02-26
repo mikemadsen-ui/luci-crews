@@ -166,6 +166,13 @@ logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
+# Configure uvicorn loggers to use our stdout handler (Railway shows stderr as errors)
+for uvicorn_logger_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
+    uvicorn_logger = logging.getLogger(uvicorn_logger_name)
+    uvicorn_logger.handlers = []
+    uvicorn_logger.addHandler(handler)
+    uvicorn_logger.propagate = False
+
 # Store running jobs
 running_jobs: Dict[str, Dict[str, Any]] = {}
 
