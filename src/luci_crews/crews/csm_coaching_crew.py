@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Optional
 from crewai import Agent, Task, Crew, Process, LLM
 
 from .base_crew import BaseCrew
+from ..ai_settings_helper import get_llm_for_task, create_llm_for_provider, TaskPriority
 from ..utils import extract_json_from_llm_response
 
 
@@ -34,14 +35,21 @@ class CSMCoachingCrew(BaseCrew):
         super().__init__(user_id=user_id, llm=llm)
 
         # Fast model for analysis agents (data crunching, pattern matching)
-        # GPT-4o-mini is fast, cheap, and great for structured analysis
-        self.fast_llm = LLM(
-            model=os.getenv("FAST_LLM_MODEL", "gpt-4o-mini"),
-            api_key=os.environ.get("OPENAI_API_KEY"),
+        # Uses TaskPriority.LOW to get cheapest available model
+        fast_provider, fast_model_id, fast_env_var, _ = get_llm_for_task(
+            task_priority=TaskPriority.LOW,
+            task_name="csm_coaching_analysis",
         )
+        self.fast_llm = create_llm_for_provider(fast_provider, fast_model_id, os.getenv(fast_env_var))
 
-        # Quality model for coach agent - use the inherited self.llm
-        self.quality_llm = self.llm
+        # Quality model for coach agent (synthesis, strategic recommendations)
+        # Uses TaskPriority.HIGH to get user's assigned model for best output
+        quality_provider, quality_model_id, quality_env_var, _ = get_llm_for_task(
+            task_priority=TaskPriority.HIGH,
+            user_id=self.user_id,
+            task_name="csm_coaching_synthesis",
+        )
+        self.quality_llm = create_llm_for_provider(quality_provider, quality_model_id, os.getenv(quality_env_var))
 
         # Log the tiered model strategy
         print(f"[CSM Coaching] Using tiered models: fast={self.fast_llm.model}, quality={self.quality_llm.model}")
