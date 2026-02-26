@@ -237,15 +237,31 @@ async def run_sales_pipeline_crew(request: SalesPipelineRequest):
     try:
         logger.info(f"Running sales pipeline crew for user: {request.user_email}")
 
-        crew = SalesPipelineCrew(user_id=request.user_id)
-        result = crew.run(
-            user_email=request.user_email,
-            opportunities=request.opportunities,
-            summary=request.summary or {},
+        def crew_factory(llm):
+            return SalesPipelineCrew(user_id=request.user_id, llm=llm)
+
+        run_args = {
+            "user_email": request.user_email,
+            "opportunities": request.opportunities,
+            "summary": request.summary or {},
+        }
+
+        result = run_with_smart_fallback(
+            crew_factory=crew_factory,
+            run_args=run_args,
+            task_priority=TaskPriority.MEDIUM,  # User-triggered
+            user_id=request.user_id,
+            task_name="sales_pipeline",
         )
 
         execution_time = (datetime.utcnow() - start_time).total_seconds()
-        logger.info(f"Sales pipeline crew completed in {execution_time:.2f}s")
+
+        # Log which provider was used
+        provider_used = result.get("_provider_used", "unknown") if isinstance(result, dict) else "unknown"
+        providers_tried = result.get("_providers_tried", []) if isinstance(result, dict) else []
+        logger.info(f"Sales pipeline crew completed in {execution_time:.2f}s using provider: {provider_used}")
+        if len(providers_tried) > 1:
+            logger.info(f"Providers tried before success: {providers_tried}")
 
         return CrewResponse(
             success=True,
@@ -424,27 +440,43 @@ async def run_implementation_crew(request: ImplementationRequest):
         if request.dataAvailabilityWarnings:
             logger.warning(f"Data availability warnings: {request.dataAvailabilityWarnings}")
 
-        crew = ImplementationCrew(user_id=request.userId)
-        result = crew.run(
-            project_name=request.project_name,
-            account_name=request.account_name,
-            project_status=request.project_status,
-            start_date=request.start_date,
-            target_go_live=request.target_go_live,
-            completion_pct=request.completion_pct,
-            hours_used=request.hours_used,
-            hours_budgeted=request.hours_budgeted,
-            budget_used=request.budget_used,
-            budget_total=request.budget_total,
-            milestones_data=request.milestones_data,
-            risks_data=request.risks_data,
-            call_activity=request.callActivity,
-            mavenlink_tasks=request.mavenlinkTasks,
-            data_availability_warnings=request.dataAvailabilityWarnings,
+        def crew_factory(llm):
+            return ImplementationCrew(user_id=request.userId, llm=llm)
+
+        run_args = {
+            "project_name": request.project_name,
+            "account_name": request.account_name,
+            "project_status": request.project_status,
+            "start_date": request.start_date,
+            "target_go_live": request.target_go_live,
+            "completion_pct": request.completion_pct,
+            "hours_used": request.hours_used,
+            "hours_budgeted": request.hours_budgeted,
+            "budget_used": request.budget_used,
+            "budget_total": request.budget_total,
+            "milestones_data": request.milestones_data,
+            "risks_data": request.risks_data,
+            "call_activity": request.callActivity,
+            "mavenlink_tasks": request.mavenlinkTasks,
+            "data_availability_warnings": request.dataAvailabilityWarnings,
+        }
+
+        result = run_with_smart_fallback(
+            crew_factory=crew_factory,
+            run_args=run_args,
+            task_priority=TaskPriority.MEDIUM,  # User-triggered
+            user_id=request.userId,
+            task_name="implementation",
         )
 
         execution_time = (datetime.utcnow() - start_time).total_seconds()
-        logger.info(f"Implementation crew completed in {execution_time:.2f}s")
+
+        # Log which provider was used
+        provider_used = result.get("_provider_used", "unknown") if isinstance(result, dict) else "unknown"
+        providers_tried = result.get("_providers_tried", []) if isinstance(result, dict) else []
+        logger.info(f"Implementation crew completed in {execution_time:.2f}s using provider: {provider_used}")
+        if len(providers_tried) > 1:
+            logger.info(f"Providers tried before success: {providers_tried}")
 
         return CrewResponse(
             success=True,
@@ -548,9 +580,9 @@ async def run_sc_prep_crew(request: Request):
         req = SCPrepRequest(**body)
         logger.info(f"Running SC prep crew for opportunity: {req.opportunityId} (type: {req.prepType})")
 
-        crew = SCPrepCrew(user_id=req.userId)
-
         if stream:
+            # Streaming mode - create crew directly (streaming handles its own fallback)
+            crew = SCPrepCrew(user_id=req.userId)
             ctx = SimpleStreamingContext()
 
             async def generate():
@@ -580,17 +612,38 @@ async def run_sc_prep_crew(request: Request):
 
             return create_streaming_response(generate())
         else:
+            # Non-streaming mode - use smart fallback
             start_time = datetime.utcnow()
-            result = crew.run(
-                opportunity_id=req.opportunityId,
-                prep_type=req.prepType or "full",
+
+            def crew_factory(llm):
+                return SCPrepCrew(user_id=req.userId, llm=llm)
+
+            run_args = {
+                "opportunity_id": req.opportunityId,
+                "prep_type": req.prepType or "full",
+                "user_id": req.userId,
+                "force_refresh": req.forceRefresh or False,
+                "opportunity_data": req.opportunityData.model_dump() if req.opportunityData else None,
+                "transcription_data": [t.model_dump() for t in req.transcriptionData] if req.transcriptionData else None,
+            }
+
+            result = run_with_smart_fallback(
+                crew_factory=crew_factory,
+                run_args=run_args,
+                task_priority=TaskPriority.MEDIUM,  # User-triggered
                 user_id=req.userId,
-                force_refresh=req.forceRefresh or False,
-                opportunity_data=req.opportunityData.model_dump() if req.opportunityData else None,
-                transcription_data=[t.model_dump() for t in req.transcriptionData] if req.transcriptionData else None,
+                task_name="sc_prep",
             )
+
             execution_time = (datetime.utcnow() - start_time).total_seconds()
-            logger.info(f"SC prep crew completed in {execution_time:.2f}s")
+
+            # Log which provider was used
+            provider_used = result.get("_provider_used", "unknown") if isinstance(result, dict) else "unknown"
+            providers_tried = result.get("_providers_tried", []) if isinstance(result, dict) else []
+            logger.info(f"SC prep crew completed in {execution_time:.2f}s using provider: {provider_used}")
+            if len(providers_tried) > 1:
+                logger.info(f"Providers tried before success: {providers_tried}")
+
             return {
                 "success": True, "result": result.get("result"),
                 "input_hash": result.get("input_hash"),
