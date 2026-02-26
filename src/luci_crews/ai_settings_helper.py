@@ -79,8 +79,8 @@ TIER_PROVIDERS = {
         ("google", "gemini-1.5-pro"),
     ],
     ModelTier.STANDARD: [
-        ("google", "gemini-2.0-flash"),
         ("openai", "gpt-4.1-mini"),
+        ("google", "gemini-2.0-flash"),
         ("anthropic", "claude-haiku-4-5-20251001"),
     ],
     ModelTier.ECONOMY: [
@@ -399,8 +399,8 @@ def get_llm_for_task(
         logger.info(f"[{task_name or 'unknown'}] User {user_id} assigned: {starting_provider}/{starting_model}")
     else:
         # LOW priority or no user: use cheapest
-        starting_provider = "google"
-        starting_model = "gemini-2.0-flash"
+        starting_provider = "openai"
+        starting_model = "gpt-4.1-mini"
         logger.info(f"[{task_name or 'unknown'}] Using economy model for {task_priority.value} priority")
 
     # Build the fallback chain
