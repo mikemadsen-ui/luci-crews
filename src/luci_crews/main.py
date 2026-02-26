@@ -373,10 +373,12 @@ async def run_account_analysis_crew(request: AccountAnalysisRequest):
             "engagement_data": request.engagementData,
         }
 
-        result = run_with_fallback(
+        result = run_with_smart_fallback(
             crew_factory=crew_factory,
             run_args=run_args,
+            task_priority=TaskPriority.MEDIUM,
             user_id=request.userId,
+            task_name="account_analysis",
         )
 
         execution_time = (datetime.utcnow() - start_time).total_seconds()
@@ -498,10 +500,12 @@ async def run_sentiment_crew(request: SentimentRequest):
         def crew_factory(llm):
             return SentimentCrew(llm=llm)
 
-        result = run_with_fallback(
+        result = run_with_smart_fallback(
             crew_factory=crew_factory,
             run_args=run_args,
+            task_priority=TaskPriority.MEDIUM,
             user_id=request.userId,
+            task_name="sentiment",
         )
 
         execution_time = (datetime.utcnow() - start_time).total_seconds()
@@ -1687,10 +1691,12 @@ async def run_drilldown_crew(request: Request):
                 "user_id": req.userId,
             }
 
-            result = run_with_fallback(
+            result = run_with_smart_fallback(
                 crew_factory=crew_factory,
                 run_args=run_args,
+                task_priority=TaskPriority.MEDIUM,
                 user_id=req.userId,
+                task_name="drilldown",
             )
 
             execution_time = (datetime.utcnow() - start_time).total_seconds()
