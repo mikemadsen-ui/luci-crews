@@ -314,6 +314,111 @@ def create_llm_for_provider(provider: str, model_id: str, api_key: str, temperat
     )
 
 
+def build_fallback_chain(
+    starting_model: str,
+    starting_provider: str,
+    task_priority: TaskPriority,
+) -> List[tuple]:
+    """
+    Build a quality-ordered fallback chain starting from the given model.
+
+    For HIGH/MEDIUM priority: Start with assigned model, try same-tier alternates,
+    then step down to lower tiers.
+
+    For LOW priority: Start with cheapest (ECONOMY), work up if needed.
+
+    Returns:
+        List of (provider, model_id, api_key_env_var) tuples
+    """
+    chain = []
+    seen = set()
+
+    if task_priority == TaskPriority.LOW:
+        # Cost-ordered: Start with cheapest
+        for tier in reversed(TIER_ORDER):  # ECONOMY -> STANDARD -> PREMIUM
+            for provider, model_id in TIER_PROVIDERS.get(tier, []):
+                env_var = f"{provider.upper()}_API_KEY"
+                if env_var == "GOOGLE_API_KEY":
+                    env_var = "GOOGLE_API_KEY"
+                api_key = os.getenv(env_var)
+                if api_key and (provider, model_id) not in seen:
+                    chain.append((provider, model_id, env_var))
+                    seen.add((provider, model_id))
+    else:
+        # Quality-ordered: Start with assigned model
+        starting_tier = get_model_tier(starting_model)
+        env_var_map = {
+            "openai": "OPENAI_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+            "google": "GOOGLE_API_KEY",
+        }
+
+        # First, add the assigned model
+        env_var = env_var_map.get(starting_provider, "OPENAI_API_KEY")
+        if os.getenv(env_var):
+            chain.append((starting_provider, starting_model, env_var))
+            seen.add((starting_provider, starting_model))
+
+        # Then add same-tier alternatives from other providers
+        starting_tier_idx = TIER_ORDER.index(starting_tier)
+
+        for tier in TIER_ORDER[starting_tier_idx:]:  # Same tier and below
+            for provider, model_id in TIER_PROVIDERS.get(tier, []):
+                env_var = env_var_map.get(provider, "OPENAI_API_KEY")
+                api_key = os.getenv(env_var)
+                if api_key and (provider, model_id) not in seen:
+                    chain.append((provider, model_id, env_var))
+                    seen.add((provider, model_id))
+
+    return chain
+
+
+def get_llm_for_task(
+    task_priority: TaskPriority,
+    user_id: Optional[str] = None,
+    task_name: Optional[str] = None,
+) -> tuple:
+    """
+    Get model configuration for a task based on priority and user role.
+
+    This is the SINGLE ENTRY POINT for all AI model selection.
+
+    Args:
+        task_priority: Importance level (LOW/MEDIUM/HIGH)
+        user_id: Optional user ID for role-based ceiling
+        task_name: Optional name for logging
+
+    Returns:
+        Tuple of (provider, model_id, api_key_env_var, fallback_chain)
+    """
+    # Get user's assigned model (if user_id provided)
+    if user_id and task_priority != TaskPriority.LOW:
+        settings = get_ai_settings_for_user(user_id)
+        starting_provider = settings.provider
+        starting_model = settings.model_id
+        logger.info(f"[{task_name or 'unknown'}] User {user_id} assigned: {starting_provider}/{starting_model}")
+    else:
+        # LOW priority or no user: use cheapest
+        starting_provider = "google"
+        starting_model = "gemini-3-flash"
+        logger.info(f"[{task_name or 'unknown'}] Using economy model for {task_priority.value} priority")
+
+    # Build the fallback chain
+    fallback_chain = build_fallback_chain(
+        starting_model=starting_model,
+        starting_provider=starting_provider,
+        task_priority=task_priority,
+    )
+
+    if not fallback_chain:
+        raise RuntimeError("No AI providers configured. Set API keys for OpenAI, Anthropic, or Google.")
+
+    primary = fallback_chain[0]
+    logger.info(f"[{task_name or 'unknown'}] Primary: {primary[0]}/{primary[1]}, Fallbacks: {len(fallback_chain)-1}")
+
+    return primary[0], primary[1], primary[2], fallback_chain
+
+
 def run_with_fallback(
     crew_factory: Callable,
     run_args: Dict[str, Any],
