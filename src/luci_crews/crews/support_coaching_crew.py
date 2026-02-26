@@ -6,12 +6,15 @@ recommendations, identify strengths and improvement areas, and compare
 performance against team benchmarks.
 """
 
+import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from crewai import Agent, Task, Crew, Process
 
 from .base_crew import BaseCrew
 from ..utils import extract_json_from_llm_response
+
+logger = logging.getLogger(__name__)
 
 
 class SupportCoachingCrew(BaseCrew):
@@ -99,7 +102,7 @@ Case #{case.get('case_number', 'N/A')}
             }
 
         except Exception as e:
-            print(f"Error calculating team benchmarks: {e}")
+            logger.warning(f"Error calculating team benchmarks: {e}")
             return {
                 "team_avg_cases": "N/A",
                 "team_avg_resolution_time": "N/A",
@@ -123,7 +126,7 @@ Case #{case.get('case_number', 'N/A')}
             return result.data or []
 
         except Exception as e:
-            print(f"Error fetching agent cases: {e}")
+            logger.warning(f"Error fetching agent cases: {e}")
             return []
 
     def run(

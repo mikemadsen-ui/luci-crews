@@ -5,6 +5,7 @@ Analyzes retention patterns, account engagement, and expansion success to provid
 personalized coaching for Customer Success Managers.
 """
 
+import logging
 import os
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
@@ -13,6 +14,8 @@ from crewai import Agent, Task, Crew, Process, LLM
 from .base_crew import BaseCrew
 from ..ai_settings_helper import get_llm_for_task, create_llm_for_provider, TaskPriority
 from ..utils import extract_json_from_llm_response
+
+logger = logging.getLogger(__name__)
 
 
 class CSMCoachingCrew(BaseCrew):
@@ -52,7 +55,7 @@ class CSMCoachingCrew(BaseCrew):
         self.quality_llm = create_llm_for_provider(quality_provider, quality_model_id, os.getenv(quality_env_var))
 
         # Log the tiered model strategy
-        print(f"[CSM Coaching] Using tiered models: fast={self.fast_llm.model}, quality={self.quality_llm.model}")
+        logger.info(f"Using tiered models: fast={self.fast_llm.model}, quality={self.quality_llm.model}")
 
     def _build_csm_context(
         self,
@@ -293,9 +296,9 @@ Total Expansion Revenue: ${total_expansion_value:,.0f}
         # Log what we received
         if semantic_insights:
             total_insights = sum(len(v) for v in semantic_insights.values())
-            print(f"[CSM Coaching] Received {total_insights} semantic insights across {len([k for k, v in semantic_insights.items() if v])} categories")
+            logger.info(f"Received {total_insights} semantic insights across {len([k for k, v in semantic_insights.items() if v])} categories")
         else:
-            print("[CSM Coaching] No semantic insights provided, using transcription samples if available")
+            logger.info("No semantic insights provided, using transcription samples if available")
 
         full_context = f"""=== CSM COACHING ANALYSIS ===
 Customer Success Manager: {csm_name}
