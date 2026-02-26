@@ -623,10 +623,11 @@ async def run_sandbox_test(request: SandboxTestRequest):
             yield ctx.init_message("Initializing sandbox test...")
 
             def run_crew(step_callback):
-                llm = LLM(
-                    model=os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini"),
-                    api_key=os.environ.get("OPENAI_API_KEY"),
+                provider, model_id, env_var, _ = get_llm_for_task(
+                    task_priority=TaskPriority.LOW,  # Sandbox test is low priority
+                    task_name="sandbox_test",
                 )
+                llm = create_llm_for_provider(provider, model_id, os.getenv(env_var))
                 agent_config = request.agent
                 agent_role = agent_config.get("role", "Test Agent")
                 step_callback(f"Creating agent: {agent_role}")
