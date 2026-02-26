@@ -120,6 +120,11 @@ load_dotenv()
 # Custom formatter to clean up API usage logs
 class CleanAPIUsageFormatter(logging.Formatter):
     def format(self, record):
+        # Rename "uvicorn.error" to "uvicorn.server" to avoid Railway flagging it as error
+        # (uvicorn.error is just uvicorn's confusing name for its server event logger)
+        if record.name == "uvicorn.error":
+            record.name = "uvicorn.server"
+
         # Format OpenAI API usage logs more cleanly
         if "OpenAI API usage:" in record.getMessage():
             try:
