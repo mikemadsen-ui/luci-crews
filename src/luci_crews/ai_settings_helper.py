@@ -42,6 +42,52 @@ class ModelTier(Enum):
 # Tier ordering for fallback (highest to lowest)
 TIER_ORDER = [ModelTier.PREMIUM, ModelTier.STANDARD, ModelTier.ECONOMY]
 
+# Model tier classification (mirrors database, used as fallback)
+MODEL_TIERS = {
+    # PREMIUM - highest capability
+    "claude-sonnet-4-6-20260217": ModelTier.PREMIUM,
+    "claude-sonnet-4-5-20250929": ModelTier.PREMIUM,
+    "gpt-4.1": ModelTier.PREMIUM,
+    "gpt-4o": ModelTier.PREMIUM,
+    "gemini-3-pro": ModelTier.PREMIUM,
+    "gemini-2.5-pro": ModelTier.PREMIUM,
+
+    # STANDARD - balanced
+    "claude-haiku-4-5-20251001": ModelTier.STANDARD,
+    "claude-3-5-haiku-20241022": ModelTier.STANDARD,
+    "gpt-4.1-mini": ModelTier.STANDARD,
+    "gpt-4o-mini": ModelTier.STANDARD,
+    "gemini-3-flash": ModelTier.STANDARD,
+    "gemini-2.5-flash": ModelTier.STANDARD,
+    "gemini-2.0-flash": ModelTier.STANDARD,
+
+    # ECONOMY - cheapest
+    "gpt-4.1-nano": ModelTier.ECONOMY,
+}
+
+
+def get_model_tier(model_id: str) -> ModelTier:
+    """Get the tier for a model, defaulting to STANDARD if unknown."""
+    return MODEL_TIERS.get(model_id, ModelTier.STANDARD)
+
+
+# Provider ordering within each tier (for fallback diversity)
+TIER_PROVIDERS = {
+    ModelTier.PREMIUM: [
+        ("anthropic", "claude-sonnet-4-6-20260217"),
+        ("openai", "gpt-4.1"),
+        ("google", "gemini-3-pro"),
+    ],
+    ModelTier.STANDARD: [
+        ("google", "gemini-3-flash"),
+        ("openai", "gpt-4.1-mini"),
+        ("anthropic", "claude-haiku-4-5-20251001"),
+    ],
+    ModelTier.ECONOMY: [
+        ("openai", "gpt-4.1-nano"),
+    ],
+}
+
 
 logger = logging.getLogger(__name__)
 
