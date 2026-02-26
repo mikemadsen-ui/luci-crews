@@ -12,6 +12,36 @@ import logging
 from typing import Optional, Dict, Any, List, Callable
 from dataclasses import dataclass
 from supabase import create_client, Client
+from enum import Enum
+
+
+class TaskPriority(Enum):
+    """Task importance level for model selection.
+
+    LOW: Background batch tasks (embeddings, nightly sync)
+         Uses cheapest available model regardless of user role.
+
+    MEDIUM: User-triggered analysis (call analysis, project sentiment)
+            Uses user's assigned model with quality-ordered fallback.
+
+    HIGH: Critical automated tasks (dashboard scores, executive briefings)
+          Uses user's assigned model with quality-ordered fallback.
+    """
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class ModelTier(Enum):
+    """Model capability tier for fallback ordering."""
+    ECONOMY = "ECONOMY"
+    STANDARD = "STANDARD"
+    PREMIUM = "PREMIUM"
+
+
+# Tier ordering for fallback (highest to lowest)
+TIER_ORDER = [ModelTier.PREMIUM, ModelTier.STANDARD, ModelTier.ECONOMY]
+
 
 logger = logging.getLogger(__name__)
 
