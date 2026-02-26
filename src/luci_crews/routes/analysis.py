@@ -31,6 +31,7 @@ from ..utils.streaming import (
     SimpleStreamingContext,
     create_streaming_response,
 )
+from ..ai_settings_helper import run_with_smart_fallback, TaskPriority
 
 logger = logging.getLogger(__name__)
 
@@ -77,12 +78,25 @@ async def run_project_sentiment_crew(request: Request):
             return create_streaming_response(generate())
         else:
             start_time = datetime.utcnow()
-            result = crew.run(
-                salesforce_project_id=req.salesforceProjectId,
-                salesforce_account_id=req.salesforceAccountId,
-                transcription_ids=req.transcriptionIds or [],
-                force_refresh=req.forceRefresh or False,
+
+            def crew_factory(llm):
+                return ProjectSentimentCrew(user_id=req.userId, llm=llm)
+
+            run_args = {
+                "salesforce_project_id": req.salesforceProjectId,
+                "salesforce_account_id": req.salesforceAccountId,
+                "transcription_ids": req.transcriptionIds or [],
+                "force_refresh": req.forceRefresh or False,
+            }
+
+            result = run_with_smart_fallback(
+                crew_factory=crew_factory,
+                run_args=run_args,
+                task_priority=TaskPriority.MEDIUM,
+                user_id=req.userId,
+                task_name="project_sentiment",
             )
+
             execution_time = (datetime.utcnow() - start_time).total_seconds()
             logger.info(f"Project sentiment crew completed in {execution_time:.2f}s")
             return {
@@ -149,15 +163,28 @@ async def run_project_analysis_crew(request: Request):
             return create_streaming_response(generate())
         else:
             start_time = datetime.utcnow()
-            result = crew.run(
-                project=req.project or {},
-                project_owner=req.projectOwner or {"type": "unknown"},
-                mavenlink_tasks=req.mavenlinkTasks or [],
-                mavenlink_time_entries=req.mavenlinkTimeEntries or [],
-                transcripts=req.transcripts or [],
-                call_activity=req.callActivity or {},
-                email_activity=req.emailActivity,
+
+            def crew_factory(llm):
+                return ProjectAnalysisCrew(user_id=req.userId, llm=llm)
+
+            run_args = {
+                "project": req.project or {},
+                "project_owner": req.projectOwner or {"type": "unknown"},
+                "mavenlink_tasks": req.mavenlinkTasks or [],
+                "mavenlink_time_entries": req.mavenlinkTimeEntries or [],
+                "transcripts": req.transcripts or [],
+                "call_activity": req.callActivity or {},
+                "email_activity": req.emailActivity,
+            }
+
+            result = run_with_smart_fallback(
+                crew_factory=crew_factory,
+                run_args=run_args,
+                task_priority=TaskPriority.MEDIUM,
+                user_id=req.userId,
+                task_name="project_analysis",
             )
+
             execution_time = (datetime.utcnow() - start_time).total_seconds()
             logger.info(f"Project analysis crew completed in {execution_time:.2f}s")
             return {"success": True, "result": result, "execution_time": execution_time}
@@ -210,15 +237,28 @@ async def run_opportunity_strategy_crew(request: Request):
             return create_streaming_response(generate())
         else:
             start_time = datetime.utcnow()
-            result = crew.run(
-                opportunity_id=req.opportunityId,
+
+            def crew_factory(llm):
+                return OpportunityStrategyCrew(user_id=req.userId, llm=llm)
+
+            run_args = {
+                "opportunity_id": req.opportunityId,
+                "user_id": req.userId,
+                "force_refresh": req.forceRefresh or False,
+                "opportunity_data": req.opportunityData.model_dump() if req.opportunityData else None,
+                "transcription_data": [t.model_dump() for t in req.transcriptionData] if req.transcriptionData else None,
+                "salesforce_account_id": req.salesforceAccountId,
+                "presales_context": req.presalesContext.model_dump() if req.presalesContext else None,
+            }
+
+            result = run_with_smart_fallback(
+                crew_factory=crew_factory,
+                run_args=run_args,
+                task_priority=TaskPriority.MEDIUM,
                 user_id=req.userId,
-                force_refresh=req.forceRefresh or False,
-                opportunity_data=req.opportunityData.model_dump() if req.opportunityData else None,
-                transcription_data=[t.model_dump() for t in req.transcriptionData] if req.transcriptionData else None,
-                salesforce_account_id=req.salesforceAccountId,
-                presales_context=req.presalesContext.model_dump() if req.presalesContext else None,
+                task_name="opportunity_strategy",
             )
+
             execution_time = (datetime.utcnow() - start_time).total_seconds()
             logger.info(f"Opportunity strategy crew completed in {execution_time:.2f}s")
             return {
