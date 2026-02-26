@@ -67,7 +67,7 @@ async def run_studio_crew(request: StudioCrewRequest):
             # (e.g., exec → Claude 4.5 Sonnet, IC → GPT-4.1 Mini).
             # If no user preference or userId provided, use create_llm_for_user
             # which looks it up from Supabase directly.
-            from ..ai_settings_helper import PROVIDER_MODEL_PREFIXES, create_llm_for_user
+            from ..ai_settings_helper import PROVIDER_MODEL_PREFIXES, create_llm_for_user, get_llm_for_task, create_llm_for_provider, TaskPriority
 
             if request.provider and request.model_id:
                 # User settings passed from Vercel
@@ -92,14 +92,20 @@ async def run_studio_crew(request: StudioCrewRequest):
                 try:
                     llm = create_llm_for_user(request.userId)
                 except Exception as e:
-                    logger.warning(f"Failed to create LLM for user, using default: {e}")
-                    model_name = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini")
-                    llm = LLM(model=model_name, api_key=os.environ.get("OPENAI_API_KEY"))
+                    logger.warning(f"Failed to create LLM for user, using intelligent selection: {e}")
+                    provider, model_id, env_var, _ = get_llm_for_task(
+                        task_priority=TaskPriority.MEDIUM,
+                        task_name="studio",
+                    )
+                    llm = create_llm_for_provider(provider, model_id, os.getenv(env_var))
             else:
-                # Fallback to env var
-                model_name = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini")
-                logger.info(f"Using default model: {model_name}")
-                llm = LLM(model=model_name, api_key=os.environ.get("OPENAI_API_KEY"))
+                # Fallback to intelligent model selection
+                provider, model_id, env_var, _ = get_llm_for_task(
+                    task_priority=TaskPriority.MEDIUM,
+                    task_name="studio",
+                )
+                logger.info(f"Using intelligent selection: {provider}/{model_id}")
+                llm = create_llm_for_provider(provider, model_id, os.getenv(env_var))
 
             # Create agent based on mode
             if request.mode == "simple":
