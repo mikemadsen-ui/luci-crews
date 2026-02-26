@@ -17,7 +17,7 @@ from typing import Optional, Dict, Any, List
 from crewai import Agent, LLM, Task
 from supabase import create_client, Client
 
-from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS
+from ..ai_settings_helper import create_llm_for_user, DEFAULT_AI_SETTINGS, get_llm_for_task, create_llm_for_provider, TaskPriority
 from ..config_loader import load_agents_config, load_tasks_config
 from ..utils import extract_json_from_llm_response
 
@@ -86,11 +86,12 @@ class BaseCrew:
         if user_id:
             return create_llm_for_user(user_id)
 
-        # Default LLM configuration
-        return LLM(
-            model=os.environ.get("OPENAI_MODEL_NAME", DEFAULT_AI_SETTINGS["model_id"]),
-            api_key=os.environ.get("OPENAI_API_KEY"),
+        # Default: Use intelligent model selection with MEDIUM priority
+        provider, model_id, env_var, _ = get_llm_for_task(
+            task_priority=TaskPriority.MEDIUM,
+            task_name="default_crew",
         )
+        return create_llm_for_provider(provider, model_id, os.getenv(env_var))
 
     def _init_supabase(self) -> Optional[Client]:
         """Initialize Supabase client for database access.
