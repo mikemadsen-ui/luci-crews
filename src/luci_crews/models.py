@@ -237,6 +237,22 @@ class CaseDataModel(BaseModel):
     description: Optional[str] = None
 
 
+class ProductIntelligenceRequest(BaseModel):
+    """Request model for product intelligence analysis."""
+    userId: Optional[str] = None
+    userEmail: Optional[str] = None
+    periodType: str  # weekly, monthly, quarterly
+    periodStart: str  # YYYY-MM-DD
+    periodEnd: str  # YYYY-MM-DD
+    productFilter: Optional[str] = None
+    versionFilter: Optional[str] = None
+    casesData: List[Dict[str, Any]]
+    existingTaxonomy: Optional[List[Dict[str, Any]]] = []
+    priorPeriodSummary: Optional[Dict[str, Any]] = {}
+    versionDistribution: Optional[List[Dict[str, Any]]] = []
+    inputHash: Optional[str] = None
+
+
 class SupportCoachingRequest(BaseModel):
     """Request model for support agent coaching analysis."""
     agentName: str
