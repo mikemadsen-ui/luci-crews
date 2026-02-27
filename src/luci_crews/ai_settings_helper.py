@@ -42,23 +42,30 @@ class ModelTier(Enum):
 # Tier ordering for fallback (highest to lowest)
 TIER_ORDER = [ModelTier.PREMIUM, ModelTier.STANDARD, ModelTier.ECONOMY]
 
+# Deprecated model upgrades — automatically replace retired models
+# Key = old model ID (from database), Value = replacement model ID
+DEPRECATED_MODEL_UPGRADES = {
+    "claude-3-5-sonnet-20241022": "claude-sonnet-4-6-20260217",
+    "claude-3-5-haiku-20241022": "claude-haiku-4-5-20251001",
+    "gemini-1.5-flash": "gemini-2.0-flash",
+    "gemini-1.5-pro": "gemini-2.0-flash",
+}
+
 # Model tier classification (mirrors database, used as fallback)
 # Only includes models verified to exist as of Feb 2026
 MODEL_TIERS = {
     # PREMIUM - highest capability
+    "claude-sonnet-4-6-20260217": ModelTier.PREMIUM,
     "claude-sonnet-4-5-20250929": ModelTier.PREMIUM,
-    "claude-3-5-sonnet-20241022": ModelTier.PREMIUM,
     "gpt-4.1": ModelTier.PREMIUM,
     "gpt-4o": ModelTier.PREMIUM,
-    "gemini-1.5-pro": ModelTier.PREMIUM,
 
     # STANDARD - balanced
     "claude-haiku-4-5-20251001": ModelTier.STANDARD,
-    "claude-3-5-haiku-20241022": ModelTier.STANDARD,
     "gpt-4.1-mini": ModelTier.STANDARD,
     "gpt-4o-mini": ModelTier.STANDARD,
     "gemini-2.0-flash": ModelTier.STANDARD,
-    "gemini-1.5-flash": ModelTier.STANDARD,
+    "gemini-2.5-flash": ModelTier.STANDARD,
 
     # ECONOMY - cheapest
     "gpt-4.1-nano": ModelTier.ECONOMY,
@@ -198,9 +205,18 @@ def get_ai_settings_for_level(supabase: Client, management_level: str) -> AISett
 
         if result.data and result.data.get("ai_models"):
             model_data = result.data["ai_models"]
+            model_id = model_data.get("model_id", DEFAULT_AI_SETTINGS["model_id"])
+            provider = model_data.get("provider", DEFAULT_AI_SETTINGS["provider"])
+
+            # Auto-upgrade deprecated models
+            if model_id in DEPRECATED_MODEL_UPGRADES:
+                new_model = DEPRECATED_MODEL_UPGRADES[model_id]
+                logger.warning(f"Model {model_id} is deprecated, upgrading to {new_model}")
+                model_id = new_model
+
             return AISettings(
-                provider=model_data.get("provider", DEFAULT_AI_SETTINGS["provider"]),
-                model_id=model_data.get("model_id", DEFAULT_AI_SETTINGS["model_id"]),
+                provider=provider,
+                model_id=model_id,
                 temperature=float(result.data.get("temperature", DEFAULT_AI_SETTINGS["temperature"])),
                 max_tokens=int(result.data.get("max_tokens", DEFAULT_AI_SETTINGS["max_tokens"])),
             )
