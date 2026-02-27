@@ -241,6 +241,8 @@ def create_llm_for_user(user_id: str):
     """
     Create a CrewAI LLM instance configured for the user's management level.
 
+    Falls back to available providers if the user's assigned provider has no API key.
+
     Args:
         user_id: The user's ID
 
@@ -252,6 +254,17 @@ def create_llm_for_user(user_id: str):
     settings = get_ai_settings_for_user(user_id)
     model_name = settings.get_crewai_model_name()
     api_key = os.getenv(settings.get_api_key_env_var())
+
+    # If the user's assigned provider has no API key, fall back to an available one
+    if not api_key:
+        logger.warning(f"User {user_id}'s assigned provider ({settings.provider}) has no API key, falling back")
+        available = get_available_providers()
+        if not available:
+            raise RuntimeError("No AI providers configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_API_KEY.")
+        fallback_provider, fallback_model, fallback_key = available[0]
+        logger.info(f"Falling back to {fallback_provider}/{fallback_model} for user {user_id}")
+        return create_llm_for_provider(fallback_provider, fallback_model, fallback_key,
+                                       settings.temperature, settings.max_tokens)
 
     logger.info(f"Creating LLM for user {user_id}: model={model_name}, temp={settings.temperature}")
 
