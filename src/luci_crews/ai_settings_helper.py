@@ -83,7 +83,7 @@ TIER_PROVIDERS = {
     ModelTier.PREMIUM: [
         ("anthropic", "claude-sonnet-4-5-20250929"),
         ("openai", "gpt-4.1"),
-        ("google", "gemini-1.5-pro"),
+        ("google", "gemini-2.0-flash"),
     ],
     ModelTier.STANDARD: [
         ("openai", "gpt-4.1-mini"),
@@ -355,6 +355,12 @@ def create_llm_for_provider(provider: str, model_id: str, api_key: str, temperat
         CrewAI LLM instance
     """
     from crewai import LLM
+
+    # Safety net: auto-upgrade deprecated models regardless of source
+    if model_id in DEPRECATED_MODEL_UPGRADES:
+        new_model = DEPRECATED_MODEL_UPGRADES[model_id]
+        logger.warning(f"create_llm_for_provider: Model {model_id} is deprecated, upgrading to {new_model}")
+        model_id = new_model
 
     prefix = PROVIDER_MODEL_PREFIXES.get(provider, "")
     model_name = f"{prefix}{model_id}"
