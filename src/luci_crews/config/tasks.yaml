@@ -1943,7 +1943,7 @@ develop_renewal_strategy:
 
     Return a JSON object with this EXACT structure:
     {{
-      "readiness_score": <0-100, where 100 is fully ready to renew>,
+      "readiness_score": <1-10, where 10 is fully ready to renew>,
 
       "risk_factors": [
         {{
@@ -2003,12 +2003,12 @@ develop_renewal_strategy:
       "coaching_for_csm": "<5-8 sentences of specific advice for managing this renewal>"
     }}
 
-    SCORING RUBRIC for readiness_score:
-    - 80-100: High confidence renewal, likely expansion opportunity
-    - 60-79: Solid renewal expected, minor risks to manage
-    - 40-59: At-risk renewal, significant work needed
-    - 20-39: High churn risk, intervention required
-    - 0-19: Critical risk, escalation and executive intervention needed
+    SCORING RUBRIC for readiness_score (integer 1-10):
+    - 8-10: High confidence renewal, likely expansion opportunity
+    - 6-7: Solid renewal expected, minor risks to manage
+    - 4-5: At-risk renewal, significant work needed
+    - 2-3: High churn risk, intervention required
+    - 1: Critical risk, escalation and executive intervention needed
 
     BE HONEST about risk. It's better to flag concerns early than be surprised.
     Provide SPECIFIC actions, not generic advice.
