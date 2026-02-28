@@ -91,7 +91,7 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
                 "id, name, contract_value_numeric, health_score, contract_end_date, account_tier, updated_at"
             ).gte("contract_end_date", today).lte(
                 "contract_end_date", cutoff
-            ).lt("health_score", 5.0).gt(
+            ).lt("health_score", 5).gt(
                 "contract_value_numeric", 0
             ).order(
                 "contract_value_numeric", desc=True
@@ -108,7 +108,7 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
         try:
             result = self.supabase.table("accounts").select(
                 "id, name, contract_value_numeric, health_score, account_tier, updated_at"
-            ).lt("health_score", 5.0).gt(
+            ).lt("health_score", 5).gt(
                 "contract_value_numeric", 0
             ).order(
                 "contract_value_numeric", desc=True

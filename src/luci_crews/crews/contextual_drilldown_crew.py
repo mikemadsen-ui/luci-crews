@@ -155,7 +155,7 @@ class ContextualDrilldownCrew(BaseCrew):
             elif metric_id == "health":
                 result = self.supabase.table("accounts").select(
                     "name, health_score, contract_value_numeric, account_tier"
-                ).lt("health_score", 5.0).order("contract_value_numeric", desc=True).limit(10).execute()
+                ).lt("health_score", 5).order("contract_value_numeric", desc=True).limit(10).execute()
                 context["details"] = {
                     "at_risk": result.data or [],
                     "total_at_risk_arr": sum(a.get("contract_value_numeric", 0) or 0 for a in result.data or []),
