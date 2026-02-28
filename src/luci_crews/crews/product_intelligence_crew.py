@@ -42,7 +42,7 @@ class ProductIntelligenceCrew(BaseCrew):
         """Format a single case into a compact context string (~500 tokens)."""
         subject = case.get("subject", "No subject")
         description = (case.get("description") or "")[:CASE_DESC_LIMIT]
-        product = case.get("support_product", "Unknown")
+        product = case.get("support_product") or case.get("product") or "Unknown"
         version = case.get("package_version_at_creation", "N/A")
         priority = case.get("priority", "Unknown")
         status = case.get("status", "Unknown")
@@ -79,7 +79,7 @@ class ProductIntelligenceCrew(BaseCrew):
         """Build a quick summary of case counts by product."""
         counts: Dict[str, int] = {}
         for case in cases:
-            product = case.get("support_product", "Unknown")
+            product = case.get("support_product") or case.get("product") or "Unknown"
             counts[product] = counts.get(product, 0) + 1
         lines = [f"  {product}: {count} cases" for product, count in sorted(counts.items(), key=lambda x: -x[1])]
         return "\n".join(lines)
