@@ -90,7 +90,6 @@ from .crews.executive_briefing_crew import ExecutiveMorningBriefingCrew
 from .crews.contextual_drilldown_crew import ContextualDrilldownCrew
 from .crews.project_analysis_crew import ProjectAnalysisCrew
 from .crews.product_intelligence_crew import ProductIntelligenceCrew
-from .batch_router import router as batch_router
 from .routes.analysis import router as analysis_router
 from .routes.coaching import router as coaching_router
 from .routes.config import router as config_router
@@ -180,6 +179,20 @@ for uvicorn_logger_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
     uvicorn_logger.addHandler(handler)
     uvicorn_logger.propagate = False
 
+# Configure LiteLLM loggers to use our handler (they default to stderr, showing as red in Railway)
+for litellm_logger_name in ["LiteLLM", "LiteLLM Proxy", "LiteLLM Router", "litellm"]:
+    litellm_logger = logging.getLogger(litellm_logger_name)
+    litellm_logger.handlers = []
+    litellm_logger.addHandler(handler)
+    litellm_logger.propagate = False
+
+# Suppress LiteLLM's print-based verbose output (separate from Python logging)
+try:
+    import litellm
+    litellm.suppress_debug_info = True
+except ImportError:
+    pass
+
 # Store running jobs
 running_jobs: Dict[str, Dict[str, Any]] = {}
 
@@ -232,7 +245,6 @@ app.add_middleware(
 
 # Register routers
 app.include_router(analysis_router)  # Analysis crew endpoints (project, opportunity, competitive, support)
-app.include_router(batch_router)  # Batch processing for overnight sync jobs
 app.include_router(coaching_router)  # Coaching crew endpoints
 app.include_router(config_router)  # Config management for Crew Studio
 app.include_router(health_router)  # Health check and capabilities endpoints
