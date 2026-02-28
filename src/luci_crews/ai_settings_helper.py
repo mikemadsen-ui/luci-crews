@@ -45,7 +45,7 @@ TIER_ORDER = [ModelTier.PREMIUM, ModelTier.STANDARD, ModelTier.ECONOMY]
 # Deprecated model upgrades — automatically replace retired models
 # Key = old model ID (from database), Value = replacement model ID
 DEPRECATED_MODEL_UPGRADES = {
-    "claude-3-5-sonnet-20241022": "claude-sonnet-4-6-20260217",
+    "claude-3-5-sonnet-20241022": "claude-sonnet-4-6",
     "claude-3-5-haiku-20241022": "claude-haiku-4-5-20251001",
     "gemini-1.5-flash": "gemini-2.0-flash",
     "gemini-1.5-pro": "gemini-2.0-flash",
@@ -55,7 +55,7 @@ DEPRECATED_MODEL_UPGRADES = {
 # Only includes models verified to exist as of Feb 2026
 MODEL_TIERS = {
     # PREMIUM - highest capability
-    "claude-sonnet-4-6-20260217": ModelTier.PREMIUM,
+    "claude-sonnet-4-6": ModelTier.PREMIUM,
     "claude-sonnet-4-5-20250929": ModelTier.PREMIUM,
     "gpt-4.1": ModelTier.PREMIUM,
     "gpt-4o": ModelTier.PREMIUM,
@@ -122,7 +122,7 @@ PROVIDER_MODEL_PREFIXES = {
 FALLBACK_PROVIDERS = [
     ("openai", os.getenv("FAST_LLM_MODEL", "gpt-4o-mini"), "OPENAI_API_KEY"),
     # Claude 3.5 Sonnet retired Oct 2025 - upgraded to Claude Sonnet 4.6 (released Feb 17, 2026)
-    ("anthropic", os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6-20260217"), "ANTHROPIC_API_KEY"),
+    ("anthropic", os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"), "ANTHROPIC_API_KEY"),
     # Gemini 1.5 Flash retired - upgraded to Gemini 2.5 Flash (stable, fast, cost-efficient)
     # Note: "gemini/" prefix is added automatically by create_llm_for_provider
     ("google", os.getenv("GOOGLE_MODEL", "gemini-2.5-flash"), "GOOGLE_API_KEY"),
