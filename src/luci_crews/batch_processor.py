@@ -290,22 +290,27 @@ class OvernightBatchProcessor:
         logger.info(f"Creating batch record: batch_id={batch_id}, accounts_total={accounts_total}, triggered_by={triggered_by}")
 
         try:
-            def _insert():
-                return self.supabase.table("batch_processing_runs").insert({
+            def _upsert():
+                # Use upsert so retries don't fail on duplicate batch_id
+                return self.supabase.table("batch_processing_runs").upsert({
                     "batch_id": batch_id,
                     "batch_type": "overnight_sync",
                     "status": "running",
                     "users_total": accounts_total,  # Reusing field for accounts
                     "triggered_by": triggered_by,
                     "started_at": datetime.utcnow().isoformat(),
-                }).execute()
+                    # Reset progress on retry
+                    "users_processed": 0,
+                    "completed_at": None,
+                    "error_message": None,
+                }, on_conflict="batch_id").execute()
 
-            result = await asyncio.to_thread(_insert)
+            result = await asyncio.to_thread(_upsert)
 
             if result.data:
-                logger.info(f"Created batch record successfully: {batch_id}")
+                logger.info(f"Batch record created/updated successfully: {batch_id}")
             else:
-                logger.warning(f"Batch record insert returned no data: {batch_id}")
+                logger.warning(f"Batch record upsert returned no data: {batch_id}")
         except Exception as e:
             logger.error(f"Error creating batch record {batch_id}: {e}", exc_info=True)
 
