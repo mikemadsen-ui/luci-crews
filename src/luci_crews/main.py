@@ -29,8 +29,10 @@ def _silent_print(self, *args, **kwargs):
     return _original_console_print(self, *args, **kwargs)
 Console.print = _silent_print
 
-# Suppress stdout during crewai imports
+# Suppress stdout during crewai imports and save stderr
+# (crewai wraps both sys.stdout and sys.stderr with FilteredStream at import time)
 _original_stdout = sys.stdout
+_original_stderr = sys.stderr
 sys.stdout = StringIO()
 
 import json
@@ -112,8 +114,10 @@ from .utils.streaming import (
 )
 from .utils.account_lookup import lookup_account
 
-# Restore stdout after crewai imports
+# Restore stdout and stderr after crewai imports
+# (crewai's FilteredStream wrapper intercepts writes and can interfere with our LevelRoutingHandler)
 sys.stdout = _original_stdout
+sys.stderr = _original_stderr
 
 # Load environment variables
 load_dotenv()
@@ -179,17 +183,29 @@ for uvicorn_logger_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
     uvicorn_logger.addHandler(handler)
     uvicorn_logger.propagate = False
 
-# Configure LiteLLM loggers to use our handler (they default to stderr, showing as red in Railway)
+# Configure LiteLLM loggers: set to WARNING to suppress verbose INFO messages
+# (e.g. "LiteLLM completion() model=..." and "Wrapper: Completed Call, calling success_handler")
+# that show as red errors in Railway because litellm re-adds stderr handlers at runtime.
+# Setting the level to WARNING prevents INFO messages from reaching ANY handler, even ones
+# litellm adds later, which is more robust than just clearing handlers once at startup.
 for litellm_logger_name in ["LiteLLM", "LiteLLM Proxy", "LiteLLM Router", "litellm"]:
     litellm_logger = logging.getLogger(litellm_logger_name)
     litellm_logger.handlers = []
     litellm_logger.addHandler(handler)
     litellm_logger.propagate = False
+    litellm_logger.setLevel(logging.WARNING)
 
 # Suppress LiteLLM's print-based verbose output (separate from Python logging)
 try:
     import litellm
     litellm.suppress_debug_info = True
+    litellm.set_verbose = False
+    # Also configure litellm's verbose_logger directly (the actual logger producing the noise)
+    if hasattr(litellm, 'verbose_logger'):
+        litellm.verbose_logger.handlers = []
+        litellm.verbose_logger.addHandler(handler)
+        litellm.verbose_logger.propagate = False
+        litellm.verbose_logger.setLevel(logging.WARNING)
 except ImportError:
     pass
 
