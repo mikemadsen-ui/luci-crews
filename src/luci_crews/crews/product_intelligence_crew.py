@@ -25,11 +25,14 @@ from ..utils import extract_json_from_llm_response
 logger = logging.getLogger(__name__)
 
 # Max cases before triggering map-reduce
-MAP_REDUCE_THRESHOLD = 200
+# Each case is ~125 tokens with CASE_DESC_LIMIT=200. Claude Sonnet 4.6 has 200K context.
+# At 800 cases × 125 tokens = 100K tokens input — still leaves room for prompt + output.
+# Below this threshold, cases go directly to Theme Analyst (2 LLM calls vs 11+).
+MAP_REDUCE_THRESHOLD = 800
 # Target batch size for map-reduce
-BATCH_SIZE = 50
-# Max chars of description to include per case
-CASE_DESC_LIMIT = 300
+BATCH_SIZE = 100
+# Max chars of description to include per case (shorter = more cases fit in context)
+CASE_DESC_LIMIT = 200
 
 
 class ProductIntelligenceCrew(BaseCrew):
