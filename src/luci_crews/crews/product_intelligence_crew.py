@@ -306,6 +306,8 @@ YOUR ANALYSIS SHOULD COVER:
 
 4. **Trend Comparison**: Compare against prior period data. What is improving? What is getting worse? What is new?
 
+5. **Operational Overhead vs Product Issues**: Distinguish between cases that represent product quality problems (bugs, feature gaps, integration failures) and cases that are routine operational requests (product deactivations, sandbox reactivations, license changes, access provisioning). Operational requests are not product issues — they are administrative workflow that may benefit from automation or self-service improvements, but should not be framed as product instability or correlated with business narratives like "churn."
+
 Be thorough and data-driven. Every observation should reference specific case counts and affected products.""",
             expected_output="""Structured theme analysis covering:
 - Per-category breakdown with topic groups and issue types
@@ -348,6 +350,11 @@ VERSION DISTRIBUTION:
 Using the theme analysis provided, produce:
 
 1. **Executive Summary**: 2-4 sentence overview of the most important findings and recommended priorities for this period.
+   IMPORTANT FRAMING RULES for the executive summary:
+   - Clearly separate product quality issues (bugs, feature gaps, integration failures) from operational overhead (deactivations, reactivations, license/access requests).
+   - Do NOT frame routine operational requests (e.g. product deactivations) as indicators of churn, instability, or product problems. They are administrative workflow.
+   - If operational requests represent notable volume, frame them as workflow efficiency opportunities (e.g. "X deactivation requests suggest an opportunity to automate or offer self-service offboarding") rather than product issues.
+   - Every claim must be supported by evidence from the case data. Do not infer business narratives (churn, instability) that the case data cannot substantiate.
 
 2. **Version Insights**: Summary of version-related patterns plus specific release correlations with suggested actions.
 
@@ -356,8 +363,9 @@ Using the theme analysis provided, produce:
    - Topic groups with:
      - Group name, case count, summary, suggested action, affected product
      - Within each group: specific issue types with name, case count, severity, summary, suggested action
+   - For topic groups that are operational/administrative in nature (deactivations, reactivations, access provisioning), frame suggested actions around workflow automation and self-service rather than product fixes.
 
-4. **Prioritization**: Rank suggested actions by impact (consider case count, severity, customer breadth, and whether the issue is growing).
+4. **Prioritization**: Rank suggested actions by impact (consider case count, severity, customer breadth, and whether the issue is growing). Operational efficiency improvements (automation, self-service) should be ranked separately from product quality fixes.
 
 IMPORTANT: Return your response as a single valid JSON object with this exact structure:
 
