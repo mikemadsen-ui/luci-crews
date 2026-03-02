@@ -101,10 +101,13 @@ from .ai_settings_helper import (
     run_with_fallback,
     run_with_smart_fallback,
     is_quota_error,
+    is_account_exhausted_error,
     get_available_providers,
     TaskPriority,
     get_llm_for_task,
     create_llm_for_provider,
+    build_fallback_chain,
+    get_ai_settings_for_user,
 )
 from .utils.streaming import (
     SimpleStreamingContext,
@@ -1118,18 +1121,26 @@ async def run_product_intelligence_crew(request: Request):
             logger.info(f"Version filter: {req.versionFilter}")
 
         if not stream:
-            # Non-streaming response
-            crew = ProductIntelligenceCrew(user_id=req.userId)
-            result = crew.run(
-                cases_data=req.casesData,
-                existing_taxonomy=req.existingTaxonomy or [],
-                prior_period_summary=req.priorPeriodSummary or {},
-                version_distribution=req.versionDistribution or [],
-                period_info={
-                    "type": req.periodType,
-                    "start": req.periodStart,
-                    "end": req.periodEnd,
-                },
+            # Non-streaming response with provider fallback
+            def _pi_crew_factory(llm):
+                return ProductIntelligenceCrew(user_id=req.userId, llm=llm)
+
+            result = run_with_smart_fallback(
+                crew_factory=_pi_crew_factory,
+                run_args=dict(
+                    cases_data=req.casesData,
+                    existing_taxonomy=req.existingTaxonomy or [],
+                    prior_period_summary=req.priorPeriodSummary or {},
+                    version_distribution=req.versionDistribution or [],
+                    period_info={
+                        "type": req.periodType,
+                        "start": req.periodStart,
+                        "end": req.periodEnd,
+                    },
+                ),
+                task_priority=TaskPriority.MEDIUM,
+                user_id=req.userId,
+                task_name="product_intelligence",
             )
 
             execution_time = (datetime.utcnow() - start_time).total_seconds()
@@ -1154,13 +1165,11 @@ async def run_product_intelligence_crew(request: Request):
                     # Send initial progress event
                     yield f"data: {json.dumps({'type': 'progress', 'message': 'Starting product intelligence analysis...', 'step': 'init'})}\n\n"
 
-                    # Create crew instance
-                    crew = ProductIntelligenceCrew(user_id=req.userId)
-
-                    # Run crew in background thread with progress callback
+                    # Run crew in background thread with progress callback and provider fallback
                     def _run_crew():
                         os.environ["CREWAI_TELEMETRY_OPT_IN"] = "false"
-                        return crew.run(
+
+                        run_kwargs = dict(
                             cases_data=req.casesData,
                             existing_taxonomy=req.existingTaxonomy or [],
                             prior_period_summary=req.priorPeriodSummary or {},
@@ -1171,6 +1180,43 @@ async def run_product_intelligence_crew(request: Request):
                                 "end": req.periodEnd,
                             },
                             send_progress=send_progress,
+                        )
+
+                        # Build fallback chain from user's assigned model
+                        settings = get_ai_settings_for_user(req.userId)
+                        chain = build_fallback_chain(
+                            starting_model=settings.model_id,
+                            starting_provider=settings.provider,
+                            task_priority=TaskPriority.MEDIUM,
+                        )
+                        exhausted_providers = set()
+
+                        for provider, model_id, env_var in chain:
+                            if provider in exhausted_providers:
+                                continue
+                            api_key = os.getenv(env_var)
+                            if not api_key:
+                                continue
+
+                            try:
+                                llm = create_llm_for_provider(provider, model_id, api_key,
+                                                              settings.temperature, settings.max_tokens)
+                                send_progress("init", f"Using {provider}/{model_id}")
+                                crew = ProductIntelligenceCrew(user_id=req.userId, llm=llm)
+                                return crew.run(**run_kwargs)
+                            except Exception as e:
+                                if is_account_exhausted_error(e):
+                                    logger.warning(f"[pi] {provider} account exhausted, skipping all {provider} models")
+                                    exhausted_providers.add(provider)
+                                    send_progress("fallback", f"{provider} credits exhausted, trying next provider...")
+                                elif is_quota_error(e):
+                                    logger.warning(f"[pi] {provider} quota error, trying next provider...")
+                                    send_progress("fallback", f"{provider} rate limited, trying next provider...")
+                                else:
+                                    raise  # Non-quota error, don't retry
+
+                        raise RuntimeError(
+                            f"All AI providers failed. Exhausted: {', '.join(exhausted_providers) or 'none'}"
                         )
 
                     loop = asyncio.get_event_loop()
