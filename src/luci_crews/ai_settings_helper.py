@@ -289,6 +289,7 @@ def create_llm_for_user(user_id: str):
         api_key=api_key,
         temperature=settings.temperature,
         max_tokens=settings.max_tokens,
+        max_retries=5,
     )
 
 
@@ -372,6 +373,7 @@ def create_llm_for_provider(provider: str, model_id: str, api_key: str, temperat
         api_key=api_key,
         temperature=temperature,
         max_tokens=max_tokens,
+        max_retries=5,
     )
 
 

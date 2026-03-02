@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 # At 800 cases × 125 tokens = 100K tokens input — still leaves room for prompt + output.
 # Below this threshold, cases go directly to Theme Analyst (2 LLM calls vs 11+).
 MAP_REDUCE_THRESHOLD = 800
-# Target batch size for map-reduce
-BATCH_SIZE = 100
+# Target batch size for map-reduce (larger = fewer API calls, helps with rate limits)
+BATCH_SIZE = 200
 # Max chars of description to include per case (shorter = more cases fit in context)
 CASE_DESC_LIMIT = 200
 
