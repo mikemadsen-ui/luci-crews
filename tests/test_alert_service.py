@@ -1,8 +1,8 @@
 """Tests for alert service."""
 import pytest
 from datetime import datetime, timedelta
-from unittest.mock import Mock, MagicMock
-from src.luci_crews.alert_service import should_alert, create_alert
+from unittest.mock import Mock, MagicMock, patch
+from src.luci_crews.alert_service import should_alert, create_alert, trigger_email
 
 
 def test_should_alert_returns_false_for_low_priority():
@@ -96,3 +96,27 @@ def test_create_alert_inserts_and_returns_id():
     assert result == "alert-id-123"
     # Verify insert was called
     supabase.table.return_value.insert.assert_called_once()
+
+
+@patch('src.luci_crews.alert_service.requests.post')
+def test_trigger_email_calls_worker_endpoint(mock_post):
+    """trigger_email should POST to luci-worker endpoint."""
+    mock_post.return_value.ok = True
+
+    trigger_email("alert-id-123")
+
+    # Verify POST was called with correct URL and payload
+    mock_post.assert_called_once()
+    call_args = mock_post.call_args
+    assert "alert_id" in call_args.kwargs['json']
+    assert call_args.kwargs['json']['alert_id'] == "alert-id-123"
+    assert call_args.kwargs['timeout'] == 5
+
+
+@patch('src.luci_crews.alert_service.requests.post')
+def test_trigger_email_handles_failure_gracefully(mock_post):
+    """Email trigger failures should not raise exceptions."""
+    mock_post.side_effect = Exception("Connection failed")
+
+    # Should not raise
+    trigger_email("alert-id-123")

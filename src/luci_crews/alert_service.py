@@ -120,3 +120,29 @@ def create_alert(
         logger.error(f"Failed to create alert: {e}")
 
     return None
+
+
+def trigger_email(alert_id: str) -> None:
+    """
+    Trigger email send via luci-worker endpoint.
+
+    Fire-and-forget: errors are logged but don't propagate.
+    Alert is still saved to database even if email fails.
+
+    Args:
+        alert_id: ID of the alert to send email for
+    """
+    worker_url = os.getenv("LUCI_WORKER_URL", "http://localhost:8080")
+
+    try:
+        response = requests.post(
+            f"{worker_url}/api/alerts/send",
+            json={"alert_id": alert_id},
+            timeout=5  # Quick timeout for fire-and-forget
+        )
+
+        if not response.ok:
+            logger.warning(f"Email trigger failed: {response.status_code}")
+    except Exception as e:
+        logger.warning(f"Failed to trigger alert email: {e}")
+        # Don't raise - alert is still saved to DB
