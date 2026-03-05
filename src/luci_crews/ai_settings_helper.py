@@ -13,6 +13,7 @@ from typing import Optional, Dict, Any, List, Callable
 from dataclasses import dataclass
 from supabase import create_client, Client
 from enum import Enum
+from .alert_service import create_alert, trigger_email
 
 
 class TaskPriority(Enum):
@@ -578,7 +579,37 @@ def run_with_smart_fallback(
                 # Using lenient approach for better availability
                 continue
 
-    # All providers failed
+    # All providers failed - create alert before raising
+    # Determine alert type
+    if exhausted_providers:
+        alert_type = "billing_failure"
+    else:
+        alert_type = "fallback_exhausted"
+
+    # Create alert
+    supabase = get_supabase_client()
+    if supabase:
+        try:
+            alert_id = create_alert(
+                alert_type=alert_type,
+                crew_type=task_name or "unknown",
+                task_name=task_name,
+                task_priority=task_priority.value,
+                user_id=user_id,
+                providers_tried=providers_tried,
+                exhausted_providers=list(exhausted_providers),
+                error_message=str(last_error),
+                supabase=supabase
+            )
+
+            # Trigger email if alert was created
+            if alert_id:
+                trigger_email(alert_id)
+        except Exception as alert_err:
+            # Log but don't let alert failures block the original error
+            logger.error(f"Failed to create alert: {alert_err}")
+
+    # Raise original error
     raise RuntimeError(
         f"All AI providers failed for {task_name or 'crew'}. "
         f"Tried: {', '.join(providers_tried)}. "
