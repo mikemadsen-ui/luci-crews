@@ -136,6 +136,7 @@ class AccountAnalysisRequest(BaseModel):
     transcription: Optional[str] = None
     salesforceContext: Optional[Dict[str, Any]] = None
     engagementData: Optional[Dict[str, Any]] = None
+    taskPriority: Optional[str] = None  # "low", "medium", "high" — batch workers send "low" for cheapest model
 
 
 class SentimentRequest(BaseModel):

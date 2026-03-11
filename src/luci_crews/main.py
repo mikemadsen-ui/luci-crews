@@ -377,10 +377,14 @@ async def run_account_analysis_crew(request: AccountAnalysisRequest):
             "engagement_data": request.engagementData,
         }
 
+        # Determine task priority — batch workers send "low" for cheapest model (gpt-4.1-nano)
+        priority_map = {"low": TaskPriority.LOW, "medium": TaskPriority.MEDIUM, "high": TaskPriority.HIGH}
+        task_priority = priority_map.get(request.taskPriority, TaskPriority.MEDIUM)
+
         result = run_with_smart_fallback(
             crew_factory=crew_factory,
             run_args=run_args,
-            task_priority=TaskPriority.MEDIUM,
+            task_priority=task_priority,
             user_id=request.userId,
             task_name="account_analysis",
         )
