@@ -195,6 +195,12 @@ class ImplementationRequest(BaseModel):
     dataAvailabilityWarnings: Optional[List[str]] = None  # Warnings about missing data to include in analysis
 
 
+class ProfileBuilderRequest(BaseModel):
+    """Request model for agent profile builder."""
+    daysBack: int = 90
+    topPercentile: int = 80
+
+
 class ProjectSentimentRequest(BaseModel):
     """Request model for project sentiment analysis."""
     userId: str

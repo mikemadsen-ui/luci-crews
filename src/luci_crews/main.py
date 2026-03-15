@@ -72,6 +72,7 @@ from .models import (
     ContextualDrilldownRequest,
     ProjectAnalysisRequest,
     ProductIntelligenceRequest,
+    ProfileBuilderRequest,
 )
 from .crews.sales_pipeline_crew import SalesPipelineCrew
 from .crews.account_health_crew import AccountHealthCrew
@@ -92,6 +93,7 @@ from .crews.executive_briefing_crew import ExecutiveMorningBriefingCrew
 from .crews.contextual_drilldown_crew import ContextualDrilldownCrew
 from .crews.project_analysis_crew import ProjectAnalysisCrew
 from .crews.product_intelligence_crew import ProductIntelligenceCrew
+from .crews.profile_builder_crew import ProfileBuilderCrew
 from .routes.analysis import router as analysis_router
 from .routes.coaching import router as coaching_router
 from .routes.config import router as config_router
@@ -2034,6 +2036,40 @@ def _format_custom_context(context: CustomAnalysisContext, target_type: str) -> 
             sections.append(f"- {name} ({title}) - {email}")
 
     return "\n".join(sections) if sections else "No context data available."
+
+
+# =============================================================================
+# Profile Builder Crew (Weekly agent profile generation)
+# =============================================================================
+
+@app.post("/api/crew/profile_builder", response_model=CrewResponse)
+async def run_profile_builder(request: ProfileBuilderRequest):
+    """Build support agent performance profiles from historical case data."""
+    start_time = datetime.utcnow()
+
+    try:
+        logger.info(f"Running profile builder: daysBack={request.daysBack}, topPercentile={request.topPercentile}")
+
+        def run_crew():
+            crew = ProfileBuilderCrew()
+            return crew.run(
+                days_back=request.daysBack,
+                top_percentile=request.topPercentile,
+            )
+
+        result = await run_with_fallback(run_crew, task_priority=TaskPriority.LOW)
+
+        duration = (datetime.utcnow() - start_time).total_seconds()
+        logger.info(f"Profile builder completed in {duration:.1f}s: {result.get('profiles_built', 0)} profiles")
+
+        return CrewResponse(
+            success=result.get("success", True),
+            result=result,
+        )
+
+    except Exception as e:
+        logger.error(f"Profile builder failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def _format_dict(d: Dict[str, Any], indent: int = 0) -> str:
