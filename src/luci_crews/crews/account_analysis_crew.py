@@ -406,6 +406,9 @@ For each dimension, provide:
 - Key findings and evidence
 - Specific quotes or data points that support your assessment
 
+FORMATTING: Do NOT include symbols, emojis, or special characters (✓, ✗, •, etc.) in array values.
+Write plain text only. The UI will handle formatting.
+
 Return as JSON:
 {{
   "sentiment_component_score": <1-10>,
@@ -503,6 +506,9 @@ Review the sentiment and health analysis from the previous task. Create a unifie
 
 6. TALKING POINTS:
    - Key points for the next customer conversation
+
+FORMATTING: Do NOT include symbols, emojis, or special characters (✓, ✗, •, etc.) in array values.
+Write plain text only. The UI will handle formatting.
 
 Return as JSON:
 {{
