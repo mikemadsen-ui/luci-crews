@@ -159,32 +159,39 @@ ARR: {arr_str}
                     elif util_pct >= 90:
                         lines.append("✅ HIGH UTILIZATION - strong seat adoption")
 
-        # Feature adoption
+        # Feature adoption - prefer routing objects from adoption score over stale boolean flags
         features = engagement_data.get("features", [])
         feature_count = engagement_data.get("featureCount", 0)
         total_features = engagement_data.get("totalFeatures", 7)
-
-        if features or feature_count:
-            lines.append("\n--- Feature Adoption ---")
-            lines.append(f"Features Enabled: {feature_count}/{total_features}")
-            if features:
-                lines.append(f"Active Features: {', '.join(features)}")
-            all_features = {"Lead Routing", "Contact Routing", "Account Routing",
-                            "Opportunity Routing", "Matching", "Attribution", "Engagement"}
-            missing = all_features - set(features)
-            if missing:
-                lines.append(f"Not Enabled: {', '.join(sorted(missing))}")
-            # Flag minimal feature adoption
-            if isinstance(feature_count, (int, float)) and isinstance(total_features, (int, float)):
-                if feature_count <= 1 and total_features >= 5:
-                    lines.append("⚠️ MINIMAL FEATURE ADOPTION — only 1 feature enabled, apply -1 penalty to health_component")
-                elif feature_count <= 2 and total_features >= 5:
-                    lines.append("⚠️ LOW FEATURE ADOPTION — only using a fraction of available features")
-
-        # Adoption score
+        routing_objects = engagement_data.get("routingObjects")
         adoption_score = engagement_data.get("adoptionScore")
         health_grade = engagement_data.get("healthGrade")
 
+        if features or feature_count or routing_objects:
+            lines.append("\n--- Feature Adoption ---")
+            # Show routing objects if available (more accurate than boolean flags)
+            if routing_objects is not None:
+                lines.append(f"Routing Objects in Use: {routing_objects}")
+            if features:
+                lines.append(f"Active Features: {', '.join(features)}")
+            # Only show featureCount if no adoption score (fallback for stale data)
+            if feature_count and adoption_score is None:
+                lines.append(f"Features Enabled (from boolean flags, may be stale): {feature_count}/{total_features}")
+
+            # Flag minimal feature adoption ONLY if adoption score is weak
+            # Skip warning if adoption score shows strong engagement (score >= 70 or grade A/B)
+            has_strong_adoption = (
+                (isinstance(adoption_score, (int, float)) and adoption_score >= 70) or
+                (health_grade in ("A", "B", "a", "b"))
+            )
+            if not has_strong_adoption:
+                if isinstance(feature_count, (int, float)) and isinstance(total_features, (int, float)):
+                    if feature_count <= 1 and total_features >= 5:
+                        lines.append("⚠️ MINIMAL FEATURE ADOPTION — only 1 feature enabled, apply -1 penalty to health_component")
+                    elif feature_count <= 2 and total_features >= 5:
+                        lines.append("⚠️ LOW FEATURE ADOPTION — only using a fraction of available features")
+
+        # Adoption score (variables already fetched above in feature adoption section)
         if adoption_score is not None or health_grade is not None:
             lines.append("\n--- Adoption Score ---")
             if adoption_score is not None:
@@ -361,6 +368,16 @@ Evaluate TWO key dimensions:
    - Notable quotes or concerns
    - Positive signals and warning signs
    - Support ticket patterns and satisfaction
+
+   KEY QUOTE SELECTION CRITERIA (CRITICAL):
+   - ONLY select quotes that express sentiment, opinion, satisfaction, or concern
+   - GOOD examples: "This integration saved us 20 hours a week", "I'm frustrated with the slow response times",
+     "The new feature is exactly what we needed", "We're concerned about the upcoming price increase"
+   - BAD examples: "Are we waiting for anyone else?", "Let me share my screen", "Dax is on vacation right now",
+     "I think we're all here", "Can you see my screen?"
+   - Quotes should reveal customer feelings, satisfaction, pain points, or business impact
+   - EXCLUDE: Meeting logistics, scheduling, technical setup, small talk, pleasantries
+   - If no sentiment-bearing quotes exist, return an empty array rather than filler quotes
 
 2. ACCOUNT HEALTH (from metrics and behavior):
    - Product adoption (adoption score, health grade, features enabled)
