@@ -356,7 +356,10 @@ ARR: {arr_str}
         # Task 1: Comprehensive Account Analysis
         _emit_progress("Step 1", "Analyzing account sentiment and health...")
         analysis_task = Task(
-            description=f"""Analyze this customer account comprehensively.
+            description=f"""CRITICAL OUTPUT RULE: All array values MUST be plain text only.
+NO symbols (✓, ✗, •, -, ★), NO emojis, NO bullet characters. Just plain sentences.
+
+Analyze this customer account comprehensively.
 
 {full_context}
 
@@ -409,18 +412,18 @@ For each dimension, provide:
 FORMATTING: Do NOT include symbols, emojis, or special characters (✓, ✗, •, etc.) in array values.
 Write plain text only. The UI will handle formatting.
 
-Return as JSON:
+Return as JSON (PLAIN TEXT ONLY in all arrays - no symbols, bullets, or emojis):
 {{
   "sentiment_component_score": <1-10>,
   "sentiment_summary": "<2-3 sentence summary>",
-  "positive_signals": ["<signal1>", "<signal2>"],
-  "warning_signs": ["<sign1>", "<sign2>"],
-  "key_themes": ["<theme1>", "<theme2>"],
+  "positive_signals": ["Strong executive sponsorship from VP of Ops", "Customer requested expanded use case discussion"],
+  "warning_signs": ["Delayed response times on recent tickets", "No engagement in last 30 days"],
+  "key_themes": ["Integration complexity", "ROI realization"],
   "key_quotes": [{{"quote": "<quote>", "context": "<context>"}}],
   "health_component_score": <1-10>,
   "health_summary": "<2-3 sentence summary>",
-  "strengths": ["<strength1>", "<strength2>"],
-  "concerns": ["<concern1>", "<concern2>"],
+  "strengths": ["High seat utilization at 95%", "Strong adoption score of 85"],
+  "concerns": ["Only using 2 of 7 available features", "Support case volume trending up"],
   "churn_risk": {{
     "level": "low" | "medium" | "high",
     "factors": ["<factor1>"],
@@ -438,7 +441,10 @@ Return as JSON:
         # Task 2: Synthesis and Recommendations
         _emit_progress("Step 2", "Synthesizing findings and generating recommendations...")
         synthesis_task = Task(
-            description=f"""Based on the account analysis, synthesize the findings into a unified assessment.
+            description=f"""CRITICAL OUTPUT RULE: All array values MUST be plain text only.
+NO symbols (✓, ✗, •, -, ★), NO emojis, NO bullet characters. Just plain sentences.
+
+Based on the account analysis, synthesize the findings into a unified assessment.
 
 Account: {account_name}
 
