@@ -563,16 +563,20 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
         elif "gemini" in model_name.lower():
             provider = "google"
 
+        # Handle LLM using either old or new field names
+        whats_changed = parsed_result.get("whats_changed") or parsed_result.get("narrative", "")
+        actions = parsed_result.get("actions") or parsed_result.get("recommended_actions", [])
+
         return {
             "success": True,
             "headline": parsed_result.get("headline"),
-            "whats_changed": parsed_result.get("whats_changed"),
-            "narrative": parsed_result.get("whats_changed"),  # backward compat
+            "whats_changed": whats_changed,
+            "narrative": whats_changed,  # backward compat
             "standing_watch": parsed_result.get("standing_watch", []),
             "key_risks": parsed_result.get("key_risks", []),
             "key_wins": parsed_result.get("key_wins", []),
-            "actions": parsed_result.get("actions", []),
-            "recommended_actions": parsed_result.get("actions", []),  # backward compat
+            "actions": actions,
+            "recommended_actions": actions,  # backward compat
             "metrics_snapshot": parsed_result.get("metrics_snapshot", {}),
             "confidence_score": parsed_result.get("confidence_score", 0.0),
             "generated_at": datetime.utcnow().isoformat(),
