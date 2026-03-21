@@ -302,6 +302,56 @@ ARR: {arr_str}
 
         return "\n".join(lines)
 
+    def _format_previous_analysis_context(
+        self,
+        previous_analysis: Dict[str, Any],
+    ) -> str:
+        """Format previous analysis result as context for delta mode."""
+        import json as _json
+
+        lines = ["=== PREVIOUS ANALYSIS (baseline — update based on new data below) ==="]
+        lines.append(f"Previous Score: {previous_analysis.get('score', 'N/A')}")
+
+        breakdown = previous_analysis.get("score_breakdown", {})
+        if breakdown:
+            lines.append(f"  Sentiment Component: {breakdown.get('sentiment_component', 'N/A')}")
+            lines.append(f"  Health Component: {breakdown.get('health_component', 'N/A')}")
+
+        lines.append(f"Previous Status: {previous_analysis.get('status', 'N/A')}")
+        lines.append(f"Previous Trend: {previous_analysis.get('trend', 'N/A')}")
+
+        summary = previous_analysis.get("executive_summary") or previous_analysis.get("summary", "")
+        if summary:
+            lines.append(f"Executive Summary: {summary}")
+
+        sentiment = previous_analysis.get("sentiment_analysis", {})
+        if isinstance(sentiment, dict) and sentiment.get("summary"):
+            lines.append(f"\nSentiment Summary: {sentiment['summary']}")
+            for signal in (sentiment.get("positive_signals") or [])[:3]:
+                lines.append(f"  + {signal}")
+            for warning in (sentiment.get("warning_signs") or [])[:3]:
+                lines.append(f"  ! {warning}")
+            for quote in (sentiment.get("key_quotes") or [])[:2]:
+                if isinstance(quote, dict):
+                    lines.append(f'  Quote: "{quote.get("quote", "")}" ({quote.get("context", "")})')
+
+        health = previous_analysis.get("health_analysis", {})
+        if isinstance(health, dict) and health.get("summary"):
+            lines.append(f"\nHealth Summary: {health['summary']}")
+            for s in (health.get("strengths") or [])[:3]:
+                lines.append(f"  + {s}")
+            for c in (health.get("concerns") or [])[:3]:
+                lines.append(f"  ! {c}")
+
+        actions = previous_analysis.get("recommended_actions", [])
+        if actions:
+            lines.append("\nPrevious Recommendations:")
+            for a in actions[:3]:
+                if isinstance(a, dict):
+                    lines.append(f"  [{a.get('priority', 'medium')}] {a.get('action', '')}")
+
+        return "\n".join(lines)
+
     def run(
         self,
         account_name: str,
@@ -311,6 +361,7 @@ ARR: {arr_str}
         support_data: Optional[Dict[str, Any]] = None,
         engagement_data: Optional[Dict[str, Any]] = None,
         send_progress: Optional[Callable] = None,
+        previous_analysis: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Run the unified account analysis.
@@ -323,10 +374,24 @@ ARR: {arr_str}
             support_data: Dict with total_cases_count and recent_tickets
             engagement_data: Dict with engagement metrics
             send_progress: Optional callback for streaming progress
+            previous_analysis: Previous analysis result for delta/incremental mode
 
         Returns:
             Dict with unified score, sentiment analysis, health analysis, and recommendations
         """
+        # Use delta mode when we have a previous analysis
+        if previous_analysis:
+            return self._run_delta(
+                account_name=account_name,
+                account_tier=account_tier,
+                arr=arr,
+                transcription=transcription,
+                support_data=support_data,
+                engagement_data=engagement_data,
+                send_progress=send_progress,
+                previous_analysis=previous_analysis,
+            )
+
         logger.info(f"Running unified account analysis for: {account_name}")
 
         def _emit_progress(step: str, message: str):
@@ -582,6 +647,164 @@ Return as JSON:
         parsed["_model"] = getattr(self.llm, 'model', 'unknown')
 
         # Add data source metadata for UI display
+        parsed["has_transcription"] = bool(transcription and len(transcription.strip()) > 0)
+        parsed["cases_count"] = support_data.get("total_cases_count", 0) if support_data else 0
+
+        return parsed
+
+    def _run_delta(
+        self,
+        account_name: str,
+        account_tier: Optional[str] = None,
+        arr: Optional[float] = None,
+        transcription: Optional[str] = None,
+        support_data: Optional[Dict[str, Any]] = None,
+        engagement_data: Optional[Dict[str, Any]] = None,
+        send_progress: Optional[Callable] = None,
+        previous_analysis: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Run a delta/incremental analysis using the previous result as baseline.
+        Uses a single agent instead of two, with a focused prompt on what's changed.
+        Much less data sent = fewer tokens = faster + cheaper.
+        """
+        logger.info(f"Running DELTA account analysis for: {account_name}")
+
+        def _emit_progress(step: str, message: str):
+            if send_progress:
+                send_progress(step, message)
+            logger.info(f"[{step}] {message}")
+
+        # Format context — previous analysis is the main input
+        account_context = self._format_account_context(account_name, account_tier, arr)
+        previous_context = self._format_previous_analysis_context(previous_analysis)
+        communications_context = self._format_communications_context(transcription)
+        support_context = self._format_support_context(support_data)
+        engagement_context = self._format_engagement_context(engagement_data)
+
+        full_context = f"""{account_context}
+
+{previous_context}
+
+=== NEW / UPDATED DATA SINCE LAST ANALYSIS ===
+
+{communications_context}
+
+{support_context}
+
+{engagement_context}
+"""
+
+        # Single agent for delta mode
+        delta_analyst = Agent(
+            role="Senior Account Analyst",
+            goal="Update an existing account analysis based on new data, adjusting scores and findings as warranted",
+            backstory="""You are an expert customer success analyst performing an incremental review.
+            You have a previous analysis as your baseline. Your job is to evaluate whether new data
+            (recent meetings, support tickets, engagement metrics) changes the picture. Be efficient:
+            if nothing material has changed, confirm the previous scores. If something meaningful
+            shifted, update the scores and explain why. You are deliberately conservative with scores
+            and follow all the same scoring rules as a full analysis.""",
+            verbose=False,
+            allow_delegation=False,
+            llm=self.llm,
+        )
+
+        _emit_progress("Step 1", "Reviewing changes since last analysis...")
+        delta_task = Task(
+            description=f"""CRITICAL OUTPUT RULE: All array values MUST be plain text only.
+NO symbols, emojis, or bullet characters. Just plain sentences.
+
+You have a PREVIOUS ANALYSIS for this account. Your job is to UPDATE it based on any new data.
+
+{full_context}
+
+INSTRUCTIONS:
+1. Review the previous analysis baseline (score, status, findings)
+2. Evaluate what has CHANGED in the new data:
+   - New meeting transcripts or communications
+   - Changes in support ticket status or new tickets
+   - Changes in product engagement metrics (utilization, adoption score, health grade)
+   - Renewal date approaching
+3. If material changes exist, adjust scores up or down with clear rationale
+4. If no material changes, you may keep scores the same but update the summary to reflect current state
+5. Always regenerate recommended_actions based on the CURRENT state
+
+SCORING RULES (same as full analysis):
+- 40% sentiment + 60% health, with hard caps for churn/low adoption
+- CONFIRMED CHURN: cap at 2
+- FAILING ADOPTION (grade F, score < 30): overall cap at 5
+- LOW UTILIZATION (< 30%): overall cap at 6
+- Score 8+ requires adoption >= 60, utilization >= 60%, recent engagement
+- When in doubt, score LOWER not higher
+
+KEY QUOTE SELECTION: Only quotes expressing sentiment/opinion/satisfaction/concern.
+Exclude meeting logistics, scheduling, small talk. If no new sentiment quotes, keep previous ones.
+
+Return the COMPLETE updated analysis as JSON (same format as a full analysis):
+{{
+  "score": <1-10>,
+  "score_breakdown": {{
+    "sentiment_component": <1-10>,
+    "health_component": <1-10>
+  }},
+  "status": "thriving" | "healthy" | "stable" | "at_risk" | "critical",
+  "trend": "improving" | "stable" | "declining",
+  "executive_summary": "<2-3 sentence summary reflecting CURRENT state>",
+  "sentiment_analysis": {{
+    "summary": "<summary>",
+    "positive_signals": [],
+    "warning_signs": [],
+    "key_themes": [],
+    "key_quotes": []
+  }},
+  "health_analysis": {{
+    "summary": "<summary>",
+    "strengths": [],
+    "concerns": [],
+    "churn_risk": {{"level": "low"|"medium"|"high", "factors": [], "early_warnings": []}},
+    "expansion_opportunities": []
+  }},
+  "recommended_actions": [
+    {{"action": "<action>", "priority": "high"|"medium"|"low", "rationale": "<why>"}}
+  ],
+  "talking_points": ["<point1>", "<point2>"]
+}}
+""",
+            expected_output="JSON with updated unified score and analysis",
+            agent=delta_analyst,
+        )
+
+        crew = Crew(
+            name="Account Analysis Crew (Delta)",
+            agents=[delta_analyst],
+            tasks=[delta_task],
+            verbose=False,
+        )
+
+        _emit_progress("Step 2", "Running delta analysis...")
+        result = crew.kickoff()
+
+        _emit_progress("Complete", "Delta analysis complete!")
+
+        raw_result = str(result)
+        default = {
+            "score": previous_analysis.get("score", 5),
+            "status": previous_analysis.get("status", "stable"),
+            "trend": "stable",
+            "executive_summary": raw_result[:500] if raw_result else "Delta analysis completed",
+            "sentiment_analysis": previous_analysis.get("sentiment_analysis", {"summary": "See executive summary"}),
+            "health_analysis": previous_analysis.get("health_analysis", {"summary": "See executive summary"}),
+            "recommended_actions": previous_analysis.get("recommended_actions", []),
+            "talking_points": previous_analysis.get("talking_points", []),
+            "_raw_result": raw_result,
+        }
+        parsed = extract_json_from_llm_response(raw_result, default=default)
+        parsed["_provider"] = "crewai"
+        parsed["_model"] = getattr(self.llm, 'model', 'unknown')
+        parsed["_delta_mode"] = True
+
+        # Add data source metadata
         parsed["has_transcription"] = bool(transcription and len(transcription.strip()) > 0)
         parsed["cases_count"] = support_data.get("total_cases_count", 0) if support_data else 0
 

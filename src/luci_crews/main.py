@@ -377,6 +377,7 @@ async def run_account_analysis_crew(request: AccountAnalysisRequest):
             "transcription": request.transcription,
             "support_data": support_data,
             "engagement_data": request.engagementData,
+            "previous_analysis": request.previousAnalysis,
         }
 
         # Determine task priority — batch workers send "low" for cheapest model (gpt-4.1-nano)
