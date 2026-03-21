@@ -6,6 +6,7 @@ synthesizing macro insights, portfolio trends, key risks, wins, and
 recommended actions into an executive-ready briefing.
 """
 
+import json
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
@@ -36,6 +37,26 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
         except Exception as e:
             logger.error(f"Error fetching macro insights: {e}")
             return []
+
+    def _fetch_previous_briefing(self) -> Optional[Dict[str, Any]]:
+        """Fetch the most recent executive briefing for delta comparison."""
+        if not self.supabase:
+            return None
+        try:
+            result = self.supabase.table("crew_analysis_history").select(
+                "result, analyzed_at"
+            ).eq("crew_type", "executive_briefing").order(
+                "analyzed_at", desc=True
+            ).limit(1).execute()
+            if result.data and result.data[0].get("result"):
+                raw = result.data[0]["result"]
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+                parsed["_analyzed_at"] = result.data[0].get("analyzed_at")
+                return parsed
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching previous briefing: {e}")
+            return None
 
     def _fetch_portfolio_snapshots(self) -> Dict[str, Any]:
         """Fetch today's snapshot and compare to 7d/30d ago."""
@@ -251,6 +272,68 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
         header = f"Total won this week: {self._format_currency(total_won)}"
         return header + "\n" + "\n".join(formatted)
 
+    def _format_previous_briefing(self, prev: Optional[Dict[str, Any]]) -> str:
+        """Format previous briefing for inclusion in the prompt."""
+        if not prev:
+            return "NO PREVIOUS BRIEFING AVAILABLE. This is the first briefing — treat all data as new."
+
+        lines = []
+        analyzed_at = prev.get("_analyzed_at", "unknown date")
+        lines.append(f"Generated: {analyzed_at}")
+        lines.append(f"Headline: {prev.get('headline', 'N/A')}")
+
+        # Include narrative summary
+        narrative = prev.get("whats_changed") or prev.get("narrative", "")
+        if narrative:
+            # Truncate to avoid prompt bloat
+            lines.append(f"Narrative: {narrative[:800]}")
+
+        # Include risks
+        risks = prev.get("key_risks", [])
+        if risks:
+            lines.append("Risks identified:")
+            for r in risks[:8]:
+                severity = r.get("severity", "unknown")
+                one_liner = r.get("one_liner") or r.get("description", "")
+                arr = self._format_currency(r.get("affected_arr", 0))
+                lines.append(f"  [{severity}] {one_liner} (ARR: {arr})")
+
+        # Include standing watch if present (new format)
+        watch = prev.get("standing_watch", [])
+        if watch:
+            lines.append("Standing watch items:")
+            for w in watch:
+                lines.append(f"  - {w.get('description', '')}")
+
+        # Include wins
+        wins = prev.get("key_wins", [])
+        if wins:
+            lines.append("Wins:")
+            for w in wins[:5]:
+                desc = w.get("description", "")
+                arr = self._format_currency(w.get("arr_impact", 0))
+                lines.append(f"  - {desc} ({arr})")
+
+        # Include actions with status
+        actions = prev.get("actions") or prev.get("recommended_actions", [])
+        if actions:
+            lines.append("Actions recommended:")
+            for a in actions[:5]:
+                action_text = a.get("action", "")
+                status = a.get("status", "unknown")
+                first_raised = a.get("first_raised", "")
+                lines.append(f"  - [{status}] {action_text}" + (f" (first raised: {first_raised})" if first_raised else ""))
+
+        # Include metrics snapshot if present
+        metrics = prev.get("metrics_snapshot", {})
+        if metrics:
+            lines.append(f"Metrics: ARR={self._format_currency(metrics.get('total_arr', 0))}, "
+                         f"NRR={metrics.get('nrr_trailing_12', 'N/A')}%, "
+                         f"GRR={metrics.get('grr_trailing_12', 'N/A')}%, "
+                         f"Pipeline={metrics.get('pipeline_coverage', 'N/A')}x")
+
+        return "\n".join(lines)
+
     # ─── Agents ──────────────────────────────────────────────────────
 
     def _create_agents(self) -> None:
@@ -281,49 +364,77 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
         critical_renewals: str,
         at_risk_accounts: str,
         recent_wins: str,
+        previous_briefing: str,
     ) -> Task:
-        """Build the briefing generation task."""
+        """Build the delta-aware briefing generation task."""
         task_config = self._get_task_config("generate_executive_briefing")
 
         description = task_config.get("description", "") or (
-            "Generate an executive morning briefing based on the following portfolio data.\n\n"
+            "Generate an executive morning briefing that focuses on WHAT HAS CHANGED since the previous briefing.\n\n"
+            "PREVIOUS BRIEFING (compare today's data against this):\n{previous_briefing}\n\n"
+            "TODAY'S DATA:\n\n"
             "SYSTEMIC RISKS (Macro Insights):\n{macro_insights}\n\n"
             "PORTFOLIO METRICS & TRENDS:\n{portfolio_trends}\n\n"
-            "CRITICAL RENEWALS (next 90 days, health < 7):\n{critical_renewals}\n\n"
+            "CRITICAL RENEWALS (next 90 days, low health):\n{critical_renewals}\n\n"
             "AT-RISK ACCOUNTS (health < 5):\n{at_risk_accounts}\n\n"
             "RECENT WINS (past 7 days):\n{recent_wins}\n\n"
-            "IMPORTANT: All currency values are in US Dollars. Always use the $ symbol, never £ or other currency symbols.\n\n"
-            "Create a briefing that includes:\n"
-            "1. A headline summarizing portfolio health (e.g., 'Portfolio Health: Caution - 2 systemic risks')\n"
-            "2. A 2-3 paragraph narrative that:\n"
-            "   - Opens with the current state of the portfolio (ARR, NRR, pipeline coverage)\n"
-            "   - Highlights the most critical risks requiring attention\n"
-            "   - Acknowledges recent wins to maintain morale\n"
-            "   - Uses specific numbers and account names\n"
-            "   - IMPORTANT: Always use the exact full account name as provided in the data (e.g. 'Cisco Systems' not 'Cisco', 'Veeam Software Group' not 'Veeam'). This enables clickable links in the UI.\n"
-            "3. A structured list of key risks with severity, one-liner description, and affected ARR. Use exact full account names in one-liners.\n"
-            "4. A list of key wins with description and ARR impact. Use exact full account names in descriptions.\n"
-            "5. 3-5 recommended actions with priority levels and a navigation_target from this list:\n"
-            "   - strategic-health:high-risk-accounts-list (for churn/retention/whale account risks)\n"
-            "   - strategic-health:critical-renewals-section (for upcoming renewal concerns)\n"
-            "   - strategic-health:portfolio-kpis (for ARR/NRR/GRR portfolio metrics)\n"
-            "   - strategic-health:health-score-trend (for health score trends)\n"
-            "   - growth:customer-concentration (for revenue concentration risks)\n"
-            "   - growth:expansion-revenue (for expansion/upsell/cross-sell opportunities)\n"
-            "   - growth:revenue-cohorts (for cohort analysis)\n"
-            "   - growth:industry-breakdown (for industry-specific actions)\n"
-            "   - operations:team-performance (for team workload/capacity)\n"
-            "   - operations:action-queue (for data health/action items)\n"
-            "   - operations:competitive-intelligence (for competitive intelligence)\n"
-            "   - operations:customer-insights (for emerging themes/voice of customer)\n"
-            "6. A confidence score (0.0-1.0) based on data completeness\n\n"
+            "IMPORTANT RULES:\n"
+            "- All currency values are in US Dollars. Always use the $ symbol.\n"
+            "- Always use exact full account names as provided in the data (e.g. 'Cisco Systems, Inc.' not 'Cisco'). This enables clickable links in the UI.\n"
+            "- Compare today's data against the previous briefing. Identify what is NEW, what CHANGED, and what is UNCHANGED.\n"
+            "- If no previous briefing exists, treat everything as new.\n\n"
+            "OUTPUT STRUCTURE:\n\n"
+            "1. **headline**: A short headline about what's NOTABLE TODAY — not static portfolio state.\n"
+            "   BAD: 'Portfolio Health: Caution - 5 critical risks'\n"
+            "   GOOD: 'Dell health dropped to 2, Popmenu renewed at $217K'\n"
+            "   GOOD: 'No major changes — 3 standing risks continue'\n\n"
+            "2. **whats_changed**: 2-3 paragraphs focused on what is DIFFERENT from the previous briefing.\n"
+            "   - Metric movements (ARR, NRR, GRR, pipeline — only if they actually changed)\n"
+            "   - NEW risks not in yesterday's briefing\n"
+            "   - Risks that RESOLVED or IMPROVED since yesterday\n"
+            "   - New wins closed since yesterday\n"
+            "   - Health score movements on specific accounts\n"
+            "   - If nothing material changed, say so briefly and note the most important standing items.\n"
+            "   - Do NOT repeat the same narrative as yesterday. If a risk was already covered, reference it briefly.\n\n"
+            "3. **standing_watch**: Array of ongoing risks that are UNCHANGED from yesterday.\n"
+            "   Each item: description (one-liner with account name, ARR, health), severity, affected_arr, days_on_watch (estimate from previous briefing).\n"
+            "   Keep these SHORT — one line each. These are not new news.\n\n"
+            "4. **key_risks**: Array of ALL current risks (both new and continuing) for structured display.\n"
+            "   Each: type, severity (critical/high/medium), one_liner (with full account names), affected_arr.\n\n"
+            "5. **key_wins**: Array of recent wins.\n"
+            "   Each: description (with full account names), arr_impact.\n\n"
+            "6. **actions**: Array of SPECIFIC recommended actions. Each action MUST:\n"
+            "   - Name the specific account\n"
+            "   - State the specific concern\n"
+            "   - Recommend a specific action (not generic 'engage with account')\n"
+            "   - Include status: 'new' if first time, 'continuing' if was in previous briefing\n"
+            "   - Include first_raised: today's date if new, or the date from the previous briefing's action if continuing\n"
+            "   - Include priority: 'immediate', 'this_week', or 'this_month'\n"
+            "   - Include navigation_target from this list:\n"
+            "     - strategic-health:high-risk-accounts-list (churn/retention/whale risks)\n"
+            "     - strategic-health:critical-renewals-section (upcoming renewals)\n"
+            "     - strategic-health:portfolio-kpis (ARR/NRR/GRR metrics)\n"
+            "     - strategic-health:health-score-trend (health trends)\n"
+            "     - growth:customer-concentration (revenue concentration)\n"
+            "     - growth:expansion-revenue (expansion opportunities)\n"
+            "     - operations:team-performance (team workload)\n"
+            "     - operations:action-queue (action items)\n"
+            "     - operations:competitive-intelligence (competitive intel)\n"
+            "     - operations:customer-insights (emerging themes)\n\n"
+            "   BAD action: 'Prioritize engagement with high-risk whale accounts'\n"
+            "   GOOD action: 'Schedule exec sponsor call with Dell Corporation Limited ($701K, health 2, renews Apr 30) before renewal'\n\n"
+            "7. **metrics_snapshot**: Object with today's key metrics for future comparison.\n"
+            "   total_arr, nrr_trailing_12, grr_trailing_12, pipeline_coverage.\n\n"
+            "8. **confidence_score**: 0.0-1.0 based on data completeness.\n\n"
             "Output as JSON with this structure:\n"
             "{{\n"
-            '  "headline": "Portfolio Health: [status] - [summary]",\n'
-            '  "narrative": "Good morning. [2-3 paragraphs]...",\n'
+            '  "headline": "...",\n'
+            '  "whats_changed": "...",\n'
+            '  "standing_watch": [{{"description": "...", "severity": "critical|high|medium", "affected_arr": 0, "days_on_watch": 1}}],\n'
             '  "key_risks": [{{"type": "...", "severity": "critical|high|medium", "one_liner": "...", "affected_arr": 0}}],\n'
             '  "key_wins": [{{"description": "...", "arr_impact": 0}}],\n'
-            '  "recommended_actions": [{{"action": "...", "priority": "immediate|this_week|this_month", "navigation_target": "strategic-health:high-risk-accounts", "crew_to_trigger": "optional"}}],\n'
+            '  "actions": [{{"action": "...", "priority": "immediate|this_week|this_month", "status": "new|continuing", "first_raised": "YYYY-MM-DD", "navigation_target": "..."}}],\n'
+            '  "metrics_snapshot": {{"total_arr": 0, "nrr_trailing_12": 0, "grr_trailing_12": 0, "pipeline_coverage": 0}},\n'
             '  "confidence_score": 0.85\n'
             "}}"
         )
@@ -335,11 +446,12 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
                 critical_renewals=critical_renewals,
                 at_risk_accounts=at_risk_accounts,
                 recent_wins=recent_wins,
+                previous_briefing=previous_briefing,
             ),
             expected_output=task_config.get(
                 "expected_output",
-                "A JSON object containing headline, narrative, key_risks, key_wins, "
-                "recommended_actions, and confidence_score for the executive morning briefing."
+                "A JSON object containing headline, whats_changed, standing_watch, key_risks, key_wins, "
+                "actions, metrics_snapshot, and confidence_score for the delta-aware executive morning briefing."
             ),
             agent=self.briefing_writer,
         )
@@ -373,6 +485,7 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
         critical_renewals = self._fetch_critical_renewals()
         at_risk_accounts = self._fetch_at_risk_accounts()
         recent_wins = self._fetch_recent_wins()
+        previous_briefing_data = self._fetch_previous_briefing()
 
         # Calculate data_as_of from MAX(updated_at) across fetched accounts
         all_updated_at = []
@@ -393,6 +506,7 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
         critical_renewals_str = self._format_critical_renewals(critical_renewals)
         at_risk_accounts_str = self._format_at_risk_accounts(at_risk_accounts)
         recent_wins_str = self._format_recent_wins(recent_wins)
+        previous_briefing_str = self._format_previous_briefing(previous_briefing_data)
 
         if step_callback:
             step_callback("Creating briefing writer agent...")
@@ -407,6 +521,7 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
             critical_renewals_str,
             at_risk_accounts_str,
             recent_wins_str,
+            previous_briefing_str,
         )
 
         if step_callback:
@@ -451,10 +566,14 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
         return {
             "success": True,
             "headline": parsed_result.get("headline"),
-            "narrative": parsed_result.get("narrative"),
+            "whats_changed": parsed_result.get("whats_changed"),
+            "narrative": parsed_result.get("whats_changed"),  # backward compat
+            "standing_watch": parsed_result.get("standing_watch", []),
             "key_risks": parsed_result.get("key_risks", []),
             "key_wins": parsed_result.get("key_wins", []),
-            "recommended_actions": parsed_result.get("recommended_actions", []),
+            "actions": parsed_result.get("actions", []),
+            "recommended_actions": parsed_result.get("actions", []),  # backward compat
+            "metrics_snapshot": parsed_result.get("metrics_snapshot", {}),
             "confidence_score": parsed_result.get("confidence_score", 0.0),
             "generated_at": datetime.utcnow().isoformat(),
             "data_as_of": data_as_of,
@@ -465,5 +584,6 @@ class ExecutiveMorningBriefingCrew(BaseCrew):
                 "critical_renewals_count": len(critical_renewals),
                 "at_risk_accounts_count": len(at_risk_accounts),
                 "recent_wins_count": len(recent_wins),
+                "has_previous_briefing": previous_briefing_data is not None,
             },
         }
