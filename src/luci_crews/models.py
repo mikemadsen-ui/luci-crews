@@ -371,23 +371,6 @@ class SCPrepRequest(BaseModel):
     transcriptionData: Optional[List[TranscriptionDataModel]] = None
 
 
-class CompetitiveCompanyModel(BaseModel):
-    """Model for company data in competitive analysis."""
-    id: Optional[str] = None
-    name: Optional[str] = None
-    domain: Optional[str] = None
-    properties: Optional[Dict[str, Any]] = None
-
-
-class CompetitiveRequest(BaseModel):
-    """Request model for competitive analysis."""
-    userId: Optional[str] = None
-    userEmail: Optional[str] = None
-    companies: List[CompetitiveCompanyModel]
-    analysisType: Optional[str] = "comparative"  # "single" or "comparative"
-    forceRefresh: Optional[bool] = False
-
-
 # =============================================================================
 # Feature Extraction & Agenda Models
 # =============================================================================

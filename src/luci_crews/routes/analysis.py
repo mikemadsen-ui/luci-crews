@@ -4,7 +4,6 @@ This module contains endpoints for:
 - Project sentiment analysis
 - Unified project analysis (implementation + sentiment)
 - Opportunity strategy analysis
-- Competitive intelligence analysis
 - Support resolution analysis
 """
 
@@ -18,14 +17,12 @@ from ..models import (
     ProjectAnalysisRequest,
     OpportunityStrategyRequest,
     MeddpiccGapActionsRequest,
-    CompetitiveRequest,
     SupportResolutionRequest,
 )
 from ..crews.project_sentiment_crew import ProjectSentimentCrew
 from ..crews.project_analysis_crew import ProjectAnalysisCrew
 from ..crews.opportunity_strategy_crew import OpportunityStrategyCrew
 from ..crews.meddpicc_gap_actions_crew import MeddpiccGapActionsCrew
-from ..crews.competitive_crew import CompetitiveCrew
 from ..crews.support_resolution_crew import SupportResolutionCrew
 from ..utils.streaming import (
     SimpleStreamingContext,
@@ -340,63 +337,6 @@ async def run_meddpicc_gap_actions_crew(request: Request):
 
     except Exception as e:
         logger.error(f"MEDDPICC gap actions crew failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/competitive")
-async def run_competitive_crew(request: Request):
-    """Run the competitive intelligence analysis crew."""
-    stream = request.query_params.get("stream", "false").lower() == "true"
-
-    try:
-        body = await request.json()
-        req = CompetitiveRequest(**body)
-        logger.info(f"Running competitive crew for {len(req.companies)} companies (type: {req.analysisType})")
-
-        crew = CompetitiveCrew(user_id=req.userId)
-        companies_data = [c.model_dump() for c in req.companies]
-
-        if stream:
-            ctx = SimpleStreamingContext()
-
-            async def generate():
-                try:
-                    yield ctx.init_message("Starting competitive analysis...")
-                    result = crew.run(
-                        companies=companies_data,
-                        analysis_type=req.analysisType or "comparative",
-                        step_callback=ctx.step_callback,
-                    )
-                    for msg in ctx.get_progress_messages():
-                        yield msg
-                    logger.info(f"Competitive crew completed in {ctx.execution_time:.2f}s")
-                    yield ctx.result_message(result.get('result'),
-                        analysis=result.get('analysis'),
-                        analysisType=result.get('analysisType'),
-                        provider=result.get('provider'), model=result.get('model'))
-                except Exception as e:
-                    logger.error(f"Competitive crew failed: {str(e)}")
-                    yield ctx.error_message(str(e))
-
-            return create_streaming_response(generate())
-        else:
-            start_time = datetime.utcnow()
-            result = crew.run(
-                companies=companies_data,
-                analysis_type=req.analysisType or "comparative",
-            )
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            logger.info(f"Competitive crew completed in {execution_time:.2f}s")
-            return {
-                "success": True, "result": result.get("result"),
-                "analysis": result.get("analysis"),
-                "analysisType": result.get("analysisType"),
-                "provider": result.get("provider"), "model": result.get("model"),
-                "execution_time": execution_time,
-            }
-
-    except Exception as e:
-        logger.error(f"Competitive crew failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
