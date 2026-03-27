@@ -156,6 +156,10 @@ TASK DETAILS:
         if not metrics.get("totalCount"):
             return "NO EMAIL ACTIVITY DATA AVAILABLE"
 
+        # Separate presales and implementation emails
+        presales_emails = [e for e in recent_emails if e.get("phase") == "presales"]
+        impl_emails = [e for e in recent_emails if e.get("phase") != "presales"]
+
         context = f"""
 EMAIL ENGAGEMENT METRICS:
 - Total Emails: {metrics.get('totalCount', 0)}
@@ -166,16 +170,34 @@ EMAIL ENGAGEMENT METRICS:
 - Volume Trend: {metrics.get('trend', 'stable')}
 """
 
-        if recent_emails:
-            context += "\nRECENT EMAIL ACTIVITY:\n"
-            for email in recent_emails[:10]:
+        if impl_emails:
+            context += "\nIMPLEMENTATION EMAIL ACTIVITY (PS/CSM/Support):\n"
+            for email in impl_emails[:10]:
                 direction = email.get("direction", "?")
                 direction_arrow = "←" if direction == "inbound" else "→" if direction == "outbound" else "?"
                 subject = email.get("subject", "No subject")
                 owner = email.get("ownerName", "Unknown")
+                role = email.get("ownerRole", "")
                 contact = email.get("whoName", "Unknown")
                 date = email.get("activityDate", "N/A")
-                context += f"  {direction_arrow} [{date}] {subject} - {owner} ↔ {contact}\n"
+                role_tag = f" ({role})" if role else ""
+                context += f"  {direction_arrow} [{date}] {subject} - {owner}{role_tag} ↔ {contact}\n"
+                if email.get("bodyPreview"):
+                    preview = email.get("bodyPreview", "")[:150]
+                    context += f"    Preview: {preview}...\n"
+
+        if presales_emails:
+            context += "\nPRESALES EMAIL CONTEXT (SDR/AE/AM - for background only, not current project status):\n"
+            for email in presales_emails[:5]:
+                direction = email.get("direction", "?")
+                direction_arrow = "←" if direction == "inbound" else "→" if direction == "outbound" else "?"
+                subject = email.get("subject", "No subject")
+                owner = email.get("ownerName", "Unknown")
+                role = email.get("ownerRole", "")
+                contact = email.get("whoName", "Unknown")
+                date = email.get("activityDate", "N/A")
+                role_tag = f" ({role})" if role else ""
+                context += f"  {direction_arrow} [{date}] {subject} - {owner}{role_tag} ↔ {contact}\n"
                 if email.get("bodyPreview"):
                     preview = email.get("bodyPreview", "")[:150]
                     context += f"    Preview: {preview}...\n"
@@ -287,6 +309,13 @@ EMAIL ENGAGEMENT ANALYSIS:
 - Assess volume trend: declining = potential disengagement, increasing = active engagement
 - Review recent email subjects for topics of concern or positive signals
 - Compare AM/IC outreach volume to customer responsiveness
+
+PRESALES vs IMPLEMENTATION EMAILS:
+- Emails are labeled as "IMPLEMENTATION" (PS/CSM/Support) or "PRESALES" (SDR/AE/AM)
+- Use IMPLEMENTATION emails for current project health and communication assessment
+- Use PRESALES emails ONLY as background context: what was promised, customer expectations, deal context
+- Do NOT use presales email volume or responsiveness to assess current implementation engagement
+- If presales emails reveal commitments or expectations, note them as context for the implementation team
 
 IMPORTANT - IDENTIFYING CUSTOMERS VS LEANDATA EMPLOYEES:
 - LeanData employees include: the PM, the IC, and anyone with @leandata.com email
