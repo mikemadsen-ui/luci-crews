@@ -2486,6 +2486,11 @@ review_and_score:
       "prior_ld_contact": false,
       "flagged": false,
       "flag_reason": null,
+      "suggested_contact": {
+        "name": "string or null",
+        "title": "string or null",
+        "reason": "string or null"
+      },
       "enrolled": false,
       "reviewed_at": "ISO timestamp"
     }

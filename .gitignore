@@ -66,3 +66,5 @@ htmlcov/
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+outreach_private_key.pem
+outreach_public_key.pem
