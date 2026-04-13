@@ -68,3 +68,5 @@ htmlcov/
 *.db
 outreach_private_key.pem
 outreach_public_key.pem
+src/.DS_Store
+.DS_Store
