@@ -648,3 +648,28 @@ class ProjectAnalysisRequest(BaseModel):
     userEmail: Optional[str] = None
     inputHash: Optional[str] = None
     userId: Optional[str] = None
+
+
+# =============================================================================
+# AI SDR Models
+# =============================================================================
+
+class AiSdrAccountInput(BaseModel):
+    """A single prospect account to process."""
+    account_name: str
+    salesforce_id: str
+
+
+class AiSdrRequest(BaseModel):
+    """
+    Request model for POST /api/crew/ai-sdr.
+
+    Defaults to dry_run=True and enrollment_enabled=False so nothing
+    touches Outreach until both flags are explicitly flipped.
+    """
+    accounts: List[AiSdrAccountInput]
+    vertical: str                         # "fintech" | "insurance" | "smb" | "emea"
+    dryRun: bool = True                   # True = full output JSON, zero external writes
+    enrollmentEnabled: bool = False       # False = write to review_queue only
+    replyInbox: str = "mike.madsen@leandata.com"  # Update to AI SDR alias when created
+    userId: Optional[str] = None

@@ -1,0 +1,322 @@
+# =============================================================================
+# AI SDR QA Configuration
+# =============================================================================
+# File: src/luci_crews/config/ai_sdr_qa_config.yaml
+#
+# PURPOSE: Controls which QA checks are active without touching agent definitions.
+# To loosen a check during scaling: change enabled: true to enabled: false here.
+# To tighten a check: change the threshold or re-enable it here.
+# Agent definitions in agents.yaml never need to change for QA tuning.
+#
+# ENVIRONMENTS:
+# - testing: strict — catch everything, flag aggressively
+# - staging: moderate — flag edge cases, let quality email through
+# - production: optimized — only flag clear failures
+#
+# CURRENT ENVIRONMENT: testing
+# Change this field to switch rule sets across all checks at once.
+# =============================================================================
+
+environment: testing
+
+# -----------------------------------------------------------------------------
+# CONFIDENCE SCORING THRESHOLDS
+# Adjust these as you learn what score levels produce good outcomes.
+# -----------------------------------------------------------------------------
+
+confidence_thresholds:
+  auto_enroll_minimum: 0.70      # Records below this score go to review queue
+                                  # Testing: 0.70 | Staging: 0.60 | Production: 0.50
+  auto_flag_maximum: 0.50        # Records below this are flagged regardless
+                                  # Testing: 0.50 | Staging: 0.40 | Production: 0.35
+  high_confidence_floor: 0.90    # Records above this get priority enrollment
+                                  # Testing: 0.90 | Staging: 0.85 | Production: 0.80
+
+# -----------------------------------------------------------------------------
+# EMAIL CONTENT CHECKS
+# Toggle individual checks on/off without changing agent definitions.
+# -----------------------------------------------------------------------------
+
+content_checks:
+
+  word_count_limit:
+    enabled: true
+    max_words: 90
+    action_on_fail: flag          # flag | warn | ignore
+    note: "Disable in staging if emails are consistently 91-100 words and quality is good"
+
+  banned_phrases:
+    enabled: true
+    action_on_fail: flag
+    phrases:
+      - "I hope this message finds you well"
+      - "I wanted to reach out"
+      - "I came across your profile"
+      - "leverage"
+      - "optimize"
+      - "streamline"
+      - "world-class"
+      - "cutting-edge"
+      - "next-generation"
+      - "best-in-class"
+      - "I'd love to connect"
+      - "Would you be open to a quick call"
+      - "In today's fast-paced"
+      - "As a [title]"
+    note: "Reduce this list in production to only the worst offenders"
+
+  generic_opening_check:
+    enabled: true
+    action_on_fail: flag
+    description: >
+      Opening line must reference something specific to this company.
+      Fails if opening line could apply to any company with the same title.
+    note: "Keep enabled in all environments — generic opens kill reply rates"
+
+  named_customer_reference:
+    enabled: true
+    action_on_fail: flag
+    description: >
+      Email must reference at least one named customer from the approved list.
+      Fails if email uses 'one of our customers' or 'companies like yours'.
+    note: "Can downgrade to warn in production if approved logo list is small"
+
+  single_cta_check:
+    enabled: true
+    action_on_fail: flag
+    description: "Email must contain exactly one call to action."
+    note: "Keep enabled always"
+
+  subject_line_length:
+    enabled: true
+    max_words: 6
+    action_on_fail: warn          # warn only — subject line is easier to fix
+    note: "Downgrade to ignore in production, humans can spot bad subjects"
+
+  sequence_step_uniqueness:
+    enabled: true
+    action_on_fail: flag
+    description: >
+      Each sequence step must be meaningfully different in framework and angle.
+      Flags if two steps use the same opening observation or framework.
+    note: "Keep enabled in testing. Downgrade to warn in production."
+
+# -----------------------------------------------------------------------------
+# CONTACT QUALITY CHECKS
+# Controls how strictly the agent validates the target contact.
+# -----------------------------------------------------------------------------
+
+contact_checks:
+
+  email_required:
+    enabled: true
+    action_on_fail: flag
+    note: "Always keep enabled — can't enroll without an email"
+
+  title_icp_match:
+    enabled: true
+    match_strictness: exact       # exact | approximate | any
+    action_on_fail: flag
+    note: >
+      Testing: exact — only exact ICP title matches pass.
+      Staging: approximate — Director-level titles pass even if not exact match.
+      Production: any — any contact with RevOps/SalesOps in title passes.
+      Change match_strictness to loosen without disabling the check.
+
+  seniority_floor:
+    enabled: true
+    action_on_fail: flag
+    floors:
+      fintech: Director
+      insurance: Senior Manager
+      smb: Manager
+      emea: Director
+    note: "Lower floors in production if response data shows managers reply well"
+
+  contact_tenure_check:
+    enabled: false                # Off by default — ZoomInfo tenure data is inconsistent
+    action_on_fail: warn
+    description: "Flags if contact appears to have left the company"
+    note: "Enable in production once you validate ZoomInfo tenure data quality"
+
+# -----------------------------------------------------------------------------
+# SIGNAL QUALITY CHECKS
+# Controls how strictly the agent requires signals before drafting.
+# -----------------------------------------------------------------------------
+
+signal_checks:
+
+  primary_signal_required:
+    enabled: true
+    action_on_fail: flag
+    description: >
+      A primary signal must be present before the writer drafts.
+      If no signal found, record is flagged — writer is not invoked.
+    note: "Keep enabled always — no signal means generic email"
+
+  minimum_timing_score:
+    enabled: true
+    minimum: low                  # high | medium | low | none
+    action_on_fail: flag
+    note: >
+      Testing: low — at least some timing signal required.
+      Production: none — ICP baseline is acceptable for high-volume scenarios.
+
+  stat_accuracy_check:
+    enabled: true
+    action_on_fail: flag
+    description: >
+      Email may only use statistics from the pre-approved stat bank
+      in messaging_library_template.md. Flags if unrecognized stat detected.
+    note: "Keep enabled always — fabricated stats are a legal and trust risk"
+
+# -----------------------------------------------------------------------------
+# ENROLLMENT CHECKS
+# Controls gates before Outreach enrollment fires.
+# -----------------------------------------------------------------------------
+
+enrollment_checks:
+
+  human_review_gate:
+    enabled: true                 # ALWAYS true in testing
+    action_on_fail: hold          # hold = write to review queue, do not enroll
+    note: >
+      Testing: true — all records go to review queue regardless of score.
+      Staging: true — records above 0.85 confidence auto-enroll, rest reviewed.
+      Production: false — records above auto_enroll_minimum auto-enroll.
+      This is the master on/off switch for autonomous enrollment.
+
+  duplicate_contact_check:
+    enabled: true
+    action_on_fail: flag
+    description: "Checks if contact is already enrolled in any active sequence"
+    note: "Keep enabled always — duplicate enrollment damages deliverability"
+
+  customer_account_check:
+    enabled: true
+    action_on_fail: skip
+    description: "Confirms account is not an existing LeanData customer"
+    note: "Keep enabled always — non-negotiable constraint"
+
+  open_opportunity_check:
+    enabled: true
+    action_on_fail: skip
+    description: "Confirms no open opportunity exists for this account"
+    note: "Keep enabled always — non-negotiable constraint"
+
+# -----------------------------------------------------------------------------
+# REPLY HANDLER CHECKS
+# Controls reply handling behavior.
+# -----------------------------------------------------------------------------
+
+reply_checks:
+
+  dry_run_mode:
+    enabled: true                 # true = classify replies but do not send responses
+    note: >
+      Testing: true — agent classifies and logs but never sends.
+      Production: false — agent sends responses autonomously.
+      This is the master switch for autonomous reply sending.
+
+  hard_rejection_auto_remove:
+    enabled: true
+    action_on_trigger: remove_from_sequence
+    note: "Keep enabled always — never contact someone who said stop"
+
+  question_human_routing:
+    enabled: true
+    route_threshold: any_question # any_question | complex_only | none
+    note: >
+      Testing: any_question — all questions route to human.
+      Staging: complex_only — simple questions auto-reply, complex route to human.
+      Production: complex_only — adjust based on reply quality in staging.
+
+  max_reply_time_minutes:
+    enabled: true
+    meeting_request: 120          # 2 hours for meeting requests
+    other: 480                    # 8 hours for other replies
+    note: "Tighten in production as reply volume grows"
+
+# -----------------------------------------------------------------------------
+# LOGGING AND OBSERVABILITY
+# Controls what gets logged for debugging vs production.
+# -----------------------------------------------------------------------------
+
+logging:
+
+  log_all_agent_reasoning:
+    enabled: true                 # verbose output from all agents
+    note: "Disable in production to reduce noise"
+
+  log_tool_calls:
+    enabled: true                 # log every MCP tool call and response
+    note: "Disable in production — keep in staging for debugging"
+
+  log_skipped_accounts:
+    enabled: true                 # log every account that was skipped and why
+    note: "Keep enabled always — critical for understanding batch quality"
+
+  log_intermediate_outputs:
+    enabled: true                 # write each agent's output to a temp file
+    output_dir: "output/debug/"
+    note: "Disable in production"
+
+  supabase_logging:
+    enabled: false                # flip to true once Supabase is connected
+    tables:
+      batch_runs: "ai_sdr_batch_runs"
+      account_results: "ai_sdr_account_results"
+      reply_events: "ai_sdr_reply_events"
+    note: >
+      Schema for each table is defined below.
+      Enable once Supabase credentials are available.
+
+# -----------------------------------------------------------------------------
+# SUPABASE TABLE SCHEMAS
+# Reference for when Supabase logging is enabled.
+# -----------------------------------------------------------------------------
+
+supabase_schemas:
+
+  ai_sdr_batch_runs:
+    - run_id: uuid
+    - started_at: timestamp
+    - completed_at: timestamp
+    - vertical: string
+    - total_accounts: integer
+    - processed: integer
+    - skipped: integer
+    - flagged: integer
+    - enrolled: integer
+    - enrollment_enabled: boolean
+    - dry_run: boolean
+
+  ai_sdr_account_results:
+    - result_id: uuid
+    - run_id: uuid (foreign key)
+    - account_name: string
+    - salesforce_id: string
+    - vertical: string
+    - contact_name: string
+    - contact_title: string
+    - contact_email: string
+    - primary_signal_type: string
+    - primary_signal_value: string
+    - confidence_score: float
+    - flagged: boolean
+    - flag_reason: string
+    - enrolled: boolean
+    - sequence_id: string
+    - created_at: timestamp
+
+  ai_sdr_reply_events:
+    - event_id: uuid
+    - account_name: string
+    - contact_email: string
+    - reply_received_at: timestamp
+    - reply_classification: string
+    - action_taken: string
+    - response_sent: text
+    - routed_to: string
+    - dry_run: boolean
+    - created_at: timestamp

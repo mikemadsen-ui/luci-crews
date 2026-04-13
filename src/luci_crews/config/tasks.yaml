@@ -2017,3 +2017,586 @@ develop_renewal_strategy:
     recommended_strategy, negotiation_scenarios, prep_checklist, stakeholder_brief,
     and coaching_for_csm. All recommendations should be specific to this account.
   agent: renewal_strategist
+
+
+# =============================================================================
+# AI SDR CREW
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# TASK 1: research_prospect
+# Validates account, enriches, finds contact. Gate for everything downstream.
+# -----------------------------------------------------------------------------
+
+research_prospect:
+  description: >
+    Research and validate each account in the input list for the {vertical} vertical.
+
+    INPUT ACCOUNTS:
+    {accounts}
+
+    DRY RUN: {dry_run}
+
+    For each account, follow this exact sequence:
+
+    STEP 1 — SALESFORCE VALIDATION (do this first, always)
+    Query Salesforce using the salesforce_id provided.
+
+    If the Salesforce query itself fails (API error, timeout, or invalid ID):
+    Skip this account immediately. Add to skipped list with
+    skip_reason = "salesforce_error". Continue to next account. Do NOT stop
+    the batch — one SFDC failure must never block the rest.
+
+    Check Account.Type — if "Customer", skip this account entirely.
+    Log: skip_reason = "existing_customer"
+
+    Check for open opportunities: query Opportunities where AccountId matches
+    and IsClosed = false. If any exist, skip this account entirely.
+    Log: skip_reason = "account_in_active_pipeline"
+
+    STEP 2 — ACCOUNT RELATIONSHIP NETWORK (only if SFDC validation passes)
+    Call graph_account_network with the account_name from the input.
+    The tool does partial, case-insensitive name matching — no UUID needed.
+    Returns the full relationship graph: contacts with titles and emails,
+    open and closed opportunities, parent/child account hierarchy, and recent
+    meeting activity. Capture this before ZoomInfo to avoid credit consumption
+    on accounts that may fail later checks.
+
+    STEP 3 — FIRMOGRAPHIC ENRICHMENT
+    Call zoominfo_enrich_company with the account name.
+    CONSUMES CREDITS — only reaches this step after SFDC validation passes.
+    Capture: employee count, tech stack, funding stage, recent news,
+    headcount growth rate.
+
+    Look for routing-adjacent tools in tech stack:
+    HIGH VALUE: Chili Piper, ZoomInfo/RingLead, Salesforce native flows,
+    Openprise, HubSpot (used for routing)
+    MEDIUM VALUE: Gong, 6sense, Demandbase, Clearbit
+
+    DO NOT call zoominfo_contact_research — that tool requires a ZoomInfo
+    contact ID and consumes AI credits per query. Use zoominfo_search_contacts
+    (Step 4) for contact lookup instead.
+
+    STEP 4 — CONTACT SEARCH (no credits)
+    Call zoominfo_search_contacts using ICP title parameters for the vertical:
+
+    Fintech titles (use OR logic):
+    "Revenue Operations" AND (VP OR Director OR "Senior Director" OR Head)
+    "Sales Operations" AND (VP OR Director OR "Senior Director" OR Head)
+    "GTM Operations" AND (Director OR Head OR Manager)
+    Seniority floor: Director+
+    managementLevel must be full strings: "Vice President", "Director" — not abbreviations
+
+    Insurance titles (use OR logic):
+    "Revenue Operations" AND (VP OR Director OR "Senior Director" OR "Senior Manager")
+    "Sales Operations" AND (VP OR Director OR "Senior Director")
+    "Salesforce" AND (Head OR "Senior Manager" OR Director)
+    "Distribution Operations" AND (Director OR Manager)
+    Seniority floor: Senior Manager+
+
+    Return the single best-fit contact (highest seniority match).
+    If no contact found matching ICP parameters: do NOT skip the account and do
+    NOT stop the batch. Set target_contact = null, flagged = true,
+    flag_reason = "no_contact_found". The record still passes downstream to
+    gather_signals so signals can be collected and QA can make a final call.
+
+    STEP 5 — LUCI SIGNAL SEARCH
+    Call luci_search_portfolio using the account name as the query term.
+    query: "[account_name] routing pain lead assignment"
+    match_threshold: 0.35
+    data_type_filter: ["customer_voice", "transcription_customer"]
+    speaker_role_filter: "customer"   ← filters to PROSPECT speech only, not LD reps
+    match_count: 10
+    If LUCI returns empty: set luci_signals = [], continue — not a failure.
+    Pass raw signal strings to gather_signals for distillation.
+    NEVER cite LUCI as the source in outreach — say "hearing" or "seeing this pattern".
+
+    STEP 6 — PRIOR LEANDATA MEETING CHECK
+    Call luci_list_meetings with search=account_name.
+    UUID is optional and not required for this call.
+    If meetings found: set prior_ld_contact = true. Note meeting subjects and
+    dates in output — the writer uses this to choose re-engagement framing
+    instead of cold outreach framing.
+    If empty: set prior_ld_contact = false. Continue — not a failure condition.
+
+    STEP 7 — TIMING SCORE
+    Based on enrichment data, score timing:
+    HIGH: 2+ strong signals (new RevOps hire, recent funding, 20%+ headcount growth,
+          RevOps job posting, routing-adjacent tool in stack + one other signal)
+    MEDIUM: 1 strong signal or 2+ medium signals
+    LOW: General ICP fit only, no timing signals
+    SKIP: No signals at all — flag and do not pass to writer
+
+    OUTPUT for each account (structured JSON):
+    {
+      "account_name": "string",
+      "salesforce_id": "string",
+      "vertical": "string",
+      "prospect_validated": true,
+      "skipped": false,
+      "skip_reason": null,
+      "flagged": false,
+      "flag_reason": null,
+      "target_contact": {
+        "name": "string",
+        "title": "string",
+        "email": "string",
+        "seniority": "string"
+      },
+      "firmographics": {
+        "employee_count": 0,
+        "tech_stack": ["string"],
+        "funding_stage": "string",
+        "recent_news": "string or null"
+      },
+      "timing_score": "high | medium | low | skip",
+      "routing_adjacent_tools": ["string"],
+      "luci_signals_raw": ["string"],
+      "prior_ld_contact": false,
+      "prior_ld_meetings": []
+    }
+
+    Accounts that are hard-skipped (SFDC validation failed or query error) appear
+    with skipped = true and skip_reason populated.
+    Accounts missing a ZoomInfo contact appear with skipped = false, flagged = true,
+    and flag_reason = "no_contact_found" — they continue downstream.
+  expected_output: >
+    A JSON array of researched account objects. Each object includes
+    prospect_validated status, target contact (or null with flag_reason if not
+    found), firmographic data, timing score, and routing-adjacent tools.
+    Hard-skipped accounts appear with skipped = true and skip_reason.
+    Accounts missing ZoomInfo contact appear with flagged = true and
+    flag_reason = "no_contact_found" but are NOT skipped.
+  agent: sdr_prospect_researcher
+
+# -----------------------------------------------------------------------------
+# TASK 2: gather_signals
+# Surfaces conversation intelligence and intent signals per account.
+# -----------------------------------------------------------------------------
+
+gather_signals:
+  description: >
+    For each validated prospect account from the research task, surface
+    conversation signals, intent data, and account context that can make
+    outreach feel personal and timely.
+
+    VALIDATED ACCOUNTS: {research_output}
+
+    Process only accounts where skipped = false and timing_score != "skip".
+
+    For each validated account:
+
+    STEP 1 — LUCI CONVERSATION INTELLIGENCE
+    Call luci_search_portfolio with:
+    - Query: "lead routing problems revenue operations [account_name]"
+    - match_threshold: 0.35
+    - data_type_filter: ["customer_voice", "transcription_customer"]
+    - speaker_role_filter: "customer"
+
+    Look for:
+    - Tool mentions: Chili Piper, RingLead, Openprise, internal routing build
+    - Pain statements: leads going cold, routing errors, can't audit, manual triage
+    - Scale signals: growing team, adding territories, new markets
+    - Competitive mentions: any tool they evaluated or replaced
+
+    IMPORTANT: LUCI UUIDs are not Salesforce IDs. If you need to search by
+    account, use luci_list_accounts first to resolve the UUID.
+
+    If LUCI returns empty results or the account cannot be resolved to a UUID:
+    Do NOT flag the account. Set primary_signal fallback to icp_baseline.
+    Continue to STEP 3 — no signal from LUCI is not a failure condition.
+
+    STEP 2 — AVOMA MEETING HISTORY
+    Call avoma_search_meetings for the account name.
+    Look for any meetings in the last 180 days.
+    If meetings found: note the subject and date — this signals prior relationship.
+    If a prior LeanData demo or evaluation is found: flag as prior_ld_contact = true.
+    If Avoma returns empty or no meetings found in last 180 days: set
+    prior_ld_contact = false and prior_meetings = false. Continue — this is
+    not a failure condition.
+
+    STEP 3 — SIGNAL COMPILATION
+    Compile all signals into a prioritized list (max 3 per account):
+
+    Priority 1 (use if found): Routing-adjacent tool in tech stack
+    Translate to plain language: "Running routing across [tool] today —"
+
+    Priority 2 (use if found): Recent company event
+    Translate: "[Company] added [X] reps in the last [Y] months —"
+
+    Priority 3 (use if found): LUCI pain signal
+    Translate: "Hearing routing complexity come up in [vertical] —"
+    NEVER cite LUCI directly — say "hearing" or "seeing this pattern"
+
+    Priority 4 (fallback): ICP-level hook for vertical and company stage
+    Use only if no stronger signal exists.
+
+    Priority 5 (flag): No signal found
+    Set primary_signal = null, flag record for human review
+
+    OUTPUT for each account:
+    {
+      "account_name": "string",
+      "primary_signal": {
+        "type": "tech_stack | company_event | luci_pain | icp_baseline | none",
+        "value": "plain language signal string ready for email opening",
+        "source": "ZoomInfo | LUCI | Avoma | Salesforce | ICP"
+      },
+      "supporting_signals": ["string", "string"],
+      "competitive_context": "Chili Piper | RingLead | Internal | None",
+      "prior_ld_contact": false,
+      "company_stage": "seed | series_a | series_b_plus | enterprise",
+      "flagged_no_signal": false
+    }
+  expected_output: >
+    A JSON array of signal objects per validated account. Each object has
+    a primary_signal in plain language ready for the writer to use as an
+    email opening, up to two supporting signals, competitive context,
+    prior_meetings boolean, and a flag if no usable signal was found.
+    Empty LUCI/Avoma results are handled as icp_baseline fallback — not as failures.
+  agent: sdr_signal_reader
+  context:
+    - research_prospect
+
+# -----------------------------------------------------------------------------
+# TASK 3: draft_email
+# Writes personalized email and all 4 sequence steps per contact.
+# -----------------------------------------------------------------------------
+
+draft_email:
+  description: >
+    Draft a personalized outbound email and unique content for each of the
+    4 sequence steps for every validated, non-flagged account.
+
+    ACCOUNT RESEARCH: {research_output}
+    SIGNALS: {signals_output}
+    VERTICAL: {vertical}
+
+    ICP FILE LOCATION: knowledge/messaging/icp_{vertical}.md
+    MESSAGING LIBRARY: knowledge/messaging/messaging_library.md
+
+    Load both files before drafting. All email rules, frameworks, banned
+    phrases, and approved customer references are in these files.
+
+    PRE-FLIGHT — CONFIDENCE ASSESSMENT (run before drafting)
+    Before selecting a framework, assess whether this record is likely to score
+    below 0.5 in QA. Pre-flag if ALL of the following apply:
+    - primary_signal.type is "icp_baseline" or "none"
+    - target_contact is null OR the contact title is a weak match for the vertical
+
+    If pre-flagging: still draft all 4 sequence steps (the QA agent will confirm
+    or override). In the output object set pre_flagged = true,
+    pre_flag_reason = "low_confidence_pre_flag". Do NOT skip drafting.
+
+    For each account where flagged_no_signal = false:
+
+    STEP 1 — SELECT FRAMEWORK
+    Based on primary_signal.type:
+    - tech_stack → Mouse Trap framework (observation + binary question)
+    - company_event → Vanilla Ice Cream (observation + implied problem + proof + CTA)
+    - luci_pain → Customer Mirror (story that matches their profile)
+    - icp_baseline → Vanilla Ice Cream with ICP-level hook
+
+    STEP 2 — DRAFT STEP 1 (first touch)
+    Subject: 4 words or fewer, lowercase
+    Salutation: "Hey [First name]" — line break after
+    Body: 3 sentences maximum
+      Sentence 1: Opening observation using primary_signal.value
+        (specific to this company, not generic)
+      Sentence 2: Implied problem or relevant customer story
+        (Stripe/Ramp for fintech; Goosehead/Unum for insurance)
+      Sentence 3: Soft CTA — "Worth 20 minutes to see if you're
+        running into the same thing?"
+    Closing: "Best,"
+    Signature: [Mike], LeanData
+    Social proof: "We work with [Logo1] and [Logo2] on this."
+
+    STEP 3 — DRAFT STEP 2 (~3 days, first bump)
+    Different angle from Step 1. New observation or third-party resource.
+    Framework: Thoughtful Bump
+    Shorter than Step 1. New subject line (not "Re:").
+    Closing: "Thanks,"
+
+    STEP 4 — DRAFT STEP 3 (~7 days, second bump)
+    Customer story the prospect can see themselves in.
+    Framework: Customer Mirror
+    Introduce a customer story that matches their company profile.
+    New subject line. Closing: "Regards,"
+
+    STEP 5 — DRAFT STEP 4 (~14 days, breakup)
+    Short. Assumes bad timing. Asks them to correct you.
+    Framework: The Breakup
+    No pitch. No closing word. End abruptly.
+    New subject line.
+
+    NON-NEGOTIABLE RULES (check every draft):
+    - Never start with "I"
+    - No banned phrases (check messaging library list)
+    - Under 90 words total per email
+    - One CTA per email
+    - Each step meaningfully different — not the same message with a new opener
+    - Only reference approved customers from the messaging library
+    - Only use stats from the pre-approved stat bank
+
+    OUTREACH VARIABLE NAMING — label content by exact Outreach variable names
+    so the enrollment agent can populate sequences without remapping.
+
+    Step 1 and 4 are new email threads (new subjects). Steps 2 and 3 are
+    replies to Step 1 — they inherit {{ai_subject_1}} automatically.
+
+    OUTPUT for each account:
+    {
+      "account_name": "string",
+      "contact_first_name": "string",
+      "sequence_steps": [
+        {
+          "step_number": 1,
+          "variable_name": "ai_subject_1",
+          "subject": "string",
+          "body_variable": "ai_body_1",
+          "body": "string",
+          "thread_type": "new",
+          "framework_used": "string"
+        },
+        {
+          "step_number": 2,
+          "variable_name": null,
+          "subject": "Re: {{ai_subject_1}}",
+          "body_variable": "ai_body_2",
+          "body": "string",
+          "thread_type": "reply",
+          "framework_used": "string"
+        },
+        {
+          "step_number": 3,
+          "variable_name": null,
+          "subject": "Re: {{ai_subject_1}}",
+          "body_variable": "ai_body_3",
+          "body": "string",
+          "thread_type": "reply",
+          "framework_used": "string"
+        },
+        {
+          "step_number": 4,
+          "variable_name": "ai_subject_4",
+          "subject": "string",
+          "body_variable": "ai_body_4",
+          "body": "string",
+          "thread_type": "new",
+          "framework_used": "string"
+        }
+      ],
+      "primary_signal_used": "string",
+      "customer_reference_used": "string",
+      "pre_flagged": false,
+      "pre_flag_reason": null
+    }
+  expected_output: >
+    A JSON array of email draft objects per account. Each object contains
+    4 sequence steps with subject, body, and framework used. Every step
+    is meaningfully different. Every email is under 90 words. Every opening
+    is company-specific. Includes pre_flagged and pre_flag_reason for records
+    the writer identified as likely low-confidence (QA agent confirms or overrides).
+  agent: sdr_email_writer
+  context:
+    - research_prospect
+    - gather_signals
+
+# -----------------------------------------------------------------------------
+# TASK 4: review_and_score
+# QA gate. Scores confidence. Flags bad records. Formats final output.
+# -----------------------------------------------------------------------------
+
+review_and_score:
+  description: >
+    Review every email draft against messaging library standards, score
+    confidence, flag records that should not be sent, and format the
+    final output JSON for the review queue.
+
+    RESEARCH OUTPUT: {research_output}
+    SIGNALS OUTPUT: {signals_output}
+    EMAIL DRAFTS: {drafts_output}
+    DRY RUN: {dry_run}
+
+    MESSAGING LIBRARY: knowledge/messaging/messaging_library.md
+    Load the messaging library before reviewing.
+
+    For each account:
+
+    STEP 1 — CONFIDENCE SCORING
+    Score 0.0 to 1.0 based on:
+    0.90+  ICP title exact match AND 2+ specific signals used
+           AND named customer reference AND under 90 words
+    0.70-0.89  Title approximate match AND 1 signal or ICP hook
+               AND named customer reference AND under 90 words
+    0.50-0.69  Contact found, weak title match OR no specific signal
+    Below 0.50  Auto-flag
+
+    STEP 2 — FLAG CHECK
+    First: check if the writer set pre_flagged = true. Review that record
+    carefully — do NOT blindly inherit the flag. If your confidence scoring
+    produces 0.5 or higher, override: set flagged = false, note "qa_override"
+    in flag_reason. If your scoring confirms below 0.5, keep flagged = true.
+
+    Set flagged = true if ANY of the following:
+    - confidence < 0.5
+    - No email address for contact
+    - Contact title doesn't match ICP for the vertical
+    - Email body contains a banned phrase (check messaging library list)
+    - Any email is over 90 words
+    - Opening line is generic (could apply to anyone with that title)
+    - No named customer reference in the email
+    - More than one CTA in any email
+    - Subject line over 6 words
+    - Any two sequence steps are substantively identical
+
+    STEP 3 — SELF-CHECK (answer yes to all before approving)
+    1. Does the opening line reference something specific to this company?
+    2. Is every email body under 3 sentences and under 90 words?
+    3. Is there exactly one CTA per email?
+    4. Would a RevOps leader feel this was written for them?
+    5. Is every sequence step meaningfully different?
+    6. Is the confidence score justified by the research?
+
+    STEP 4 — FORMAT FINAL OUTPUT
+    For each account, produce the final review queue record:
+
+    {
+      "account_name": "string",
+      "salesforce_id": "string",
+      "vertical": "string",
+      "target_contact": {
+        "name": "string",
+        "title": "string",
+        "email": "string",
+        "linkedin": "string or null"
+      },
+      "draft_email": {
+        "subject": "string",
+        "body": "string"
+      },
+      "sequence_steps": [
+        { "step_number": 1, "subject": "string", "body": "string" },
+        { "step_number": 2, "subject": "string", "body": "string" },
+        { "step_number": 3, "subject": "string", "body": "string" },
+        { "step_number": 4, "subject": "string", "body": "string" }
+      ],
+      "confidence": 0.0,
+      "signals_used": ["string"],
+      "prior_ld_contact": false,
+      "flagged": false,
+      "flag_reason": null,
+      "enrolled": false,
+      "reviewed_at": "ISO timestamp"
+    }
+
+    skipped accounts (from research task) should also appear in output:
+    {
+      "account_name": "string",
+      "salesforce_id": "string",
+      "skipped": true,
+      "skip_reason": "string",
+      "enrolled": false
+    }
+
+    dry_run = true means produce full output JSON but make zero external writes.
+  expected_output: >
+    A complete JSON array of all accounts processed — approved records with
+    full email drafts and confidence scores, flagged records with flag_reason
+    (including "qa_override" where writer pre-flags were reversed), and skipped
+    records with skip_reason. This is the final review_queue output.
+  agent: sdr_qa_reviewer
+  context:
+    - research_prospect
+    - gather_signals
+    - draft_email
+
+# -----------------------------------------------------------------------------
+# TASK 5: enroll_prospect
+# Enrollment gate — reads QA config to decide enroll vs. review queue.
+# human_input: true pauses here until a human approves. Remove after v1 validated.
+# -----------------------------------------------------------------------------
+
+enroll_prospect:
+  description: >
+    For each account in the QA-reviewed output, decide whether to enroll in
+    Outreach or write to the review queue. Gate all enrollment decisions
+    against the QA config rules.
+
+    QA REVIEWED OUTPUT: {review_queue}
+    ENROLLMENT ENABLED: {enrollment_enabled}
+    DRY RUN: {dry_run}
+    QA CONFIG: {qa_config}
+    SEQUENCE ID: {sequence_id}
+
+    DECISION LOGIC — apply in this order:
+
+    STEP 1 — MASTER SWITCHES (check qa_config first)
+    Read qa_config.enrollment_checks.human_review_gate.enabled.
+    If true: write ALL records to review queue regardless of score.
+    Do NOT call outreach_add_prospect_to_sequence. This is the override.
+
+    Read qa_config.reply_checks.dry_run_mode.enabled.
+    If true: classify and log but do NOT send any communication.
+
+    STEP 2 — HARD SKIPS (never enroll these)
+    If enrollment_enabled = false: write to review queue, do not enroll.
+    If dry_run = true: write to review queue, do not enroll.
+    If account.flagged = true: write to review queue with flag_reason.
+    If account.skipped = true: skip entirely — do not add to any queue.
+
+    STEP 3 — ENROLLMENT (only if all gates pass)
+    Confirm human_review_gate = false AND enrollment_enabled = true AND
+    dry_run = false AND flagged = false.
+    Only then call outreach_add_prospect_to_sequence.
+
+    SEQUENCE VARIABLE POPULATION — map writer output to Outreach variables.
+    All 4 sequences use the same 6 variables. Populate them from sequence_steps:
+
+    From step_number 1:
+      ai_subject_1 = sequence_steps[0].subject   (new thread subject; inherited by steps 2+3)
+      ai_body_1    = sequence_steps[0].body
+
+    From step_number 2:
+      ai_body_2    = sequence_steps[1].body       (subject is auto "Re: {{ai_subject_1}}")
+
+    From step_number 3:
+      ai_body_3    = sequence_steps[2].body       (subject is auto "Re: {{ai_subject_1}}")
+
+    From step_number 4:
+      ai_subject_4 = sequence_steps[3].subject   (new thread subject for breakup email)
+      ai_body_4    = sequence_steps[3].body
+
+    Pass all 6 as the personalization dict to outreach_add_prospect_to_sequence:
+    {
+      "ai_subject_1": "...",
+      "ai_body_1": "...",
+      "ai_body_2": "...",
+      "ai_body_3": "...",
+      "ai_subject_4": "...",
+      "ai_body_4": "..."
+    }
+
+    STEP 4 — REVIEW QUEUE OUTPUT
+    For all non-enrolled accounts, write the full review_queue record.
+    Include enrolled = false and queue_reason explaining why.
+
+    OUTPUT for each account:
+    {
+      "account_name": "string",
+      "salesforce_id": "string",
+      "enrolled": false,
+      "queue_reason": "human_review_gate | enrollment_disabled | dry_run | flagged",
+      "sequence_id": "string or null",
+      "review_queue_entry": { ... full QA record ... }
+    }
+  expected_output: >
+    A JSON array showing enrollment disposition for every account. Records
+    that were enrolled show enrolled = true and sequence_id. Records routed to
+    review queue show enrolled = false with queue_reason. No outreach calls
+    are made when human_review_gate = true, enrollment_enabled = false,
+    or dry_run = true.
+  agent: sdr_enrollment_agent
+  human_input: true
+  context:
+    - review_and_score

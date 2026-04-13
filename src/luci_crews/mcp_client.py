@@ -255,16 +255,183 @@ def userevidence_search(query: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# ZoomInfo tools (company enrichment and contact search)
+# ---------------------------------------------------------------------------
+
+@tool
+def zoominfo_enrich_company(company_name: str) -> str:
+    """Enrich a company with ZoomInfo firmographic data. CONSUMES CREDITS —
+    only call after Salesforce validation confirms the account is a valid prospect.
+    Returns: employee count, revenue, tech stack, funding stage, recent news."""
+    return _mcp_call(LEANDATA_MCP_URL, LEANDATA_MCP_API_KEY, "zoominfo_enrich_company", {
+        "companyName": company_name,
+    })
+
+
+@tool
+def zoominfo_search_contacts(
+    company_name: str,
+    title_keywords: str,
+    management_level: str = "Director",
+    max_results: int = 5,
+) -> str:
+    """Search ZoomInfo contacts at a company. Does NOT consume credits.
+    title_keywords: comma-separated keywords e.g. 'Revenue Operations,Sales Operations'.
+    management_level: full string only — 'Vice President', 'Director', 'Senior Manager'.
+    Never use abbreviations like 'VP'. Returns top contacts by seniority."""
+    return _mcp_call(LEANDATA_MCP_URL, LEANDATA_MCP_API_KEY, "zoominfo_search_contacts", {
+        "companyName": company_name,
+        "titleKeywords": title_keywords,
+        "managementLevel": management_level,
+        "maxResults": max_results,
+    })
+
+
+# ---------------------------------------------------------------------------
+# LUCI tools (conversation intelligence — UUID account IDs, not Salesforce IDs)
+# ---------------------------------------------------------------------------
+
+@tool
+def graph_account_network(account_name: str) -> str:
+    """Get the full account relationship network by account name (partial match, case-insensitive).
+    Returns contacts, open/closed opportunities, parent/child account hierarchy,
+    and recent meeting activity. Call AFTER salesforce_query confirms prospect
+    status. Pass the account_name from the input — no UUID needed."""
+    return _mcp_call(LEANDATA_MCP_URL, LEANDATA_MCP_API_KEY, "graph_account_network", {
+        "accountName": account_name,
+    })
+
+
+@tool
+def luci_list_meetings(
+    search: str = "",
+    from_date: str = "",
+    to_date: str = "",
+    account_id: str = "",
+) -> str:
+    """List LUCI meetings. All parameters are optional — use any combination.
+    search: keyword match on meeting subject.
+    from_date / to_date: date range filter in YYYY-MM-DD format.
+    account_id: LUCI UUID — optional, only pass if already resolved via luci_list_accounts.
+    Can be called with just a search string or date range without a UUID."""
+    args: Dict[str, Any] = {}
+    if search:
+        args["search"] = search
+    if from_date:
+        args["fromDate"] = from_date
+    if to_date:
+        args["toDate"] = to_date
+    if account_id:
+        args["accountId"] = account_id
+    return _mcp_call(LEANDATA_MCP_URL, LEANDATA_MCP_API_KEY, "luci_list_meetings", args)
+
+
+@tool
+def luci_list_accounts(query: str) -> str:
+    """List LUCI accounts matching a query. Use this to resolve a Salesforce
+    account name to a LUCI UUID before calling luci_search_portfolio.
+    LUCI UUIDs are NOT the same as Salesforce 18-char IDs."""
+    return _mcp_call(LEANDATA_MCP_URL, LEANDATA_MCP_API_KEY, "luci_list_accounts", {
+        "query": query,
+    })
+
+
+@tool
+def luci_search_portfolio(
+    query: str,
+    match_threshold: float = 0.35,
+    data_type_filter: Optional[List[str]] = None,
+    speaker_role_filter: str = "",
+    match_count: int = 10,
+) -> str:
+    """Semantic search across the LUCI customer portfolio for pain signals and patterns.
+    query: natural language e.g. '[account_name] routing pain lead assignment'.
+    match_threshold: use 0.35 — 0.5 returns too few results for most signal queries.
+    data_type_filter: LIST e.g. ["customer_voice", "transcription_customer"].
+    speaker_role_filter: 'customer' filters to prospect speech only — not LD rep speech.
+                         Always pass 'customer' in the SDR crew for signal quality.
+    match_count: number of results to return (default 10).
+    NEVER cite LUCI as the source in outreach — say 'hearing' or 'seeing this pattern'."""
+    args: Dict[str, Any] = {
+        "query": query,
+        "matchThreshold": match_threshold,
+        "matchCount": match_count,
+    }
+    if data_type_filter:
+        args["dataTypeFilter"] = data_type_filter   # passes as JSON array to MCP
+    if speaker_role_filter:
+        args["speakerRoleFilter"] = speaker_role_filter
+    return _mcp_call(LEANDATA_MCP_URL, LEANDATA_MCP_API_KEY, "luci_search_portfolio", args)
+
+
+# ---------------------------------------------------------------------------
+# Avoma search (company-level meeting lookup — complements existing list/get tools)
+# ---------------------------------------------------------------------------
+
+@tool
+def avoma_search_meetings(account_name: str, days_back: int = 180) -> str:
+    """Search Avoma for meetings related to a company name in the last N days.
+    Use to detect prior LeanData relationship or contact before outreach.
+    If no meetings found: set prior_meetings = false and continue — not a failure."""
+    return _mcp_call(AVOMA_MCP_URL, AVOMA_API_KEY, "search_meetings", {
+        "accountName": account_name,
+        "daysBack": days_back,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Outreach tools (sequence management and enrollment)
+# ---------------------------------------------------------------------------
+
+@tool
+def outreach_list_sequences() -> str:
+    """List available Outreach sequences. Returns sequence IDs, names, and status.
+    Use to confirm a sequence ID is valid before enrolling."""
+    return _mcp_call(LEANDATA_MCP_URL, LEANDATA_MCP_API_KEY, "outreach_list_sequences", {})
+
+
+@tool
+def outreach_get_sequence(sequence_id: str) -> str:
+    """Get details for a specific Outreach sequence including steps and timing."""
+    return _mcp_call(LEANDATA_MCP_URL, LEANDATA_MCP_API_KEY, "outreach_get_sequence", {
+        "sequenceId": sequence_id,
+    })
+
+
+@tool
+def outreach_add_prospect_to_sequence(
+    prospect_email: str,
+    sequence_id: str,
+    personalization: str,
+) -> str:
+    """Enroll a prospect in an Outreach sequence with personalized content.
+    WRITE OPERATION — only call when enrollment_enabled=True, dry_run=False,
+    and human_review_gate=False in qa_config. Never call in testing environment.
+    personalization: JSON string with keys ai_subject_1, ai_body_1, ai_body_2,
+    ai_body_3, ai_subject_4, ai_body_4.
+    Step 1 is MANUAL — it appears in the Outreach task queue for human review
+    before it sends. Steps 2-4 fire automatically after Step 1 is sent."""
+    return _mcp_call(LEANDATA_MCP_URL, LEANDATA_MCP_API_KEY, "outreach_add_prospect_to_sequence", {
+        "prospectEmail": prospect_email,
+        "sequenceId": sequence_id,
+        "personalization": personalization,
+    })
+
+
+# ---------------------------------------------------------------------------
 # Tool registry — maps server names to their tool functions
 # ---------------------------------------------------------------------------
 
 TOOL_REGISTRY: Dict[str, List[Any]] = {
     "salesforce": [salesforce_query, salesforce_describe, salesforce_get_record, salesforce_search],
-    "avoma": [avoma_list_meetings, avoma_get_meeting, avoma_get_meeting_notes],
+    "avoma": [avoma_list_meetings, avoma_get_meeting, avoma_get_meeting_notes, avoma_search_meetings],
     "zendesk": [zendesk_get_tickets, zendesk_get_ticket, zendesk_get_ticket_comments],
     "hubspot": [hubspot_search_contacts, hubspot_search_companies, hubspot_search_deals],
     "snowflake": [snowflake_query, snowflake_describe_table],
     "userevidence": [userevidence_search],
+    "zoominfo": [zoominfo_enrich_company, zoominfo_search_contacts],
+    "luci": [graph_account_network, luci_list_meetings, luci_list_accounts, luci_search_portfolio],
+    "outreach": [outreach_list_sequences, outreach_get_sequence, outreach_add_prospect_to_sequence],
 }
 
 

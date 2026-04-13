@@ -94,6 +94,7 @@ from .crews.contextual_drilldown_crew import ContextualDrilldownCrew
 from .crews.project_analysis_crew import ProjectAnalysisCrew
 from .crews.product_intelligence_crew import ProductIntelligenceCrew
 from .crews.profile_builder_crew import ProfileBuilderCrew
+from .routes.ai_sdr import router as ai_sdr_router
 from .routes.analysis import router as analysis_router
 from .routes.coaching import router as coaching_router
 from .routes.config import router as config_router
@@ -265,6 +266,7 @@ app.add_middleware(
 )
 
 # Register routers
+app.include_router(ai_sdr_router)    # AI SDR batch crew — POST /api/crew/ai-sdr
 app.include_router(analysis_router)  # Analysis crew endpoints (project, opportunity, competitive, support)
 app.include_router(coaching_router)  # Coaching crew endpoints
 app.include_router(config_router)  # Config management for Crew Studio

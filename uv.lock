@@ -110,6 +110,25 @@ wheels = [
 ]
 
 [[package]]
+name = "anthropic"
+version = "0.71.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "docstring-parser" },
+    { name = "httpx" },
+    { name = "jiter" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/05/4b/19620875841f692fdc35eb58bf0201c8ad8c47b8443fecbf1b225312175b/anthropic-0.71.1.tar.gz", hash = "sha256:a77d156d3e7d318b84681b59823b2dee48a8ac508a3e54e49f0ab0d074e4b0da", size = 493294, upload-time = "2025-10-28T17:28:42.213Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4b/68/b2f988b13325f9ac9921b1e87f0b7994468014e1b5bd3bdbd2472f5baf45/anthropic-0.71.1-py3-none-any.whl", hash = "sha256:6ca6c579f0899a445faeeed9c0eb97aa4bdb751196262f9ccc96edfc0bb12679", size = 355020, upload-time = "2025-10-28T17:28:40.653Z" },
+]
+
+[[package]]
 name = "anyio"
 version = "4.12.1"
 source = { registry = "https://pypi.org/simple" }
@@ -461,6 +480,9 @@ wheels = [
 ]
 
 [package.optional-dependencies]
+anthropic = [
+    { name = "anthropic" },
+]
 google-genai = [
     { name = "google-genai" },
 ]
@@ -1180,12 +1202,13 @@ name = "luci-crews"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "crewai", extra = ["google-genai", "tools"] },
+    { name = "crewai", extra = ["anthropic", "google-genai", "tools"] },
     { name = "crewai-tools", extra = ["mcp"] },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "pydantic" },
     { name = "python-dotenv" },
+    { name = "requests" },
     { name = "supabase" },
     { name = "urllib3" },
     { name = "uvicorn", extra = ["standard"] },
@@ -1201,13 +1224,14 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=24.0.0" },
-    { name = "crewai", extras = ["google-genai", "tools"], specifier = ">=0.86.0" },
+    { name = "crewai", extras = ["anthropic", "google-genai", "tools"], specifier = ">=0.86.0" },
     { name = "crewai-tools", extras = ["mcp"], specifier = ">=0.33.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "requests", specifier = ">=2.31.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6.0" },
     { name = "supabase", specifier = ">=2.0.0" },
     { name = "urllib3", specifier = ">=2.6.3" },
