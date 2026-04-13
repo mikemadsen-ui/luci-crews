@@ -2039,6 +2039,12 @@ research_prospect:
 
     For each account, follow this exact sequence:
 
+    # OPTIMIZATION NEEDED: Add explicit hard-stop after SFDC
+    # validation fails. Currently the researcher completes its
+    # full loop before returning skip. Should short-circuit
+    # immediately after detecting existing_customer or
+    # account_in_active_pipeline. Tracked for v1.1.
+
     STEP 1 — SALESFORCE VALIDATION (do this first, always)
     Query Salesforce using the salesforce_id provided.
 
