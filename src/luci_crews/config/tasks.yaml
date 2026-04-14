@@ -2557,6 +2557,9 @@ review_and_score:
       "[First name]", "[first name]", or "{{first_name}}":
       flag_reason = "placeholder_in_email_copy". Hard block —
       must never reach enrollment.
+    - Any sequence_step body or subject contains an em dash character (—):
+      flag_reason = "em_dash_in_copy". Hard block — rewrite that sentence
+      replacing — with '...' before this record can be approved.
 
     STEP 3 — SELF-CHECK (answer yes to all before approving)
     1. Does the opening line reference something specific to this company?
@@ -2590,7 +2593,8 @@ review_and_score:
         { "step_number": 4, "subject": "string", "body": "string" }
       ],
       "confidence": 0.0,
-      "signals_used": ["string"],
+      "signal_type": "new_exec_hire",
+      "signals_used": ["new_exec_hire", "native_ceiling"],
       "prior_ld_contact": false,
       "contact_source": "salesforce or zoominfo",
       "flagged": false,
