@@ -236,26 +236,30 @@ Reply handling output (per reply):
 
 ## Build status (feature/ai-sdr branch)
 
+Last updated: 2026-04-14
+
 Infrastructure:
 - Backend service (Railway, FastAPI, Supabase): done
+- POST /api/crew/ai-sdr endpoint: done (routes/ai_sdr.py)
+- Supabase logging: done (ai_sdr_batch_runs + ai_sdr_account_results tables created in staging)
 - Gmail monitoring: not started (using mike.madsen@leandata.com for testing)
+- Railway staging deployment: BLOCKED — MCP server IP-restricts Railway egress IPs
+  (key is valid locally; Ron needs to allowlist Railway IPs on mcp-hub.leandata.workers.dev)
 
 Sequence structure (all 4 sequences):
 - Step 1: MANUAL task in Outreach queue (human review gate — v1 QA mechanism)
 - Steps 2-4: Automated, fire after Step 1 is manually sent
-- Two v1 gates: (1) human_input=true on enroll_prospect task, (2) Step 1 manual
+- Two v1 gates: (1) human_input=enrollment_enabled on enroll_prospect task, (2) Step 1 manual
 
-Scenario 1 — Fintech:
+Scenario 1 — Fintech: DONE
 - Outreach sequence: done (ID 5724)
-- agents.yaml SDR entries: done
-- tasks.yaml SDR entries: done (5 tasks, full context chain, 6-variable enrollment)
-- ai_sdr_crew.py: not started
-- POST /api/crew/ai-sdr endpoint: not started
-- Reply handling logic: not started
+- agents.yaml, tasks.yaml, ai_sdr_crew.py, endpoint: all done
+- Validated: Everi (0.92, Dustin Dunn), OneStream (skipped correctly)
 
-Scenario 2 — Insurance:
+Scenario 2 — Insurance: DONE
 - Outreach sequence: done (ID 5732)
-- Everything else: shares fintech crew — vertical param controls ICP
+- Validated: Humana (Brenda Hutton from SFDC, 0.92), Aon (prior_ld_contact=true)
+- Approved logos: Goosehead, Unum, Aflac ONLY (guardrails in icp_insurance.md)
 
 Scenario 3 — SMB:
 - Outreach sequence: done (ID 5733)
@@ -265,13 +269,28 @@ Scenario 4 — EMEA:
 - Outreach sequence: done (ID 5734)
 - ICP file: TBD
 
+Open PRs:
+- ronfeathers-LD/luci-crews#4 — contact lookup, placeholder safety, writer quality, model fixes
+  (reviewer: @ronfeathers-LD, waiting on merge)
+
+Known issues / v1.1 backlog:
+- Researcher early-exit: accounts like OneStream take ~2 min to skip instead of <30s.
+  Needs hard-stop after SFDC validation fails. Tracked in tasks.yaml comment.
+- Rate limit: 30K TPM on individual Anthropic plan throttles batches of 3+ accounts.
+  Need higher-tier key on Railway for production.
+- Outreach S2S permission: Sequence Enrollment scope not enabled on LeanData integration.
+  Ron needs: Outreach Settings > Apps > API > LeanData > enable Sequence Enrollment scope.
+- draft_email task STEP 2 subject line says "4 words or fewer, lowercase" — inconsistent
+  with agents.yaml rule of "2-5 words, sentence case". Fix in next pass.
+- contact_source field (salesforce vs zoominfo) not surfacing in review_queue_entry JSON output.
+
 ---
 
 ## Last session summary
-2026-04-12 — Full ICP research complete for fintech and insurance. Win data pulled
-from Salesforce (22 accounts, 60 contact roles). LUCI signals extracted. ICP files
-written to knowledge/messaging/. Full workflow designed including Outreach enrollment
-(gated) and Gmail reply handling (3 branches). Build not yet started.
-Next: read existing crew pattern in src/luci_crews/crews/, then build
-sdr_prospect_researcher for fintech scenario first — agents.yaml, tasks.yaml,
-then ai_sdr_crew.py skeleton.
+2026-04-14 — AI SDR v1 fully built and validated locally for fintech and insurance.
+Staging deployment confirmed live but MCP tools blocked by IP restriction on Railway.
+Two PRs merged into ronfeathers-LD/luci-crews. Third PR open (#4).
+Key fixes this session: Salesforce contact lookup before ZoomInfo, closed-lost opp
+sets prior_ld_contact, insurance logo guardrails, placeholder safety guard,
+75-word limit, no em dashes, curiosity step 2, model fallback fix.
+Next: wait for PR #4 merge, then fix Railway MCP IP restriction, then test enrollment flow.
