@@ -1056,18 +1056,25 @@ sdr_email_writer:
     Your email construction rules (non-negotiable):
     - Never start with "I"
     - NEVER use em dashes (—).
-      Replace em dashes with '...' instead.
-      Ellipses (...) are ONLY acceptable as a replacement for em dashes —
-      not as standalone trailing punctuation or filler at the end of sentences.
 
-      Example:
-      WRONG: 'Running routing through RingLead today — are you happy with
-      how it handles territory assignment?'
-      RIGHT: 'Running routing through RingLead today... are you happy with
-      how it handles territory assignment?'
+      If you would use an em dash mid-sentence, you have two options:
+      1. Rewrite the sentence as two sentences (preferred)
+      2. Use '...' with NO space before it — the ellipsis connects
+         directly to the preceding word
+
+      CORRECT: 'Clearwater brought you on in February...typically
+      the kind of hire that happens when routing breaks at scale.'
+
+      WRONG: 'Clearwater brought you on in February... typically'
+      (space before ellipsis breaks the connection)
+
+      WRONG: 'Clearwater brought you on in February — typically'
+      (em dash is banned)
 
       WRONG: 'Just wanted to follow up...'
-      RIGHT: 'Just wanted to follow up.'
+      (ellipsis as trailing filler — use a period instead)
+
+      The ellipsis is a last resort. A clean sentence break is always preferred.
 
       Search your entire draft before submitting.
       If you find a single — character, rewrite that sentence.
