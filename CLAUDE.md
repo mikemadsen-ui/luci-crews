@@ -238,27 +238,35 @@ Reply handling output (per reply):
 
 Last updated: 2026-04-14
 
+PRs:
+- PR #1 (initial AI SDR build): MERGED into ronfeathers-LD/luci-crews:main
+- PR #2 (ronfeathers-LD/luci-crews#4 — contact lookup, placeholder safety, writer quality,
+  model fixes): PENDING Ron review. Reviewer tagged @ronfeathers-LD.
+
 Infrastructure:
 - Backend service (Railway, FastAPI, Supabase): done
 - POST /api/crew/ai-sdr endpoint: done (routes/ai_sdr.py)
 - Supabase logging: done (ai_sdr_batch_runs + ai_sdr_account_results tables created in staging)
 - Gmail monitoring: not started (using mike.madsen@leandata.com for testing)
-- Railway staging deployment: BLOCKED — MCP server IP-restricts Railway egress IPs
-  (key is valid locally; Ron needs to allowlist Railway IPs on mcp-hub.leandata.workers.dev)
+- Railway staging deployment: BLOCKED — MCP server (mcp-hub.leandata.workers.dev)
+  IP-restricts Railway egress IPs. LEANDATA_MCP_API_KEY is valid (confirmed locally).
+  Fix: Neil needs to whitelist Railway staging egress IPs on the MCP server.
 
 Sequence structure (all 4 sequences):
 - Step 1: MANUAL task in Outreach queue (human review gate — v1 QA mechanism)
 - Steps 2-4: Automated, fire after Step 1 is manually sent
 - Two v1 gates: (1) human_input=enrollment_enabled on enroll_prospect task, (2) Step 1 manual
 
-Scenario 1 — Fintech: DONE
+Scenario 1 — Fintech: DONE + VALIDATED
 - Outreach sequence: done (ID 5724)
 - agents.yaml, tasks.yaml, ai_sdr_crew.py, endpoint: all done
-- Validated: Everi (0.92, Dustin Dunn), OneStream (skipped correctly)
+- Validated locally: Everi (0.92, Dustin Dunn VP Sales Ops), OneStream (skip correct),
+  IDeaS (prior_ld_contact=true, re-engagement framing)
 
-Scenario 2 — Insurance: DONE
+Scenario 2 — Insurance: DONE + VALIDATED
 - Outreach sequence: done (ID 5732)
-- Validated: Humana (Brenda Hutton from SFDC, 0.92), Aon (prior_ld_contact=true)
+- Validated locally: Humana (Brenda Hutton from SFDC contacts, 0.92, no banned logos),
+  Aon (prior_ld_contact=true from closed-lost opps)
 - Approved logos: Goosehead, Unum, Aflac ONLY (guardrails in icp_insurance.md)
 
 Scenario 3 — SMB:
@@ -269,9 +277,14 @@ Scenario 4 — EMEA:
 - Outreach sequence: done (ID 5734)
 - ICP file: TBD
 
-Open PRs:
-- ronfeathers-LD/luci-crews#4 — contact lookup, placeholder safety, writer quality, model fixes
-  (reviewer: @ronfeathers-LD, waiting on merge)
+Quality fixes committed (all on feature/ai-sdr):
+- Placeholder safety: null contact = no draft, QA flag, enroll hard skip
+- 75-word limit (writer + QA reviewer synced, was 90)
+- Banned: em dashes, ellipses, false urgency, proof point adjectives
+- Step 2: curiosity question rule (ONE question, no pain diagnosis)
+- Salesforce contact lookup before ZoomInfo (STEP 3b, saves credits)
+- Closed-lost opp check sets prior_ld_contact in STEP 1
+- Model fallback fix: claude-sonnet-4-6 removed from FALLBACK_PROVIDERS
 
 Known issues / v1.1 backlog:
 - Researcher early-exit: accounts like OneStream take ~2 min to skip instead of <30s.
@@ -279,18 +292,15 @@ Known issues / v1.1 backlog:
 - Rate limit: 30K TPM on individual Anthropic plan throttles batches of 3+ accounts.
   Need higher-tier key on Railway for production.
 - Outreach S2S permission: Sequence Enrollment scope not enabled on LeanData integration.
-  Ron needs: Outreach Settings > Apps > API > LeanData > enable Sequence Enrollment scope.
+  Ron needs: Outreach > Settings > Apps > API > LeanData > enable Sequence Enrollment scope.
 - draft_email task STEP 2 subject line says "4 words or fewer, lowercase" — inconsistent
   with agents.yaml rule of "2-5 words, sentence case". Fix in next pass.
-- contact_source field (salesforce vs zoominfo) not surfacing in review_queue_entry JSON output.
+- contact_source field (salesforce vs zoominfo) not surfacing in review_queue_entry output.
 
 ---
 
 ## Last session summary
-2026-04-14 — AI SDR v1 fully built and validated locally for fintech and insurance.
-Staging deployment confirmed live but MCP tools blocked by IP restriction on Railway.
-Two PRs merged into ronfeathers-LD/luci-crews. Third PR open (#4).
-Key fixes this session: Salesforce contact lookup before ZoomInfo, closed-lost opp
-sets prior_ld_contact, insurance logo guardrails, placeholder safety guard,
-75-word limit, no em dashes, curiosity step 2, model fallback fix.
-Next: wait for PR #4 merge, then fix Railway MCP IP restriction, then test enrollment flow.
+2026-04-14 — AI SDR v1 fully built and validated locally (fintech + insurance, 5 accounts).
+PR #1 merged. PR #2 open (GitHub #4), Ron tagged for review.
+Staging live but MCP tools blocked — Neil needs to whitelist Railway egress IPs.
+Full next steps: docs/AI_SDR_NEXT_STEPS.md
