@@ -262,7 +262,7 @@ logging:
     note: "Disable in production"
 
   supabase_logging:
-    enabled: false                # flip to true once Supabase is connected
+    enabled: true                 # Supabase staging connected (ypgvhsbebeevxwvzjshu)
     tables:
       batch_runs: "ai_sdr_batch_runs"
       account_results: "ai_sdr_account_results"
