@@ -20,6 +20,7 @@
 | Flex | Payments | $22K | Organic |
 | One Park Financial | Lending | $24K | Sales |
 | Figure Technologies | Lending | $12K | Sales |
+| Plaid | Fintech Infrastructure | confirmed | Sales |
 
 **Key insight:** Stripe ($740K ARR), Ramp ($258K), and PayPal ($360K) are
 marquee logos that create social proof in fintech prospecting conversations.
@@ -208,6 +209,10 @@ Safe to reference in cold emails (widely known logos, publicly announced):
 - **Ramp** — territory routing, advanced orchestration
 - **Brex** — contact routing implementation
 - **PayPal** — endpoint routing at scale
+- **Plaid** — confirmed LeanData customer, safe to reference
+
+DO NOT reference these companies — they are NOT LeanData customers:
+- **Affirm** — NOT a LeanData customer, do not reference
 
 Do not reference specific ARR, deal terms, or internal implementation details.
 

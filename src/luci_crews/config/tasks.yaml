@@ -2185,6 +2185,18 @@ research_prospect:
     LOW:    signal_type is 9-10
     SKIP:   no signals detected and no ICP contact found
 
+    OUTPUT FORMAT FOR SIGNAL FIELDS — REQUIRED:
+    signal_type = exactly one string from this list ONLY:
+    champion_move | agentforce_partner | renewal_trigger |
+    high_intent | tech_stack_hit | new_exec_hire |
+    re_engagement | competitive_win | ai_transformation |
+    native_ceiling
+
+    signals_used = array of strings from that same list ONLY.
+    Example: ["tech_stack_hit", "re_engagement", "high_intent"]
+    NEVER write plain English like "RingLead competitor usage".
+    NEVER invent signal names outside this list.
+
     OUTPUT for each account (structured JSON):
     {
       "account_name": "string",
@@ -2338,6 +2350,15 @@ draft_email:
     Load both files before drafting. All email rules, frameworks, banned
     phrases, and approved customer references are in these files.
 
+    STOP — READ THIS BEFORE ANYTHING ELSE:
+    If target_contact is null OR target_contact.email is null:
+    Do NOT write a single word of email copy.
+    Do NOT write subject lines.
+    Do NOT write body sentences.
+    Set draft_email = null, flagged = true,
+    flag_reason = "no_contact_no_draft".
+    Return immediately. This overrides all other instructions.
+
     PRE-FLIGHT — CONFIDENCE ASSESSMENT (run before drafting)
     Before selecting a framework, assess whether this record is likely to score
     below 0.5 in QA. Pre-flag if ALL of the following apply:
@@ -2347,14 +2368,6 @@ draft_email:
     If pre-flagging: still draft all 4 sequence steps (the QA agent will confirm
     or override). In the output object set pre_flagged = true,
     pre_flag_reason = "low_confidence_pre_flag". Do NOT skip drafting.
-
-    NULL CONTACT GUARD — check before drafting anything
-    If target_contact is null OR target_contact.email is null:
-    Set draft_email = null and flagged = true,
-    flag_reason = "no_contact_no_draft".
-    DO NOT draft any email. A placeholder [First name] email
-    must never be created. Return immediately without proceeding
-    to STEP 1.
 
     For each account where flagged_no_signal = false:
 
