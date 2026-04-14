@@ -2060,6 +2060,16 @@ research_prospect:
     and IsClosed = false. If any exist, skip this account entirely.
     Log: skip_reason = "account_in_active_pipeline"
 
+    Check for closed-lost opportunities:
+    SELECT Id, Name, StageName, CloseDate FROM Opportunity
+    WHERE AccountId = '[salesforce_id]' AND IsClosed = true AND IsWon = false
+    ORDER BY CloseDate DESC LIMIT 5
+
+    If any closed-lost opportunities exist: set prior_ld_contact = true.
+    This signals prior relationship and triggers re-engagement framing in
+    the writer even if no LUCI meetings are found.
+    If none: set prior_ld_contact = false. Continue — not a failure.
+
     STEP 2 — ACCOUNT RELATIONSHIP NETWORK (only if SFDC validation passes)
     Call graph_account_network with the account_name from the input.
     The tool does partial, case-insensitive name matching — no UUID needed.
@@ -2080,10 +2090,42 @@ research_prospect:
     MEDIUM VALUE: Gong, 6sense, Demandbase, Clearbit
 
     DO NOT call zoominfo_contact_research — that tool requires a ZoomInfo
-    contact ID and consumes AI credits per query. Use zoominfo_search_contacts
-    (Step 4) for contact lookup instead.
+    contact ID and consumes AI credits per query. Use STEP 3b or STEP 4
+    for contact lookup instead.
 
-    STEP 4 — CONTACT SEARCH (no credits)
+    STEP 3b — SALESFORCE CONTACT CHECK (free — always do this before ZoomInfo)
+    Query Salesforce contacts for this account before calling ZoomInfo:
+
+    SELECT Id, Name, Title, Email FROM Contact
+    WHERE AccountId = '[salesforce_id]' AND Email != null
+    ORDER BY LastModifiedDate DESC LIMIT 20
+
+    Apply ICP title matching against the results for the vertical:
+
+    Fintech match: Title contains "Revenue Operations", "Sales Operations",
+    or "GTM Operations" AND seniority is Director, Senior Director, VP, or Head.
+
+    Insurance match: Title contains "Revenue Operations", "Sales Operations",
+    "Salesforce", or "Distribution Operations" AND seniority is
+    Senior Manager, Director, Senior Director, or VP.
+
+    SMB match: Title contains "Revenue Operations", "Sales Operations",
+    or "Marketing Operations" AND seniority is Manager, Director, or VP.
+
+    EMEA match: Same as Fintech but prefer UK/Europe-based contacts if
+    location data is available.
+
+    If a matching Salesforce contact is found:
+    - Set target_contact to that contact (name, title, email)
+    - Set contact_source = "salesforce"
+    - SKIP STEP 4 entirely — do not call zoominfo_search_contacts
+
+    If no Salesforce contact matches ICP parameters:
+    - Set contact_source = "zoominfo"
+    - Continue to STEP 4 (ZoomInfo as fallback)
+
+    STEP 4 — CONTACT SEARCH (ZoomInfo fallback, no credits)
+    Only reached if STEP 3b found no matching Salesforce contact.
     Call zoominfo_search_contacts using ICP title parameters for the vertical:
 
     Fintech titles (use OR logic):

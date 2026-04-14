@@ -9,12 +9,19 @@
 
 ## Proven Customer Logos (Insurance)
 
+> ⚠️ **APPROVED REFERENCES ONLY — do not use any insurance company name not
+> on this list as a customer reference in email copy. Never reference Allstate,
+> Nationwide, State Farm, Progressive, or any other insurance brand not listed
+> below. If you are uncertain whether a company is an approved reference, do
+> not use it.**
+
+**Approved for email reference (3 logos only):**
+
 | Account | Sub-Vertical | Initial ARR | Lead Source |
 |---------|-------------|-------------|-------------|
 | Goosehead Insurance | P&C / Distribution | $273K | **SDR-sourced** |
 | Unum Group | Group Benefits / Specialty | $134K | Sales |
-| Vouch | Insurtech / Commercial | $26K | Website direct |
-| Allianz Group | Global P&C | $4.6K | Sales |
+| Aflac | Supplemental Insurance | — | Sales |
 
 **Key insight:** Goosehead was SDR-sourced at $273K ARR — the proof point
 that the SDR motion works in insurance. The champion was Todd Levin
@@ -208,11 +215,18 @@ Industry filter:
 
 ## Reference Customers to Use in Outreach
 
+> ⚠️ **USE ONLY THESE THREE LOGOS. Do not use any other insurance company
+> name as a customer reference — including Allstate, Nationwide, State Farm,
+> Progressive, or any brand not listed here.**
+
 **Goosehead Insurance** — Lead reference for insurance distribution/franchise models.
 SDR-sourced deal. Use when prospecting other distribution-model insurance companies.
 
 **Unum Group** — Lead reference for large carriers with complex buying groups.
 Use when prospecting group benefits, specialty, or enterprise insurance companies.
+
+**Aflac** — Reference for supplemental/voluntary benefits carriers.
+Use when prospecting carriers with large agent networks or benefits-focused GTM.
 
 Do not reference specific ARR, deal terms, or internal implementation details.
 
@@ -240,8 +254,9 @@ CTA (1 sentence):
   Goosehead look familiar?"
 
 Signature: Include name, title, LeanData.
-  Social proof line: "We work with Goosehead Insurance and Unum Group
-  on this exact problem."
+  Social proof line: "We work with Goosehead and Unum on this." or
+  "We work with Goosehead and Aflac on this." (choose based on fit —
+  never use any other insurance company name)
 ```
 
 ---
