@@ -122,8 +122,9 @@ PROVIDER_MODEL_PREFIXES = {
 # NOTE: Model IDs here should NOT include provider prefixes - those are added automatically
 FALLBACK_PROVIDERS = [
     ("openai", os.getenv("FAST_LLM_MODEL", "gpt-4o-mini"), "OPENAI_API_KEY"),
-    # Claude 3.5 Sonnet retired Oct 2025 - upgraded to Claude Sonnet 4.6 (released Feb 17, 2026)
-    ("anthropic", os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"), "ANTHROPIC_API_KEY"),
+    # claude-sonnet-4-6 excluded from fallback: CrewAI prefill incompatibility
+    # (error: "conversation must end with a user message"). Use 4-5 until resolved.
+    ("anthropic", os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929"), "ANTHROPIC_API_KEY"),
     # Gemini 1.5 Flash retired - upgraded to Gemini 2.5 Flash (stable, fast, cost-efficient)
     # Note: "gemini/" prefix is added automatically by create_llm_for_provider
     ("google", os.getenv("GOOGLE_MODEL", "gemini-2.5-flash"), "GOOGLE_API_KEY"),

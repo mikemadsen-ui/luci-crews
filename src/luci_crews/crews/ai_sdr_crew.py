@@ -101,6 +101,11 @@ class AiSdrCrew(BaseCrew):
     # BaseCrew auto-initializes self.supabase from SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
     needs_supabase = True
 
+    # claude-sonnet-4-6 intentionally excluded:
+    # CrewAI uses assistant message prefill internally —
+    # claude-sonnet-4-6 blocks prefill with error:
+    # "conversation must end with a user message"
+    # Update when CrewAI adds native 4-6 support.
     def _init_llm(self, user_id, llm):
         """Always use Anthropic for the AI SDR crew — ignore user model settings."""
         if llm is not None:

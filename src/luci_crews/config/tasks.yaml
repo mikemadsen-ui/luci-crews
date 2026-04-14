@@ -2336,6 +2336,14 @@ draft_email:
     or override). In the output object set pre_flagged = true,
     pre_flag_reason = "low_confidence_pre_flag". Do NOT skip drafting.
 
+    NULL CONTACT GUARD — check before drafting anything
+    If target_contact is null OR target_contact.email is null:
+    Set draft_email = null and flagged = true,
+    flag_reason = "no_contact_no_draft".
+    DO NOT draft any email. A placeholder [First name] email
+    must never be created. Return immediately without proceeding
+    to STEP 1.
+
     For each account where flagged_no_signal = false:
 
     STEP 1 — SELECT FRAMEWORK
@@ -2497,10 +2505,14 @@ review_and_score:
     - More than one CTA in any email
     - Subject line over 6 words
     - Any two sequence steps are substantively identical
+    - Any sequence_step body or subject contains the literal string
+      "[First name]", "[first name]", or "{{first_name}}":
+      flag_reason = "placeholder_in_email_copy". Hard block —
+      must never reach enrollment.
 
     STEP 3 — SELF-CHECK (answer yes to all before approving)
     1. Does the opening line reference something specific to this company?
-    2. Is every email body under 3 sentences and under 90 words?
+    2. Is every email body under 3 sentences and under 75 words?
     3. Is there exactly one CTA per email?
     4. Would a RevOps leader feel this was written for them?
     5. Is every sequence step meaningfully different?
@@ -2593,6 +2605,11 @@ enroll_prospect:
     If true: classify and log but do NOT send any communication.
 
     STEP 2 — HARD SKIPS (never enroll these)
+    If draft_email = null: skip entirely,
+    queue_reason = "no_draft_no_contact".
+    If any sequence_step body or subject contains "[First name]",
+    "[first name]", or "{{first_name}}": skip entirely,
+    queue_reason = "placeholder_detected".
     If enrollment_enabled = false: write to review queue, do not enroll.
     If dry_run = true: write to review queue, do not enroll.
     If account.flagged = true: write to review queue with flag_reason.
