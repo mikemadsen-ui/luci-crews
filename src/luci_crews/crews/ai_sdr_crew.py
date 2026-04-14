@@ -23,6 +23,7 @@ Do not add the reply handler to this crew.
 import json
 import logging
 import os
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -97,6 +98,9 @@ class AiSdrCrew(BaseCrew):
     # AI SDR always runs on Anthropic — override BaseCrew's dynamic model selection
     _ANTHROPIC_MODEL = "claude-sonnet-4-5-20250929"
 
+    # BaseCrew auto-initializes self.supabase from SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
+    needs_supabase = True
+
     def _init_llm(self, user_id, llm):
         """Always use Anthropic for the AI SDR crew — ignore user model settings."""
         if llm is not None:
@@ -106,6 +110,94 @@ class AiSdrCrew(BaseCrew):
             model_id=self._ANTHROPIC_MODEL,
             api_key=os.getenv("ANTHROPIC_API_KEY"),
         )
+
+    # ---------------------------------------------------------------------------
+    # Supabase logging helpers
+    # ---------------------------------------------------------------------------
+
+    @staticmethod
+    def _supabase_logging_enabled(qa_config: Dict[str, Any]) -> bool:
+        return qa_config.get("logging", {}) \
+                        .get("supabase_logging", {}) \
+                        .get("enabled", False)
+
+    def _log_batch_run(
+        self,
+        run_id: str,
+        started_at: datetime,
+        completed_at: datetime,
+        vertical: str,
+        total: int,
+        processed: int,
+        skipped_count: int,
+        enrollment_enabled: bool,
+        dry_run: bool,
+    ) -> None:
+        """Insert one row to ai_sdr_batch_runs. Never raises — log and continue."""
+        if not self.supabase:
+            return
+        try:
+            self.supabase.table("ai_sdr_batch_runs").insert({
+                "run_id": run_id,
+                "started_at": started_at.isoformat(),
+                "completed_at": completed_at.isoformat(),
+                "vertical": vertical,
+                "total_accounts": total,
+                "processed": processed,
+                "skipped": skipped_count,
+                "flagged": 0,    # derived from ai_sdr_account_results rows
+                "enrolled": 0,   # derived from ai_sdr_account_results rows
+                "enrollment_enabled": enrollment_enabled,
+                "dry_run": dry_run,
+            }).execute()
+            logger.info(f"[AI SDR] Logged batch run {run_id} to Supabase")
+        except Exception as e:
+            logger.error(f"[AI SDR] Supabase batch_run log failed: {e}")
+
+    def _log_account_result(
+        self,
+        run_id: str,
+        account: Dict[str, Any],
+        vertical: str,
+        result: Any,
+        sequence_id: Optional[str],
+    ) -> None:
+        """Insert one row to ai_sdr_account_results. Never raises — log and continue."""
+        if not self.supabase:
+            return
+        try:
+            parsed: Dict[str, Any] = {}
+            if hasattr(result, "json_dict") and result.json_dict:
+                parsed = result.json_dict
+            elif hasattr(result, "raw"):
+                try:
+                    parsed = json.loads(result.raw)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            contact = parsed.get("target_contact") or {}
+
+            self.supabase.table("ai_sdr_account_results").insert({
+                "run_id": run_id,
+                "account_name": account.get("account_name"),
+                "salesforce_id": account.get("salesforce_id"),
+                "vertical": vertical,
+                "contact_name": contact.get("name"),
+                "contact_title": contact.get("title"),
+                "contact_email": contact.get("email"),
+                "primary_signal_type": parsed.get("primary_signal_type"),
+                "primary_signal_value": parsed.get("primary_signal_value"),
+                "confidence_score": parsed.get("confidence"),
+                "flagged": parsed.get("flagged", False),
+                "flag_reason": parsed.get("flag_reason"),
+                "enrolled": parsed.get("enrolled", False),
+                "sequence_id": sequence_id,
+            }).execute()
+        except Exception as e:
+            logger.error(
+                f"[AI SDR] Supabase account_result log failed for "
+                f"{account.get('account_name')}: {e}"
+            )
 
     def _create_agents(self) -> None:
         """
@@ -352,6 +444,9 @@ class AiSdrCrew(BaseCrew):
             )
 
         qa_config = load_qa_config()
+        logging_enabled = self._supabase_logging_enabled(qa_config)
+        run_id = str(uuid.uuid4())
+        started_at = datetime.now(timezone.utc)
 
         # Create agents once — reused across all accounts in the batch
         self._create_agents()
@@ -375,6 +470,9 @@ class AiSdrCrew(BaseCrew):
                 results.append(result)
                 logger.info(f"[AI SDR] Completed: {account_name}")
 
+                if logging_enabled:
+                    self._log_account_result(run_id, account, vertical, result, sequence_id)
+
             except Exception as e:
                 logger.error(f"[AI SDR] Failed on '{account_name}': {e}")
                 skipped.append({
@@ -384,6 +482,20 @@ class AiSdrCrew(BaseCrew):
                     "skipped_at": datetime.now(timezone.utc).isoformat(),
                 })
                 continue
+
+        completed_at = datetime.now(timezone.utc)
+        if logging_enabled:
+            self._log_batch_run(
+                run_id=run_id,
+                started_at=started_at,
+                completed_at=completed_at,
+                vertical=vertical,
+                total=len(accounts),
+                processed=len(results),
+                skipped_count=len(skipped),
+                enrollment_enabled=enrollment_enabled,
+                dry_run=dry_run,
+            )
 
         return {
             "results": results,
