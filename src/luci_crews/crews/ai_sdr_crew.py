@@ -271,6 +271,21 @@ class AiSdrCrew(BaseCrew):
         """
         return text.replace("\u2014", "...")
 
+    def _result_to_clean_dict(self, result: Any) -> Any:
+        """
+        Convert CrewOutput to a plain sanitized dict for API serialization.
+
+        CrewOutput stores both .raw (string) and .json_dict (parsed at creation
+        time). Sanitizing .raw alone is not enough — FastAPI may serialize from
+        .json_dict which still contains unsanitized content. Parsing from the
+        already-sanitized .raw is the only path guaranteed to be clean.
+        """
+        raw = getattr(result, "raw", None) or str(result)
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return {"raw": raw}
+
     @staticmethod
     def _fmt(template: str, **kwargs) -> str:
         """
@@ -487,11 +502,14 @@ class AiSdrCrew(BaseCrew):
                     qa_config=qa_config,
                     sequence_id=sequence_id,
                 )
-                results.append(result)
                 logger.info(f"[AI SDR] Completed: {account_name}")
 
                 if logging_enabled:
                     self._log_account_result(run_id, account, vertical, result, sequence_id)
+
+                # Convert to sanitized plain dict — avoids FastAPI serializing
+                # json_dict (populated before sanitization) instead of raw
+                results.append(self._result_to_clean_dict(result))
 
             except Exception as e:
                 logger.error(f"[AI SDR] Failed on '{account_name}': {e}")
