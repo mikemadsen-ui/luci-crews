@@ -275,16 +275,39 @@ class AiSdrCrew(BaseCrew):
         """
         Convert CrewOutput to a plain sanitized dict for API serialization.
 
-        CrewOutput stores both .raw (string) and .json_dict (parsed at creation
-        time). Sanitizing .raw alone is not enough — FastAPI may serialize from
-        .json_dict which still contains unsanitized content. Parsing from the
-        already-sanitized .raw is the only path guaranteed to be clean.
+        result.raw in CrewAI is the full verbose crew log (agent reasoning +
+        final answer) — not valid JSON by itself. result.json_dict is the
+        already-parsed final answer. Sanitize by round-tripping through JSON
+        to replace em dashes in all nested string values.
         """
+        # Preferred path: json_dict is already parsed, just sanitize it
+        if hasattr(result, "json_dict") and result.json_dict:
+            try:
+                serialized = json.dumps(result.json_dict, ensure_ascii=False)
+                return json.loads(self._sanitize_output(serialized))
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # Fallback: extract Final Answer JSON from raw string
         raw = getattr(result, "raw", None) or str(result)
+        raw = self._sanitize_output(raw)
+
+        # CrewAI raw ends with the final task output — try parsing it directly
         try:
             return json.loads(raw)
         except (json.JSONDecodeError, TypeError):
-            return {"raw": raw}
+            pass
+
+        # Last resort: extract the JSON block from the Final Answer section
+        import re
+        match = re.search(r"Final Answer:\s*```(?:json)?\s*(\[.*?\]|\{.*?\})\s*```", raw, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        return {"raw": raw}
 
     @staticmethod
     def _fmt(template: str, **kwargs) -> str:
