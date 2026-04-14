@@ -260,6 +260,18 @@ class AiSdrCrew(BaseCrew):
         )
 
     @staticmethod
+    def _sanitize_output(text: str) -> str:
+        """
+        Post-process crew output to strip formatting the model produces despite
+        instructions. Applied to result.raw before returning to caller or Supabase.
+
+        Em dash (—, U+2014): replaced with '...' — the model consistently uses em
+        dashes in email copy regardless of prompt-level rules. Code enforcement is
+        the only reliable fix.
+        """
+        return text.replace("\u2014", "...")
+
+    @staticmethod
     def _fmt(template: str, **kwargs) -> str:
         """
         Safe string substitution that ignores literal curly braces in task
@@ -408,7 +420,10 @@ class AiSdrCrew(BaseCrew):
             max_rpm=10,     # rate-limit MCP calls — critical for ZoomInfo credits
         )
 
-        return crew.kickoff()
+        result = crew.kickoff()
+        if hasattr(result, "raw") and result.raw:
+            result.raw = self._sanitize_output(result.raw)
+        return result
 
     def run(
         self,
