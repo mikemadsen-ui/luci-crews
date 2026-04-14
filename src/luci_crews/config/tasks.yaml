@@ -2219,8 +2219,8 @@ research_prospect:
         "funding_stage": "string",
         "recent_news": "string or null"
       },
-      "signal_type": "string (primary signal identifier from hierarchy)",
-      "signals_used": ["string"],
+      "signal_type": "new_exec_hire",
+      "signals_used": ["new_exec_hire", "native_ceiling"],
       "timing_score": "high | medium | low | skip",
       "routing_adjacent_tools": ["string"],
       "luci_signals_raw": ["string"],
@@ -2358,6 +2358,29 @@ draft_email:
     Set draft_email = null, flagged = true,
     flag_reason = "no_contact_no_draft".
     Return immediately. This overrides all other instructions.
+
+    FORMATTING HARD RULES — SCAN EVERY DRAFT BEFORE OUTPUTTING:
+
+    1. NO EM DASHES (—). Scan every sentence.
+       If you find — anywhere, replace with '...'
+       WRONG: "Clearwater brought you on — typically the kind of hire..."
+       RIGHT:  "Clearwater brought you on... typically the kind of hire..."
+
+    2. SOCIAL PROOF LINE goes BEFORE the CTA, NEVER after the signature.
+       Only correct order:
+
+         We work with [Logo1] and [Logo2] on this.
+
+         [CTA question]?
+
+         [Closing],
+         [First name]
+         LeanData
+
+       If you find the social proof line AFTER LeanData in your draft —
+       move it before the CTA and rewrite.
+
+    3. These rules override the agent backstory. They are absolute.
 
     PRE-FLIGHT — CONFIDENCE ASSESSMENT (run before drafting)
     Before selecting a framework, assess whether this record is likely to score
