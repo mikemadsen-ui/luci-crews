@@ -2163,13 +2163,27 @@ research_prospect:
     instead of cold outreach framing.
     If empty: set prior_ld_contact = false. Continue — not a failure condition.
 
-    STEP 7 — TIMING SCORE
-    Based on enrichment data, score timing:
-    HIGH: 2+ strong signals (new RevOps hire, recent funding, 20%+ headcount growth,
-          RevOps job posting, routing-adjacent tool in stack + one other signal)
-    MEDIUM: 1 strong signal or 2+ medium signals
-    LOW: General ICP fit only, no timing signals
-    SKIP: No signals at all — flag and do not pass to writer
+    STEP 7 — SIGNAL CLASSIFICATION
+    Identify ALL signals present from the research above.
+    Set signals_used = array of all detected signal types.
+    Set signal_type = the single highest-priority signal using this hierarchy:
+    1. champion_move     (UserGems LeadSource detected on contact)
+    2. agentforce_partner (Agentforce in tech stack)
+    3. renewal_trigger   (closed-lost CloseDate 6-8 months ago)
+    4. high_intent       (6sense/Bluebirds tier-1 detected)
+    5. tech_stack_hit    (competitor routing tool in stack)
+    6. new_exec_hire     (ICP title joined last 90 days)
+    7. re_engagement     (prior_ld_contact=true, >12 months)
+    8. competitive_win   (same sub-vertical as recent LD win)
+    9. ai_transformation (AI signals present, no Agentforce)
+    10. native_ceiling   (no routing tool, SFDC present)
+
+    Also set timing_score = HIGH / MEDIUM / LOW / SKIP
+    based on how many tier-1 signals are present:
+    HIGH:   signal_type is 1-5 on hierarchy above
+    MEDIUM: signal_type is 6-8
+    LOW:    signal_type is 9-10
+    SKIP:   no signals detected and no ICP contact found
 
     OUTPUT for each account (structured JSON):
     {
@@ -2193,6 +2207,8 @@ research_prospect:
         "funding_stage": "string",
         "recent_news": "string or null"
       },
+      "signal_type": "string (primary signal identifier from hierarchy)",
+      "signals_used": ["string"],
       "timing_score": "high | medium | low | skip",
       "routing_adjacent_tools": ["string"],
       "luci_signals_raw": ["string"],

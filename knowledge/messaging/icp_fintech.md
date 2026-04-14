@@ -215,6 +215,11 @@ Do not reference specific ARR, deal terms, or internal implementation details.
 
 ## Sample Email Framework (for writer agent)
 
+Writer: you receive `signal_type` (primary) and `signals_used` (all detected). Blend them
+naturally like a human SDR who did their homework. Reference `signal_play_catalog.md` for play
+framing and blending rules. Never make it feel like a play was selected — make it feel like you
+noticed something specific about this company.
+
 ```
 Subject line options:
 - "How [similar fintech] fixed their routing in one sprint"
