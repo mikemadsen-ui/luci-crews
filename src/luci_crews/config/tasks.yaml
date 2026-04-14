@@ -2039,26 +2039,22 @@ research_prospect:
 
     For each account, follow this exact sequence:
 
-    # OPTIMIZATION NEEDED: Add explicit hard-stop after SFDC
-    # validation fails. Currently the researcher completes its
-    # full loop before returning skip. Should short-circuit
-    # immediately after detecting existing_customer or
-    # account_in_active_pipeline. Tracked for v1.1.
-
     STEP 1 — SALESFORCE VALIDATION (do this first, always)
     Query Salesforce using the salesforce_id provided.
 
     If the Salesforce query itself fails (API error, timeout, or invalid ID):
-    Skip this account immediately. Add to skipped list with
-    skip_reason = "salesforce_error". Continue to next account. Do NOT stop
+    STOP IMMEDIATELY. Return skip result with skip_reason = "salesforce_error".
+    Do NOT proceed to Steps 2-6. Continue to next account. Do NOT stop
     the batch — one SFDC failure must never block the rest.
 
-    Check Account.Type — if "Customer", skip this account entirely.
-    Log: skip_reason = "existing_customer"
+    Check Account.Type — if "Customer":
+    STOP IMMEDIATELY. Return skip result with skip_reason = "existing_customer".
+    Do NOT proceed to Steps 2-6. Continue to next account.
 
     Check for open opportunities: query Opportunities where AccountId matches
-    and IsClosed = false. If any exist, skip this account entirely.
-    Log: skip_reason = "account_in_active_pipeline"
+    and IsClosed = false. If any exist:
+    STOP IMMEDIATELY. Return skip result with skip_reason = "account_in_active_pipeline".
+    Do NOT proceed to Steps 2-6. Continue to next account.
 
     Check for closed-lost opportunities:
     SELECT Id, Name, StageName, CloseDate FROM Opportunity
@@ -2354,7 +2350,7 @@ draft_email:
     - icp_baseline → Vanilla Ice Cream with ICP-level hook
 
     STEP 2 — DRAFT STEP 1 (first touch)
-    Subject: 4 words or fewer, lowercase
+    Subject: 2-5 words, sentence case, capitalize first word only
     Salutation: "Hey [First name]" — line break after
     Body: 3 sentences maximum
       Sentence 1: Opening observation using primary_signal.value
@@ -2482,9 +2478,9 @@ review_and_score:
     STEP 1 — CONFIDENCE SCORING
     Score 0.0 to 1.0 based on:
     0.90+  ICP title exact match AND 2+ specific signals used
-           AND named customer reference AND under 90 words
+           AND named customer reference AND under 75 words
     0.70-0.89  Title approximate match AND 1 signal or ICP hook
-               AND named customer reference AND under 90 words
+               AND named customer reference AND under 75 words
     0.50-0.69  Contact found, weak title match OR no specific signal
     Below 0.50  Auto-flag
 
@@ -2544,6 +2540,7 @@ review_and_score:
       "confidence": 0.0,
       "signals_used": ["string"],
       "prior_ld_contact": false,
+      "contact_source": "salesforce or zoominfo",
       "flagged": false,
       "flag_reason": null,
       "suggested_contact": {
