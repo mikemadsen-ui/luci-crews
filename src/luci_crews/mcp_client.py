@@ -49,17 +49,35 @@ def _get_outreach_access_token() -> str:
 
     Uses Outreach S2S (server-to-server) app authentication with RS256.
     OUTREACH_S2S_APP_UID: the app UID from Outreach Settings > Apps > API.
-    OUTREACH_PRIVATE_KEY: PEM private key, may contain literal \\n in env.
+    OUTREACH_PRIVATE_KEY: PEM private key content (set on Railway; env var).
+
+    Private key loading priority:
+    1. OUTREACH_PRIVATE_KEY env var (Railway — set as a single-line value)
+    2. outreach_private.pem file in the repo root (local dev — dotenv cannot
+       parse multiline PEM, so the env var is empty locally)
 
     Returns the access token string. Raises on auth failure.
     """
-    if not OUTREACH_S2S_APP_UID or not OUTREACH_PRIVATE_KEY:
-        raise ValueError(
-            "OUTREACH_S2S_APP_UID and OUTREACH_PRIVATE_KEY must be set in environment"
-        )
+    if not OUTREACH_S2S_APP_UID:
+        raise ValueError("OUTREACH_S2S_APP_UID must be set in environment")
 
-    # .env files often store multiline PEM with literal \n — normalize to real newlines
-    private_key_pem = OUTREACH_PRIVATE_KEY.replace("\\n", "\n")
+    # 1. Try env var first (works on Railway where it's set as a proper env var)
+    private_key_pem = OUTREACH_PRIVATE_KEY.replace("\\n", "\n").strip()
+
+    # 2. Fall back to PEM file when env var is incomplete (local dev — dotenv only parses
+    #    the first line of a multiline PEM, leaving the key body missing).
+    #    A valid PEM has both -----BEGIN ...----- and -----END ...----- markers.
+    if "-----END" not in private_key_pem:
+        pem_path = os.path.join(os.path.dirname(__file__), "../../outreach_private.pem")
+        pem_path = os.path.normpath(pem_path)
+        if not os.path.exists(pem_path):
+            raise ValueError(
+                "OUTREACH_PRIVATE_KEY env var is empty and outreach_private.pem not found. "
+                f"Looked at: {pem_path}"
+            )
+        with open(pem_path, "r") as f:
+            private_key_pem = f.read().strip()
+        logger.debug(f"[Outreach S2S] Loaded private key from file: {pem_path}")
 
     now = int(time.time())
     claims = {
@@ -69,7 +87,8 @@ def _get_outreach_access_token() -> str:
         "aud": "https://api.outreach.io",
     }
 
-    signed_jwt = pyjwt.encode(claims, private_key_pem, algorithm="RS256")
+    # PyJWT 2.x requires bytes for RS256 private key — str raises "Could not parse public key"
+    signed_jwt = pyjwt.encode(claims, private_key_pem.encode("utf-8"), algorithm="RS256")
 
     resp = requests.post(
         OUTREACH_TOKEN_URL,
