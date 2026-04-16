@@ -32,79 +32,161 @@ LEANDATA_MCP_API_KEY = os.environ.get(
     "mcp_oXv-00wBrDMbPOSAu0fdGbZQ6cX_pbVO9HyZdot70pE",
 )
 
-# Outreach S2S (server-to-server) app credentials
-# Used to generate signed JWTs for direct Outreach API enrollment.
-OUTREACH_S2S_APP_UID = os.environ.get("OUTREACH_S2S_APP_UID", "")
-OUTREACH_PRIVATE_KEY = os.environ.get("OUTREACH_PRIVATE_KEY", "")
-OUTREACH_TOKEN_URL = "https://api.outreach.io/oauth/token"
-OUTREACH_API_BASE = "https://api.outreach.io/api/v2"
+# Outreach S2S (server-to-server) app credentials.
+# Ref: https://developers.outreach.io/api/s2s-access/
+#
+# S2S_APP_UID  — the S2S_GUID from the Outreach developer portal (iss in JWT)
+# PRIVATE_KEY  — RSA private key matching the public key registered in the app
+# INSTALL_ID   — installation ID for this org (obtained via outreach_s2s_setup once)
+#
+# Flow:
+#   1. Sign a JWT: {iss: S2S_APP_UID, iat, exp}  — no aud, no sub
+#   2. POST /api/app/installs/{INSTALL_ID}/actions/accessToken
+#      Authorization: Bearer {signed_jwt}
+#   3. Parse data.meta.accessToken from response (valid 1 hour)
+OUTREACH_S2S_APP_UID  = os.environ.get("OUTREACH_S2S_APP_UID", "")
+OUTREACH_PRIVATE_KEY  = os.environ.get("OUTREACH_PRIVATE_KEY", "")
+OUTREACH_INSTALL_ID   = os.environ.get("OUTREACH_INSTALL_ID", "")
+# Default mailbox for enrollment. Set once to the AI SDR sender's Outreach mailbox ID.
+# Sender's mailbox must have Gmail/Outlook connected in Outreach Settings → Mailbox.
+OUTREACH_MAILBOX_ID   = os.environ.get("OUTREACH_MAILBOX_ID", "")
+OUTREACH_API_BASE     = "https://api.outreach.io/api/v2"
 
 # ---------------------------------------------------------------------------
 # Outreach S2S JWT helpers
 # ---------------------------------------------------------------------------
 
-def _get_outreach_access_token() -> str:
+def _load_outreach_private_key() -> str:
     """
-    Generate a signed JWT and exchange it for an Outreach access token.
+    Load the Outreach S2S private key PEM string.
 
-    Uses Outreach S2S (server-to-server) app authentication with RS256.
-    OUTREACH_S2S_APP_UID: the app UID from Outreach Settings > Apps > API.
-    OUTREACH_PRIVATE_KEY: PEM private key content (set on Railway; env var).
+    Priority:
+    1. OUTREACH_PRIVATE_KEY env var — works on Railway where it's set as a
+       proper single-value env var.
+    2. outreach_private.pem in repo root — used locally because python-dotenv
+       only parses the first line of a multiline PEM, leaving the value truncated.
 
-    Private key loading priority:
-    1. OUTREACH_PRIVATE_KEY env var (Railway — set as a single-line value)
-    2. outreach_private.pem file in the repo root (local dev — dotenv cannot
-       parse multiline PEM, so the env var is empty locally)
-
-    Returns the access token string. Raises on auth failure.
+    Returns the full PEM string. Raises if neither source yields a complete key.
     """
-    if not OUTREACH_S2S_APP_UID:
-        raise ValueError("OUTREACH_S2S_APP_UID must be set in environment")
+    pem = OUTREACH_PRIVATE_KEY.replace("\\n", "\n").strip()
 
-    # 1. Try env var first (works on Railway where it's set as a proper env var)
-    private_key_pem = OUTREACH_PRIVATE_KEY.replace("\\n", "\n").strip()
-
-    # 2. Fall back to PEM file when env var is incomplete (local dev — dotenv only parses
-    #    the first line of a multiline PEM, leaving the key body missing).
-    #    A valid PEM has both -----BEGIN ...----- and -----END ...----- markers.
-    if "-----END" not in private_key_pem:
-        pem_path = os.path.join(os.path.dirname(__file__), "../../outreach_private.pem")
-        pem_path = os.path.normpath(pem_path)
+    # Detect truncated PEM (dotenv only parses header line, body is missing)
+    if "-----END" not in pem:
+        pem_path = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "../../outreach_private.pem")
+        )
         if not os.path.exists(pem_path):
             raise ValueError(
-                "OUTREACH_PRIVATE_KEY env var is empty and outreach_private.pem not found. "
-                f"Looked at: {pem_path}"
+                "OUTREACH_PRIVATE_KEY env var is incomplete and "
+                f"outreach_private.pem not found at: {pem_path}"
             )
         with open(pem_path, "r") as f:
-            private_key_pem = f.read().strip()
+            pem = f.read().strip()
         logger.debug(f"[Outreach S2S] Loaded private key from file: {pem_path}")
 
+    return pem
+
+
+def _build_outreach_app_token(private_key_pem: str) -> str:
+    """
+    Sign a JWT for Outreach S2S authentication.
+
+    Claims per Outreach spec (developers.outreach.io/api/s2s-access/):
+      iss — S2S_GUID (OUTREACH_S2S_APP_UID)
+      iat — current Unix timestamp
+      exp — iat + 3600
+    No aud, no sub, no jti required.
+
+    PyJWT 2.x requires bytes for RS256 — str raises "Could not parse public key".
+    """
     now = int(time.time())
     claims = {
         "iss": OUTREACH_S2S_APP_UID,
         "iat": now,
         "exp": now + 3600,
-        "aud": "https://api.outreach.io",
     }
+    return pyjwt.encode(claims, private_key_pem.encode("utf-8"), algorithm="RS256")
 
-    # PyJWT 2.x requires bytes for RS256 private key — str raises "Could not parse public key"
-    signed_jwt = pyjwt.encode(claims, private_key_pem.encode("utf-8"), algorithm="RS256")
 
+def _get_outreach_access_token() -> str:
+    """
+    Get an Outreach S2S access token using the app JWT.
+
+    Per Outreach docs:
+      POST https://api.outreach.io/api/app/installs/{INSTALL_ID}/actions/accessToken
+      Authorization: Bearer {app_token}
+
+    Returns data.meta.accessToken (valid ~1 hour). Raises on failure.
+
+    Requires OUTREACH_INSTALL_ID — run outreach_s2s_setup() once to obtain it
+    from the INSTALL_SETUP_TOKEN that Outreach provides when you install the app.
+    """
+    if not OUTREACH_S2S_APP_UID:
+        raise ValueError("OUTREACH_S2S_APP_UID must be set in environment")
+    if not OUTREACH_INSTALL_ID:
+        raise ValueError(
+            "OUTREACH_INSTALL_ID must be set in environment. "
+            "Run outreach_s2s_setup(install_setup_token) once to obtain it."
+        )
+
+    private_key_pem = _load_outreach_private_key()
+    app_token = _build_outreach_app_token(private_key_pem)
+
+    url = f"https://api.outreach.io/api/app/installs/{OUTREACH_INSTALL_ID}/actions/accessToken"
     resp = requests.post(
-        OUTREACH_TOKEN_URL,
-        data={
-            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-            "assertion": signed_jwt,
+        url,
+        headers={
+            "Authorization": f"Bearer {app_token}",
+            "Content-Type": "application/json",
         },
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
         timeout=15,
     )
     resp.raise_for_status()
-    token_data = resp.json()
-    access_token = token_data.get("access_token")
+
+    data = resp.json()
+    access_token = data.get("data", {}).get("meta", {}).get("accessToken")
     if not access_token:
-        raise ValueError(f"No access_token in Outreach token response: {token_data}")
+        raise ValueError(f"No accessToken in Outreach S2S response: {data}")
     return access_token
+
+
+def outreach_s2s_setup(install_setup_token: str) -> str:
+    """
+    One-time setup: exchange an INSTALL_SETUP_TOKEN for a permanent INSTALL_ID.
+
+    When you install an S2S app on an Outreach org, Outreach gives you an
+    INSTALL_SETUP_TOKEN. Call this function once to exchange it for the
+    INSTALL_ID, then save that ID as OUTREACH_INSTALL_ID in your env.
+
+    Per Outreach docs:
+      POST /api/app/installs/{INSTALL_SETUP_TOKEN}/actions/setupToken
+      Authorization: Bearer {app_token}
+      Response: data.id = INSTALL_ID
+
+    Returns the INSTALL_ID string.
+    """
+    private_key_pem = _load_outreach_private_key()
+    app_token = _build_outreach_app_token(private_key_pem)
+
+    url = f"https://api.outreach.io/api/app/installs/{install_setup_token}/actions/setupToken"
+    resp = requests.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {app_token}",
+            "Content-Type": "application/json",
+        },
+        timeout=15,
+    )
+    resp.raise_for_status()
+
+    data = resp.json()
+    install_id = data.get("data", {}).get("id")
+    if not install_id:
+        raise ValueError(f"No install ID in Outreach setup response: {data}")
+
+    logger.info(f"[Outreach S2S] INSTALL_ID obtained: {install_id}")
+    logger.info("[Outreach S2S] Add to .env and Railway: OUTREACH_INSTALL_ID=%s", install_id)
+    return install_id
 
 # ---------------------------------------------------------------------------
 # Low-level MCP JSON-RPC caller
@@ -505,12 +587,23 @@ def outreach_enroll_prospect_s2s(
     WRITE OPERATION — only call when enrollment_enabled=True and dry_run=False.
     prospect_id: Outreach numeric prospect ID (e.g. '804416').
     sequence_id: Outreach numeric sequence ID (e.g. '5724').
-    mailbox_id: Optional Outreach mailbox ID for sender assignment.
+    mailbox_id: Outreach mailbox ID. If omitted, falls back to OUTREACH_MAILBOX_ID env var.
+      The mailbox owner must have Gmail/Outlook connected in Outreach Settings → Mailbox.
     Step 1 is MANUAL — human must send from Outreach task queue."""
     try:
         access_token = _get_outreach_access_token()
     except Exception as e:
         return f"Error: S2S token exchange failed — {str(e)[:300]}"
+
+    # Resolve mailbox ID: explicit arg > env var > error
+    resolved_mailbox = mailbox_id or OUTREACH_MAILBOX_ID
+    if not resolved_mailbox:
+        return (
+            "Error: mailbox_id is required for S2S enrollment. "
+            "Set OUTREACH_MAILBOX_ID in environment (the sender's Outreach mailbox ID), "
+            "or pass mailbox_id explicitly. "
+            "The mailbox must have Gmail/Outlook connected in Outreach Settings → Mailbox."
+        )
 
     payload: Dict[str, Any] = {
         "data": {
@@ -518,13 +611,10 @@ def outreach_enroll_prospect_s2s(
             "relationships": {
                 "prospect": {"data": {"type": "prospect", "id": int(prospect_id)}},
                 "sequence": {"data": {"type": "sequence", "id": int(sequence_id)}},
+                "mailbox": {"data": {"type": "mailbox", "id": int(resolved_mailbox)}},
             },
         }
     }
-    if mailbox_id:
-        payload["data"]["relationships"]["mailbox"] = {
-            "data": {"type": "mailbox", "id": int(mailbox_id)}
-        }
 
     try:
         resp = requests.post(
@@ -539,7 +629,14 @@ def outreach_enroll_prospect_s2s(
         resp.raise_for_status()
         return json.dumps(resp.json(), indent=2)
     except requests.exceptions.HTTPError as e:
-        return f"Error: Outreach API {e.response.status_code}: {e.response.text[:500]}"
+        body = e.response.text[:500]
+        if "send enabled" in body:
+            return (
+                f"Error: Outreach mailbox {resolved_mailbox} does not have send enabled. "
+                "The sender must connect their Gmail or Outlook account in "
+                "Outreach Settings → Mailbox before enrollment can proceed."
+            )
+        return f"Error: Outreach API {e.response.status_code}: {body}"
     except Exception as e:
         return f"Error calling Outreach S2S API: {str(e)[:300]}"
 
