@@ -236,21 +236,33 @@ Reply handling output (per reply):
 
 ## Build status (feature/ai-sdr branch)
 
-Last updated: 2026-04-14
+Last updated: 2026-04-16
 
 PRs:
 - PR #1 (initial AI SDR build): MERGED into ronfeathers-LD/luci-crews:main
-- PR #2 (ronfeathers-LD/luci-crews#4 — contact lookup, placeholder safety, writer quality,
-  model fixes): PENDING Ron review. Reviewer tagged @ronfeathers-LD.
+- PR #4 (contact lookup, placeholder safety, writer quality, model fixes): MERGED ✅
 
 Infrastructure:
 - Backend service (Railway, FastAPI, Supabase): done
 - POST /api/crew/ai-sdr endpoint: done (routes/ai_sdr.py)
 - Supabase logging: done (ai_sdr_batch_runs + ai_sdr_account_results tables created in staging)
 - Gmail monitoring: not started (using mike.madsen@leandata.com for testing)
-- Railway staging deployment: BLOCKED — MCP server (mcp-hub.leandata.workers.dev)
-  IP-restricts Railway egress IPs. LEANDATA_MCP_API_KEY is valid (confirmed locally).
-  Fix: Neil needs to whitelist Railway staging egress IPs on the MCP server.
+- Railway staging: MCP connectivity confirmed working (Ron tested — 68 seconds full pipeline) ✅
+- Static IPs enabled on Railway staging (162.220.232.99) but NOT required — MCP works without
+
+Outreach S2S app:
+- App created in Outreach (Development status — correct, no publish needed)
+- Scopes: accounts, prospects, sequences, sequenceStates, tasks, users
+- OUTREACH_S2S_APP_UID: in local .env and Railway staging
+- OUTREACH_PRIVATE_KEY: in local .env and Railway staging (PEM format)
+- Private key file: ~/luci-crews/outreach_private.pem
+- JWT auth wired in mcp_client.py: outreach_enroll_prospect_s2s() ✅
+- Still waiting: Outreach Sequence Enrollment scope (Ron needs to enable in Outreach settings)
+
+Taxonomy (Salesforce):
+- LD_Super_Industry__c, LD_Industry__c, LD_Sub_Industry__c: created and loaded
+- 40,170 accounts classified (Technology: 16,595, Financial Services: 3,340)
+- Used for STEP 3c referenceable customer lookup (added to tasks.yaml)
 
 Sequence structure (all 4 sequences):
 - Step 1: MANUAL task in Outreach queue (human review gate — v1 QA mechanism)
@@ -271,7 +283,8 @@ Scenario 2 — Insurance: DONE + VALIDATED
 
 Scenario 3 — SMB:
 - Outreach sequence: done (ID 5733)
-- ICP file: TBD
+- ICP file: done (knowledge/messaging/icp_smb.md) ✅
+- Validation: pending (run test accounts against staging)
 
 Scenario 4 — EMEA:
 - Outreach sequence: done (ID 5734)
@@ -285,22 +298,26 @@ Quality fixes committed (all on feature/ai-sdr):
 - Salesforce contact lookup before ZoomInfo (STEP 3b, saves credits)
 - Closed-lost opp check sets prior_ld_contact in STEP 1
 - Model fallback fix: claude-sonnet-4-6 removed from FALLBACK_PROVIDERS
+- STEP 3c: referenceable customer lookup by LD_Industry__c (tasks.yaml) ✅
+- SMB title matching updated in STEP 3b (GTM, RevOps, Founder/CEO) ✅
+- Referenceable proof points rule added to draft_email FORMATTING HARD RULES ✅
+- {"raw": ...} wrapper fix: improved JSON extraction in _result_to_clean_dict (5 attempts) ✅
+- Outreach S2S JWT auth: outreach_enroll_prospect_s2s() wired in mcp_client.py ✅
 
 Known issues / v1.1 backlog:
 - Researcher early-exit: accounts like OneStream take ~2 min to skip instead of <30s.
   Needs hard-stop after SFDC validation fails. Tracked in tasks.yaml comment.
 - Rate limit: 30K TPM on individual Anthropic plan throttles batches of 3+ accounts.
   Need higher-tier key on Railway for production.
-- Outreach S2S permission: Sequence Enrollment scope not enabled on LeanData integration.
+- Outreach Sequence Enrollment scope: not enabled on LeanData Outreach integration.
   Ron needs: Outreach > Settings > Apps > API > LeanData > enable Sequence Enrollment scope.
-- draft_email task STEP 2 subject line says "4 words or fewer, lowercase" — inconsistent
-  with agents.yaml rule of "2-5 words, sentence case". Fix in next pass.
-- contact_source field (salesforce vs zoominfo) not surfacing in review_queue_entry output.
+  S2S app (outreach_enroll_prospect_s2s) is wired as fallback path.
+- Supabase flagged/enrolled counts in batch run row: set to 0 (derived from account_results).
 
 ---
 
 ## Last session summary
-2026-04-14 — AI SDR v1 fully built and validated locally (fintech + insurance, 5 accounts).
-PR #1 merged. PR #2 open (GitHub #4), Ron tagged for review.
-Staging live but MCP tools blocked — Neil needs to whitelist Railway egress IPs.
+2026-04-16 — Reoriented after PR #4 merge and Railway staging confirmed working.
+Added STEP 3c (referenceable customer lookup by LD taxonomy), SMB ICP file,
+Outreach S2S JWT auth, and {"raw":...} wrapper fix. Everi staging validation next.
 Full next steps: docs/AI_SDR_NEXT_STEPS.md

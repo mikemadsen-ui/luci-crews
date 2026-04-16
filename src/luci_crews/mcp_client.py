@@ -10,7 +10,9 @@ to stay well under OpenAI's TPM limits.
 import os
 import json
 import logging
+import time
 import requests
+import jwt as pyjwt  # PyJWT — avoid shadowing built-in
 from typing import List, Dict, Any, Optional
 
 from crewai.tools import tool
@@ -29,6 +31,61 @@ LEANDATA_MCP_API_KEY = os.environ.get(
     "LEANDATA_MCP_API_KEY",
     "mcp_oXv-00wBrDMbPOSAu0fdGbZQ6cX_pbVO9HyZdot70pE",
 )
+
+# Outreach S2S (server-to-server) app credentials
+# Used to generate signed JWTs for direct Outreach API enrollment.
+OUTREACH_S2S_APP_UID = os.environ.get("OUTREACH_S2S_APP_UID", "")
+OUTREACH_PRIVATE_KEY = os.environ.get("OUTREACH_PRIVATE_KEY", "")
+OUTREACH_TOKEN_URL = "https://api.outreach.io/oauth/token"
+OUTREACH_API_BASE = "https://api.outreach.io/api/v2"
+
+# ---------------------------------------------------------------------------
+# Outreach S2S JWT helpers
+# ---------------------------------------------------------------------------
+
+def _get_outreach_access_token() -> str:
+    """
+    Generate a signed JWT and exchange it for an Outreach access token.
+
+    Uses Outreach S2S (server-to-server) app authentication with RS256.
+    OUTREACH_S2S_APP_UID: the app UID from Outreach Settings > Apps > API.
+    OUTREACH_PRIVATE_KEY: PEM private key, may contain literal \\n in env.
+
+    Returns the access token string. Raises on auth failure.
+    """
+    if not OUTREACH_S2S_APP_UID or not OUTREACH_PRIVATE_KEY:
+        raise ValueError(
+            "OUTREACH_S2S_APP_UID and OUTREACH_PRIVATE_KEY must be set in environment"
+        )
+
+    # .env files often store multiline PEM with literal \n — normalize to real newlines
+    private_key_pem = OUTREACH_PRIVATE_KEY.replace("\\n", "\n")
+
+    now = int(time.time())
+    claims = {
+        "iss": OUTREACH_S2S_APP_UID,
+        "iat": now,
+        "exp": now + 3600,
+        "aud": "https://api.outreach.io",
+    }
+
+    signed_jwt = pyjwt.encode(claims, private_key_pem, algorithm="RS256")
+
+    resp = requests.post(
+        OUTREACH_TOKEN_URL,
+        data={
+            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+            "assertion": signed_jwt,
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    token_data = resp.json()
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise ValueError(f"No access_token in Outreach token response: {token_data}")
+    return access_token
 
 # ---------------------------------------------------------------------------
 # Low-level MCP JSON-RPC caller
@@ -418,6 +475,56 @@ def outreach_add_prospect_to_sequence(
     })
 
 
+@tool
+def outreach_enroll_prospect_s2s(
+    prospect_id: str,
+    sequence_id: str,
+    mailbox_id: str = "",
+) -> str:
+    """Enroll a prospect in an Outreach sequence using direct S2S JWT authentication.
+    Use when the MCP hub enrollment route is unavailable or returns a scope error.
+    WRITE OPERATION — only call when enrollment_enabled=True and dry_run=False.
+    prospect_id: Outreach numeric prospect ID (e.g. '804416').
+    sequence_id: Outreach numeric sequence ID (e.g. '5724').
+    mailbox_id: Optional Outreach mailbox ID for sender assignment.
+    Step 1 is MANUAL — human must send from Outreach task queue."""
+    try:
+        access_token = _get_outreach_access_token()
+    except Exception as e:
+        return f"Error: S2S token exchange failed — {str(e)[:300]}"
+
+    payload: Dict[str, Any] = {
+        "data": {
+            "type": "sequenceState",
+            "relationships": {
+                "prospect": {"data": {"type": "prospect", "id": int(prospect_id)}},
+                "sequence": {"data": {"type": "sequence", "id": int(sequence_id)}},
+            },
+        }
+    }
+    if mailbox_id:
+        payload["data"]["relationships"]["mailbox"] = {
+            "data": {"type": "mailbox", "id": int(mailbox_id)}
+        }
+
+    try:
+        resp = requests.post(
+            f"{OUTREACH_API_BASE}/sequenceStates",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/vnd.api+json",
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return json.dumps(resp.json(), indent=2)
+    except requests.exceptions.HTTPError as e:
+        return f"Error: Outreach API {e.response.status_code}: {e.response.text[:500]}"
+    except Exception as e:
+        return f"Error calling Outreach S2S API: {str(e)[:300]}"
+
+
 # ---------------------------------------------------------------------------
 # Tool registry — maps server names to their tool functions
 # ---------------------------------------------------------------------------
@@ -431,7 +538,7 @@ TOOL_REGISTRY: Dict[str, List[Any]] = {
     "userevidence": [userevidence_search],
     "zoominfo": [zoominfo_enrich_company, zoominfo_search_contacts],
     "luci": [graph_account_network, luci_list_meetings, luci_list_accounts, luci_search_portfolio],
-    "outreach": [outreach_list_sequences, outreach_get_sequence, outreach_add_prospect_to_sequence],
+    "outreach": [outreach_list_sequences, outreach_get_sequence, outreach_add_prospect_to_sequence, outreach_enroll_prospect_s2s],
 }
 
 

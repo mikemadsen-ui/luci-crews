@@ -2106,7 +2106,8 @@ research_prospect:
     Senior Manager, Director, Senior Director, or VP.
 
     SMB match: Title contains "Revenue Operations", "Sales Operations",
-    or "Marketing Operations" AND seniority is Manager, Director, or VP.
+    "GTM", "RevOps", or "Operations" AND seniority is Manager, Director,
+    VP, Head, or Lead. OR Title contains "Founder" or "CEO".
 
     EMEA match: Same as Fintech but prefer UK/Europe-based contacts if
     location data is available.
@@ -2119,6 +2120,42 @@ research_prospect:
     If no Salesforce contact matches ICP parameters:
     - Set contact_source = "zoominfo"
     - Continue to STEP 4 (ZoomInfo as fallback)
+
+    STEP 3c — REFERENCEABLE CUSTOMER LOOKUP (always run after contact is identified)
+    First, get the prospect account's industry classification:
+    SELECT LD_Industry__c, LD_Super_Industry__c FROM Account
+    WHERE Id = '[salesforce_id]'
+
+    Then find referenceable customers in that industry:
+    SELECT Account.Name, Name, Title
+    FROM Contact
+    WHERE Referencable__c = 'Yes'
+    AND Account.Type = 'Customer'
+    AND Account.LD_Industry__c = '[prospect LD_Industry__c]'
+    AND Title != null
+    AND (Title LIKE '%Operations%' OR Title LIKE '%RevOps%'
+      OR Title LIKE '%Revenue%')
+    LIMIT 10
+
+    Note: the field is Referencable__c (one 'e') — confirmed correct spelling.
+
+    Select the top 3 contacts by title seniority (VP or Director preferred).
+    Set referenceable_proof_points = array of up to 3 objects with
+    account_name and contact_title only. Do NOT include contact_name —
+    only account_name is used in email copy.
+
+    If no match on LD_Industry__c, fall back to LD_Super_Industry__c:
+    SELECT Account.Name, Name, Title
+    FROM Contact
+    WHERE Referencable__c = 'Yes'
+    AND Account.Type = 'Customer'
+    AND Account.LD_Super_Industry__c = '[prospect LD_Super_Industry__c]'
+    AND Title != null
+    AND (Title LIKE '%Operations%' OR Title LIKE '%RevOps%'
+      OR Title LIKE '%Revenue%')
+    LIMIT 10
+
+    If still no match: set referenceable_proof_points = []. Continue — not a failure.
 
     STEP 4 — CONTACT SEARCH (ZoomInfo fallback, no credits)
     Only reached if STEP 3b found no matching Salesforce contact.
@@ -2225,7 +2262,10 @@ research_prospect:
       "routing_adjacent_tools": ["string"],
       "luci_signals_raw": ["string"],
       "prior_ld_contact": false,
-      "prior_ld_meetings": []
+      "prior_ld_meetings": [],
+      "referenceable_proof_points": [
+        {"account_name": "Amplitude", "contact_title": "Head of GTM Technology & Operations"}
+      ]
     }
 
     Accounts that are hard-skipped (SFDC validation failed or query error) appear
@@ -2381,6 +2421,13 @@ draft_email:
        move it before the CTA and rewrite.
 
     3. These rules override the agent backstory. They are absolute.
+
+    4. REFERENCEABLE PROOF POINTS — use if populated.
+       If referenceable_proof_points in the research output is non-empty,
+       prefer those account names as social proof over static logos in the ICP file.
+       Use account_name only — never use contact_name in email copy.
+       Example: "We work with [account_name] and [account_name] on this."
+       If referenceable_proof_points is empty, fall back to ICP file logos.
 
     PRE-FLIGHT — CONFIDENCE ASSESSMENT (run before drafting)
     Before selecting a framework, assess whether this record is likely to score

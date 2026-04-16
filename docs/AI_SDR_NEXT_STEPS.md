@@ -1,40 +1,64 @@
 # AI SDR — Next Steps & Backlog
 
-Last updated: 2026-04-14
+Last updated: 2026-04-16
+
+---
+
+## Immediate — Run staging validation
+
+- [ ] **Everi dry run on staging** — confirm full pipeline works end-to-end on Railway
+      ```
+      curl -X POST https://luci-crews-staging.up.railway.app/api/crew/ai-sdr \
+        -H "Content-Type: application/json" \
+        -d '{
+          "accounts": [
+            {"account_name": "Everi Holdings Inc.",
+             "salesforce_id": "0015A00001xvRmBQAU"}
+          ],
+          "vertical": "fintech",
+          "dryRun": true,
+          "enrollmentEnabled": false
+        }'
+      ```
+      Expected: Dustin Dunn VP Sales Ops, signal_type = enum string,
+      referenceable_proof_points populated, zero em dashes, social proof before CTA.
+
+- [ ] **Confirm Supabase rows** appear in ai_sdr_batch_runs and ai_sdr_account_results
+      after the staging run.
 
 ---
 
 ## Waiting on Ron
 
-- [ ] **PR #4 review and merge** — contact lookup, placeholder safety, writer quality, model fixes
-      ronfeathers-LD/luci-crews#4
-- [ ] **Railway MCP IP restriction** — MCP server (mcp-hub.leandata.workers.dev) is
-      blocking Railway's egress IPs. Ron needs to allowlist Railway staging IPs.
-      Local runs with the staging key work fine — this is purely a network allowlist issue.
-- [ ] **Outreach Sequence Enrollment permission** — Outreach > Settings > Apps > API >
+- [ ] **Outreach Sequence Enrollment scope** — Outreach > Settings > Apps > API >
       LeanData integration > enable Sequence Enrollment scope.
-      Enrollment flow cannot be tested until this is fixed.
+      S2S fallback (outreach_enroll_prospect_s2s) is wired but not yet tested.
 - [ ] **Anthropic API key tier on Railway** — individual plan = 30K TPM, throttles at
       3+ accounts. Need a team/higher-tier key on Railway for production batches.
 
 ---
 
-## After PR #4 merges — staging validation
+## After Outreach scope is enabled — enrollment flow test
 
-- [ ] Health check: `curl https://luci-crews-staging.up.railway.app/health`
-- [ ] Confirm /api/crew/ai-sdr is registered in openapi.json routes
-- [ ] Run Everi dry run against staging URL (not localhost) once MCP IP restriction is fixed
-- [ ] Confirm Supabase rows appear in ai_sdr_batch_runs and ai_sdr_account_results
-
----
-
-## After Outreach permission is fixed — enrollment flow test
-
+- [ ] Test S2S enrollment:
+      prospect_id: 804416 (Mike Madsen test record)
+      sequence_id: 5724 (Fintech AI SDR sequence)
+      Call outreach_enroll_prospect_s2s('804416', '5724')
 - [ ] Run Everi with enrollmentEnabled=true, dryRun=false
 - [ ] Approve human_input gate (Gate 1)
 - [ ] Confirm Step 1 appears in Outreach task queue (Gate 2)
 - [ ] Confirm all 6 variables populated: ai_subject_1, ai_body_1, ai_body_2,
       ai_body_3, ai_subject_4, ai_body_4
+
+---
+
+## SMB validation (ICP file done — needs test accounts)
+
+- [ ] Run 2-3 SMB test accounts against staging to validate icp_smb.md
+      Suggested test accounts: Spekit, Qualio (already in SFDC as customers — skip)
+      Find a comparable SMB prospect in SFDC for validation.
+- [ ] Confirm SMB title matching works (Founder/CEO path for sub-100 employee accounts)
+- [ ] Confirm referenceable_proof_points returns SMB-vertical customers
 
 ---
 
@@ -63,7 +87,19 @@ Last updated: 2026-04-14
 - [x] Model fallback fix: claude-sonnet-4-6 removed from FALLBACK_PROVIDERS
 - [x] PR #1 merged (AI SDR v1 initial build)
 - [x] PR #2 merged (Supabase logging, config enable)
-- [x] PR #4 open (contact lookup, placeholder safety, writer quality, model fixes)
+- [x] PR #4 merged (contact lookup, placeholder safety, writer quality, model fixes) ✅
+- [x] Railway staging MCP connectivity confirmed (Ron tested — 68 seconds) ✅
+- [x] OUTREACH_PRIVATE_KEY + OUTREACH_S2S_APP_UID in Railway staging ✅
+- [x] LD taxonomy fields created (LD_Super_Industry__c, LD_Industry__c, LD_Sub_Industry__c)
+- [x] 40,170 accounts classified in Salesforce taxonomy ✅
+- [x] STEP 3c — referenceable customer lookup added to tasks.yaml ✅
+      (SOQL by LD_Industry__c, fallback to LD_Super_Industry__c, top 3 by seniority)
+- [x] SMB ICP file built: knowledge/messaging/icp_smb.md ✅
+      (10+ reference customers, pain themes, title matching, signal priorities)
+- [x] SMB title matching updated in STEP 3b (GTM, RevOps, Founder/CEO) ✅
+- [x] Referenceable proof points rule added to draft_email FORMATTING HARD RULES ✅
+- [x] {"raw": ...} wrapper fix: 5-attempt JSON extraction in _result_to_clean_dict ✅
+- [x] Outreach S2S JWT auth: outreach_enroll_prospect_s2s() wired in mcp_client.py ✅
 
 ---
 
@@ -75,9 +111,6 @@ Last updated: 2026-04-14
       Tracked in tasks.yaml comment.
 - [ ] **contact_source field** — not surfacing in review_queue_entry output JSON.
       Currently set internally but not passed through to the QA schema.
-- [ ] **draft_email subject line inconsistency** — tasks.yaml STEP 2 still says
-      "4 words or fewer, lowercase" but agents.yaml says "2-5 words, sentence case".
-      Fix in next pass.
 - [ ] **Supabase flagged/enrolled counts in batch run row** — currently set to 0.
       Requires parsing account_results rows to compute. Low priority.
 
@@ -85,8 +118,7 @@ Last updated: 2026-04-14
 
 ## Future workstreams (post-v1)
 
-- [ ] SMB ICP file and validation
-- [ ] EMEA ICP file and validation
+- [ ] EMEA ICP file and validation (Outreach sequence ID: 5734)
 - [ ] Reply handler (services/reply_monitor.py) — monitors mike.madsen@leandata.com,
       classifies replies, routes to human or auto-responds
 - [ ] Gmail OAuth setup for reply monitoring

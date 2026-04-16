@@ -279,8 +279,18 @@ class AiSdrCrew(BaseCrew):
         final answer) — not valid JSON by itself. result.json_dict is the
         already-parsed final answer. Sanitize by round-tripping through JSON
         to replace em dashes in all nested string values.
+
+        Extraction order (each tried in turn, first success wins):
+        1. result.json_dict — CrewAI's parsed final answer (preferred)
+        2. result.raw stripped — sometimes it IS pure JSON
+        3. Fenced JSON block after "Final Answer:" label
+        4. Last fenced ```json...``` block anywhere in raw
+        5. Last bare JSON object/array in raw (greedy scan)
+        6. {"raw": ...} fallback — signals extraction failed
         """
-        # Preferred path: json_dict is already parsed, just sanitize it
+        import re
+
+        # 1. Preferred path: json_dict is already parsed, just sanitize it
         if hasattr(result, "json_dict") and result.json_dict:
             try:
                 serialized = json.dumps(result.json_dict, ensure_ascii=False)
@@ -288,25 +298,47 @@ class AiSdrCrew(BaseCrew):
             except (json.JSONDecodeError, TypeError):
                 pass
 
-        # Fallback: extract Final Answer JSON from raw string
         raw = getattr(result, "raw", None) or str(result)
         raw = self._sanitize_output(raw)
 
-        # CrewAI raw ends with the final task output — try parsing it directly
+        # 2. Raw is pure JSON (happens when crew output is clean)
         try:
-            return json.loads(raw)
+            return json.loads(raw.strip())
         except (json.JSONDecodeError, TypeError):
             pass
 
-        # Last resort: extract the JSON block from the Final Answer section
-        import re
-        match = re.search(r"Final Answer:\s*```(?:json)?\s*(\[.*?\]|\{.*?\})\s*```", raw, re.DOTALL)
+        # 3. Fenced JSON block after "Final Answer:" (markdown code fence, optional lang tag)
+        match = re.search(
+            r"Final Answer:\s*```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```",
+            raw, re.DOTALL,
+        )
         if match:
             try:
                 return json.loads(match.group(1))
             except (json.JSONDecodeError, TypeError):
                 pass
 
+        # 4. Last fenced ```json...``` block anywhere in raw
+        fenced_matches = re.findall(r"```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```", raw, re.DOTALL)
+        for candidate in reversed(fenced_matches):
+            try:
+                return json.loads(candidate)
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        # 5. Last bare JSON object or array in raw (scan from end)
+        bare_matches = list(re.finditer(r"(\{[\s\S]*?\}|\[[\s\S]*?\])", raw))
+        for match in reversed(bare_matches):
+            try:
+                parsed = json.loads(match.group(1))
+                # Sanity check: must be a dict or list, not a trivial fragment
+                if isinstance(parsed, (dict, list)) and len(str(parsed)) > 20:
+                    return parsed
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        # 6. Extraction failed — wrap raw so caller knows
+        logger.warning("[AI SDR] Could not extract JSON from crew output — returning raw wrapper")
         return {"raw": raw}
 
     @staticmethod
