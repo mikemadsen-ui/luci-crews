@@ -2718,7 +2718,9 @@ enroll_prospect:
     STEP 3 — ENROLLMENT (only if all gates pass)
     Confirm human_review_gate = false AND enrollment_enabled = true AND
     dry_run = false AND flagged = false.
-    Only then call outreach_add_prospect_to_sequence.
+    Only then call outreach_enroll_prospect_s2s.
+    Do NOT call outreach_add_prospect_to_sequence — that tool requires an
+    MCP scope that is not enabled. Use outreach_enroll_prospect_s2s exclusively.
 
     SEQUENCE VARIABLE POPULATION — map writer output to Outreach variables.
     All 4 sequences use the same 6 variables. Populate them from sequence_steps:
@@ -2737,21 +2739,30 @@ enroll_prospect:
       ai_subject_4 = sequence_steps[3].subject   (new thread subject for breakup email)
       ai_body_4    = sequence_steps[3].body
 
-    Pass all 6 as the personalization dict to outreach_add_prospect_to_sequence:
-    {
-      "ai_subject_1": "...",
-      "ai_body_1": "...",
-      "ai_body_2": "...",
-      "ai_body_3": "...",
-      "ai_subject_4": "...",
-      "ai_body_4": "..."
-    }
+    Call outreach_enroll_prospect_s2s with:
+      prospect_email = target_contact.email
+      sequence_id   = sequence_id (from task input)
+    Do NOT pass mailbox_id — the function reads OUTREACH_MAILBOX_ID from env automatically.
+    Do NOT pass personalization to this call — variables are carried in the review_queue_entry.
+
+    If enrollment succeeds, the output will contain sequence_state_id. Include it in the
+    output JSON. The Step 1 task will appear in the Outreach task queue for human review.
 
     STEP 4 — REVIEW QUEUE OUTPUT
     For all non-enrolled accounts, write the full review_queue record.
     Include enrolled = false and queue_reason explaining why.
 
-    OUTPUT for each account:
+    OUTPUT for enrolled accounts:
+    {
+      "account_name": "string",
+      "salesforce_id": "string",
+      "enrolled": true,
+      "sequence_id": "string",
+      "sequence_state_id": "string",
+      "review_queue_entry": { ... full QA record ... }
+    }
+
+    OUTPUT for non-enrolled accounts:
     {
       "account_name": "string",
       "salesforce_id": "string",

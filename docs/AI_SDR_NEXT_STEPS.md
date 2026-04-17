@@ -1,12 +1,18 @@
 # AI SDR — Next Steps & Backlog
 
-Last updated: 2026-04-16
+Last updated: 2026-04-17
 
 ---
 
-## Immediate — Run staging validation
+## Immediate — Staging enrollment test
 
-- [ ] **Everi dry run on staging** — confirm full pipeline works end-to-end on Railway
+- [ ] **Add Railway staging env vars** — OUTREACH_INSTALL_ID and OUTREACH_MAILBOX_ID
+      not yet in Railway staging (only in local .env). Add before running staging test.
+      OUTREACH_INSTALL_ID = 9fea8966-8dab-45fb-b7d0-c89ae01785b2
+      OUTREACH_MAILBOX_ID = 596
+
+- [ ] **Everi enrollment run on staging** — run against Railway staging URL with
+      enrollmentEnabled=true. Local testing not feasible (30K TPM rate limit stalls writer).
       ```
       curl -X POST https://luci-crews-staging.up.railway.app/api/crew/ai-sdr \
         -H "Content-Type: application/json" \
@@ -16,50 +22,69 @@ Last updated: 2026-04-16
              "salesforce_id": "0015A00001xvRmBQAU"}
           ],
           "vertical": "fintech",
-          "dryRun": true,
-          "enrollmentEnabled": false
+          "dryRun": false,
+          "enrollmentEnabled": true
         }'
       ```
-      Expected: Dustin Dunn VP Sales Ops, signal_type = enum string,
-      referenceable_proof_points populated, zero em dashes, social proof before CTA.
+      Expected: enrolled=true, sequence_state_id present, Step 1 appears in Outreach task queue.
 
 - [ ] **Confirm Supabase rows** appear in ai_sdr_batch_runs and ai_sdr_account_results
       after the staging run.
+
+- [ ] **Check Outreach task queue** for Step 1 manual task after enrollment.
+      Note: Step 1 will show ai_subject_1 template variable unresolved — this is expected.
+      The subject/body content is in review_queue_entry.sequence_steps[0].
+      Variable population fix is v1.1 backlog.
 
 ---
 
 ## Waiting on Ron
 
-- [ ] **Anthropic API key tier on Railway** — individual plan = 30K TPM, throttles at
-      3+ accounts. Need a team/higher-tier key on Railway for production batches.
+- [ ] **Anthropic API key tier on Railway** — individual plan = 30K TPM, stalls at
+      writer step (41K tokens). Need a team/higher-tier key on Railway for production batches.
 - [ ] **Add Railway env vars** — OUTREACH_INSTALL_ID and OUTREACH_MAILBOX_ID not yet
       in Railway staging (only in local .env). Add before running staging enrollment test.
 
 ---
 
-## ✅ S2S enrollment confirmed working locally
+## ✅ S2S enrollment confirmed working locally (direct API test)
 
 - [x] INSTALL_ID: 9fea8966-8dab-45fb-b7d0-c89ae01785b2 (added to .env)
 - [x] MAILBOX_ID: 596 (mike.madsen@leandata.com, Gmail connected)
 - [x] sequenceState 747809 created: prospect 804416, sequence 5724
 - [x] Step 1 confirmed in Outreach task queue as manual task
 
-## Next — full crew enrollment test
+## ✅ Full enrollment flow wired (pending Railway validation)
 
-- [ ] Add OUTREACH_INSTALL_ID and OUTREACH_MAILBOX_ID to Railway staging env vars
-- [ ] Run Everi with enrollmentEnabled=true, dryRun=false against staging
-- [ ] Approve human_input gate (Gate 1)
-- [ ] Confirm Step 1 appears in Outreach task queue (Gate 2)
-- [ ] Confirm all 6 variables populated: ai_subject_1, ai_body_1, ai_body_2,
-      ai_body_3, ai_subject_4, ai_body_4
+- [x] outreach_enroll_prospect_s2s updated: accepts prospect_email, looks up Outreach
+      prospect ID by email automatically
+- [x] Enrollment agent given outreach_enroll_prospect_s2s as tool
+- [x] tasks.yaml: enrollment task calls outreach_enroll_prospect_s2s (not broken MCP proxy)
+- [x] human_review_gate: enabled: false in ai_sdr_qa_config.yaml
+- [x] human_input=False on enroll_prospect task (EOFError fix)
+
+---
+
+## After staging enrollment confirmed
+
+- [ ] **Referenceable proof points filter** — NVIDIA and Peek appeared as fintech proof
+      points but are not approved logos. Fix STEP 3c to filter referenceable_proof_points
+      against approved logos list from ICP file (Stripe, Ramp, Brex, PayPal, Plaid).
+      Only return customers that appear in the vertical ICP approved list.
+
+- [ ] **Full crew enrollment test** — after env vars added to Railway staging:
+      - Approve human_input gate if re-enabled (Gate 1)
+      - Confirm Step 1 appears in Outreach task queue (Gate 2)
+      - Confirm all 6 variables populated: ai_subject_1, ai_body_1, ai_body_2,
+        ai_body_3, ai_subject_4, ai_body_4 (NOTE: variable population is v1.1 backlog —
+        enrollment creates the sequenceState; content is in review_queue_entry)
 
 ---
 
 ## SMB validation (ICP file done — needs test accounts)
 
 - [ ] Run 2-3 SMB test accounts against staging to validate icp_smb.md
-      Suggested test accounts: Spekit, Qualio (already in SFDC as customers — skip)
-      Find a comparable SMB prospect in SFDC for validation.
+      Suggested test accounts: find a comparable SMB prospect in SFDC for validation.
 - [ ] Confirm SMB title matching works (Founder/CEO path for sub-100 employee accounts)
 - [ ] Confirm referenceable_proof_points returns SMB-vertical customers
 
@@ -96,18 +121,27 @@ Last updated: 2026-04-16
 - [x] LD taxonomy fields created (LD_Super_Industry__c, LD_Industry__c, LD_Sub_Industry__c)
 - [x] 40,170 accounts classified in Salesforce taxonomy ✅
 - [x] STEP 3c — referenceable customer lookup added to tasks.yaml ✅
-      (SOQL by LD_Industry__c, fallback to LD_Super_Industry__c, top 3 by seniority)
 - [x] SMB ICP file built: knowledge/messaging/icp_smb.md ✅
-      (10+ reference customers, pain themes, title matching, signal priorities)
 - [x] SMB title matching updated in STEP 3b (GTM, RevOps, Founder/CEO) ✅
 - [x] Referenceable proof points rule added to draft_email FORMATTING HARD RULES ✅
 - [x] {"raw": ...} wrapper fix: 5-attempt JSON extraction in _result_to_clean_dict ✅
 - [x] Outreach S2S JWT auth: outreach_enroll_prospect_s2s() wired in mcp_client.py ✅
+- [x] S2S enrollment confirmed working (sequenceState 747809, prospect 804416, seq 5724) ✅
+- [x] outreach_enroll_prospect_s2s: accepts prospect_email, looks up Outreach ID ✅
+- [x] Enrollment agent: outreach_enroll_prospect_s2s added as tool ✅
+- [x] tasks.yaml: enrollment task updated to call outreach_enroll_prospect_s2s ✅
+- [x] human_review_gate: enabled: false (ready for live enrollment test) ✅
 
 ---
 
 ## V1.1 Backlog (post-launch fixes)
 
+- [ ] **Sequence variable population** — ai_subject_1/ai_body_1 etc. not injected into
+      Outreach template at enrollment time. The sequenceState is created but the template
+      variables remain as placeholders. Need to PATCH prospect custom attributes in Outreach
+      after enrollment, or set mailMessage content per step.
+- [ ] **Referenceable proof points filter** — NVIDIA and Peek appeared as unapproved
+      fintech proof points. Filter against approved logos list in ICP file.
 - [ ] **Researcher early-exit** — accounts like OneStream take ~2 min to skip
       instead of <30s. Need hard-stop immediately after SFDC validation fails.
       Currently the researcher completes its full loop before returning skip.

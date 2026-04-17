@@ -39,6 +39,7 @@ from ..mcp_client import (
     luci_list_meetings,
     luci_search_portfolio,
     outreach_add_prospect_to_sequence,
+    outreach_enroll_prospect_s2s,
     outreach_list_sequences,
     salesforce_get_record,
     salesforce_query,
@@ -256,6 +257,7 @@ class AiSdrCrew(BaseCrew):
             tools=[
                 outreach_list_sequences,
                 outreach_add_prospect_to_sequence,
+                outreach_enroll_prospect_s2s,
             ],
         )
 
@@ -431,10 +433,12 @@ class AiSdrCrew(BaseCrew):
         )
 
         # ── Task 5: Enroll ──────────────────────────────────────────────────
-        # human_input only when actually enrolling — calling input() with no
-        # terminal (web server / asyncio context) raises EOFError.
-        # Gate 1 is active only when enrollment_enabled=True.
-        # Gate 2: Step 1 in Outreach is MANUAL — sits in task queue until sent.
+        # human_input=True calls input() which raises EOFError in web server
+        # context (no stdin). Removed — enrollment is gated by two other controls:
+        #   Gate 1: enrollment_enabled=False by default in the API. The caller
+        #           must explicitly pass enrollmentEnabled=true to unlock writes.
+        #   Gate 2: Step 1 in Outreach is MANUAL — sits in the task queue until
+        #           the human reviews and sends it. Steps 2-4 fire only after that.
         enroll_task = Task(
             description=self._fmt(
                 enroll_cfg["description"],
@@ -447,7 +451,7 @@ class AiSdrCrew(BaseCrew):
             expected_output=enroll_cfg["expected_output"],
             agent=self.enrollment_agent,
             context=[qa_task],
-            human_input=enrollment_enabled,  # Gate 1: only pause when actually enrolling
+            human_input=False,
         )
 
         return [research_task, signals_task, draft_task, qa_task, enroll_task]

@@ -178,7 +178,7 @@ signal_checks:
 enrollment_checks:
 
   human_review_gate:
-    enabled: true                 # ALWAYS true in testing
+    enabled: false                # Flipped for live enrollment test
     action_on_fail: hold          # hold = write to review queue, do not enroll
     note: >
       Testing: true — all records go to review queue regardless of score.

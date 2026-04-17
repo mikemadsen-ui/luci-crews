@@ -578,14 +578,15 @@ def outreach_add_prospect_to_sequence(
 
 @tool
 def outreach_enroll_prospect_s2s(
-    prospect_id: str,
+    prospect_email: str,
     sequence_id: str,
     mailbox_id: str = "",
 ) -> str:
     """Enroll a prospect in an Outreach sequence using direct S2S JWT authentication.
     Use when the MCP hub enrollment route is unavailable or returns a scope error.
     WRITE OPERATION — only call when enrollment_enabled=True and dry_run=False.
-    prospect_id: Outreach numeric prospect ID (e.g. '804416').
+    prospect_email: Contact email address (e.g. 'dustin.dunn@everi.com'). The prospect
+      will be looked up in Outreach by email. If not found, returns an error.
     sequence_id: Outreach numeric sequence ID (e.g. '5724').
     mailbox_id: Outreach mailbox ID. If omitted, falls back to OUTREACH_MAILBOX_ID env var.
       The mailbox owner must have Gmail/Outlook connected in Outreach Settings → Mailbox.
@@ -594,6 +595,32 @@ def outreach_enroll_prospect_s2s(
         access_token = _get_outreach_access_token()
     except Exception as e:
         return f"Error: S2S token exchange failed — {str(e)[:300]}"
+
+    auth_headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/vnd.api+json",
+    }
+
+    # Step 1: look up the prospect by email
+    try:
+        lookup = requests.get(
+            f"{OUTREACH_API_BASE}/prospects",
+            params={"filter[emails][]": prospect_email, "page[size]": 1},
+            headers=auth_headers,
+            timeout=15,
+        )
+        lookup.raise_for_status()
+        records = lookup.json().get("data", [])
+        if not records:
+            return (
+                f"Error: No Outreach prospect found for email '{prospect_email}'. "
+                "The contact may not exist in Outreach yet — create the prospect first."
+            )
+        prospect_id = records[0]["id"]
+    except requests.exceptions.HTTPError as e:
+        return f"Error looking up prospect by email: {e.response.status_code}: {e.response.text[:300]}"
+    except Exception as e:
+        return f"Error looking up prospect by email: {str(e)[:300]}"
 
     # Resolve mailbox ID: explicit arg > env var > error
     resolved_mailbox = mailbox_id or OUTREACH_MAILBOX_ID
@@ -605,6 +632,7 @@ def outreach_enroll_prospect_s2s(
             "The mailbox must have Gmail/Outlook connected in Outreach Settings → Mailbox."
         )
 
+    # Step 2: create the sequenceState
     payload: Dict[str, Any] = {
         "data": {
             "type": "sequenceState",
@@ -620,14 +648,25 @@ def outreach_enroll_prospect_s2s(
         resp = requests.post(
             f"{OUTREACH_API_BASE}/sequenceStates",
             json=payload,
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/vnd.api+json",
-            },
+            headers=auth_headers,
             timeout=15,
         )
         resp.raise_for_status()
-        return json.dumps(resp.json(), indent=2)
+        result = resp.json()
+        state_id = result.get("data", {}).get("id", "unknown")
+        return json.dumps({
+            "success": True,
+            "sequence_state_id": state_id,
+            "prospect_id": prospect_id,
+            "prospect_email": prospect_email,
+            "sequence_id": sequence_id,
+            "mailbox_id": resolved_mailbox,
+            "message": (
+                f"Enrolled {prospect_email} in sequence {sequence_id}. "
+                f"sequenceState ID: {state_id}. "
+                "Step 1 is MANUAL — check Outreach task queue to send."
+            ),
+        })
     except requests.exceptions.HTTPError as e:
         body = e.response.text[:500]
         if "send enabled" in body:
@@ -635,6 +674,11 @@ def outreach_enroll_prospect_s2s(
                 f"Error: Outreach mailbox {resolved_mailbox} does not have send enabled. "
                 "The sender must connect their Gmail or Outlook account in "
                 "Outreach Settings → Mailbox before enrollment can proceed."
+            )
+        if "already exists" in body.lower() or "duplicate" in body.lower():
+            return (
+                f"Error: {prospect_email} is already enrolled in sequence {sequence_id}. "
+                "Remove them from the sequence first, then retry."
             )
         return f"Error: Outreach API {e.response.status_code}: {body}"
     except Exception as e:

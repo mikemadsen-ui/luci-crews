@@ -306,21 +306,31 @@ Quality fixes committed (all on feature/ai-sdr):
 - Referenceable proof points rule added to draft_email FORMATTING HARD RULES ✅
 - {"raw": ...} wrapper fix: improved JSON extraction in _result_to_clean_dict (5 attempts) ✅
 - Outreach S2S JWT auth: outreach_enroll_prospect_s2s() wired in mcp_client.py ✅
+- S2S enrollment: updated to accept prospect_email and look up Outreach prospect by email ✅
+- Enrollment agent: outreach_enroll_prospect_s2s added as tool; tasks.yaml updated to call it ✅
+- human_input=False enforced on enroll_prospect task (EOFError fix) ✅
+- human_review_gate: enabled: false in ai_sdr_qa_config.yaml for live enrollment ✅
 
 Known issues / v1.1 backlog:
 - Researcher early-exit: accounts like OneStream take ~2 min to skip instead of <30s.
   Needs hard-stop after SFDC validation fails. Tracked in tasks.yaml comment.
-- Rate limit: 30K TPM on individual Anthropic plan throttles batches of 3+ accounts.
-  Need higher-tier key on Railway for production.
+- Rate limit: 30K TPM on local Anthropic key stalls writer step (41K tokens needed).
+  Local enrollment testing not feasible. Run against Railway staging with Ron's key.
 - Outreach Sequence Enrollment scope: not enabled on LeanData Outreach integration.
   Ron needs: Outreach > Settings > Apps > API > LeanData > enable Sequence Enrollment scope.
-  S2S app (outreach_enroll_prospect_s2s) is wired as fallback path.
+  S2S app (outreach_enroll_prospect_s2s) is wired as primary enrollment path.
 - Supabase flagged/enrolled counts in batch run row: set to 0 (derived from account_results).
+- Referenceable proof points: NVIDIA and Peek appeared as fintech proof points — not approved.
+  Need to filter referenceable_proof_points against approved logos list from ICP file.
+  Fix pending after enrollment confirmed on staging.
 
 ---
 
 ## Last session summary
-2026-04-16 — Reoriented after PR #4 merge and Railway staging confirmed working.
-Added STEP 3c (referenceable customer lookup by LD taxonomy), SMB ICP file,
-Outreach S2S JWT auth, and {"raw":...} wrapper fix. Everi staging validation next.
+2026-04-17 — Fixed enrollment flow. outreach_enroll_prospect_s2s now accepts prospect_email
+and looks up the Outreach prospect ID automatically. Enrollment agent given S2S tool.
+task.yaml updated to call outreach_enroll_prospect_s2s (not the broken MCP proxy).
+human_review_gate flipped to false. Local testing stalls at writer step due to 30K TPM limit.
+Enrollment must be validated on Railway staging (Ron's higher-tier key).
+Next: add OUTREACH_INSTALL_ID + OUTREACH_MAILBOX_ID to Railway staging env, then run staging.
 Full next steps: docs/AI_SDR_NEXT_STEPS.md
