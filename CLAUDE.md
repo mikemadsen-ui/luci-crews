@@ -256,8 +256,11 @@ Outreach S2S app:
 - OUTREACH_S2S_APP_UID: in local .env and Railway staging
 - OUTREACH_PRIVATE_KEY: in local .env and Railway staging (PEM format)
 - Private key file: ~/luci-crews/outreach_private.pem
-- JWT auth wired in mcp_client.py: outreach_enroll_prospect_s2s() ✅
-- Still waiting: Outreach Sequence Enrollment scope (Ron needs to enable in Outreach settings)
+- OUTREACH_INSTALL_ID: 9fea8966-8dab-45fb-b7d0-c89ae01785b2 (in .env, add to Railway)
+- OUTREACH_MAILBOX_ID: 596 (mike.madsen@leandata.com, Gmail connected, in .env, add to Railway)
+- S2S auth flow confirmed: JWT (iss+iat+exp) → /api/app/installs/{id}/actions/accessToken
+- ENROLLMENT CONFIRMED: sequenceState 747809 created, prospect 804416, sequence 5724 ✅
+- Step 1 appears as manual task in Outreach task queue ✅
 
 Taxonomy (Salesforce):
 - LD_Super_Industry__c, LD_Industry__c, LD_Sub_Industry__c: created and loaded

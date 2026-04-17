@@ -30,21 +30,24 @@ Last updated: 2026-04-16
 
 ## Waiting on Ron
 
-- [ ] **Outreach Sequence Enrollment scope** — Outreach > Settings > Apps > API >
-      LeanData integration > enable Sequence Enrollment scope.
-      S2S fallback (outreach_enroll_prospect_s2s) is wired but not yet tested.
 - [ ] **Anthropic API key tier on Railway** — individual plan = 30K TPM, throttles at
       3+ accounts. Need a team/higher-tier key on Railway for production batches.
+- [ ] **Add Railway env vars** — OUTREACH_INSTALL_ID and OUTREACH_MAILBOX_ID not yet
+      in Railway staging (only in local .env). Add before running staging enrollment test.
 
 ---
 
-## After Outreach scope is enabled — enrollment flow test
+## ✅ S2S enrollment confirmed working locally
 
-- [ ] Test S2S enrollment:
-      prospect_id: 804416 (Mike Madsen test record)
-      sequence_id: 5724 (Fintech AI SDR sequence)
-      Call outreach_enroll_prospect_s2s('804416', '5724')
-- [ ] Run Everi with enrollmentEnabled=true, dryRun=false
+- [x] INSTALL_ID: 9fea8966-8dab-45fb-b7d0-c89ae01785b2 (added to .env)
+- [x] MAILBOX_ID: 596 (mike.madsen@leandata.com, Gmail connected)
+- [x] sequenceState 747809 created: prospect 804416, sequence 5724
+- [x] Step 1 confirmed in Outreach task queue as manual task
+
+## Next — full crew enrollment test
+
+- [ ] Add OUTREACH_INSTALL_ID and OUTREACH_MAILBOX_ID to Railway staging env vars
+- [ ] Run Everi with enrollmentEnabled=true, dryRun=false against staging
 - [ ] Approve human_input gate (Gate 1)
 - [ ] Confirm Step 1 appears in Outreach task queue (Gate 2)
 - [ ] Confirm all 6 variables populated: ai_subject_1, ai_body_1, ai_body_2,
